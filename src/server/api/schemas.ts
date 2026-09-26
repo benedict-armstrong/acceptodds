@@ -281,10 +281,8 @@ export const Me = z
     handle: z.string(),
     displayName: z.string(),
     isBot: z.boolean(),
-    orcid: z.string().nullable().meta({ description: 'The ORCID iD signed in with, if any. Identity, not verification.' }),
-    institutionName: z.string().nullable(),
-    rorId: z.string().nullable(),
-    verifiedAt: Timestamp.nullable(),
+    institutionName: z.string().nullable().meta({ description: 'From the allowlist entry for your email domain.' }),
+    verifiedAt: Timestamp.nullable().meta({ description: 'When your institutional email address was confirmed.' }),
     canTrade: z.boolean().meta({
       description: 'True for a verified account or a bot. Unverified accounts may browse and quote but not place orders.',
     }),
@@ -379,22 +377,6 @@ export const TokenInfo = z
   .meta({ id: 'TokenInfo' });
 
 export const TokenList = z.object({ tokens: z.array(TokenInfo) }).meta({ id: 'TokenList' });
-
-export const InstitutionRequest = z
-  .object({ email: z.email().max(320).meta({ description: 'An address at your institution.' }) })
-  .meta({ id: 'InstitutionRequest' });
-
-export const InstitutionPending = z
-  .object({
-    email: z.string(),
-    institution: z.object({ rorId: z.string(), name: z.string() }),
-    expiresAt: Timestamp,
-  })
-  .meta({ id: 'InstitutionPending', description: 'A six-digit code has been sent to `email`.' });
-
-export const InstitutionConfirm = z
-  .object({ code: z.string().regex(/^\d{6}$/, 'six digits') })
-  .meta({ id: 'InstitutionConfirm' });
 
 // ---------------------------------------------------------------------------
 // admin

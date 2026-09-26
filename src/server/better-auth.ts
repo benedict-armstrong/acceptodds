@@ -1,20 +1,25 @@
 import { randomBytes } from 'node:crypto';
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { genericOAuth, type GenericOAuthConfig } from 'better-auth/plugins/generic-oauth';
 import { apiKey } from '@better-auth/api-key';
 import { getDb, type Database } from '@/db';
 import * as authSchema from '@/db/auth-schema';
 import { CLIENT_IP_HEADER } from './api/http';
-import { ensureAccountForUser, recordOrcid } from './accounts';
+import { ensureAccountForUser } from './accounts';
+import { institutionForEmail } from './institution-domains';
 import { sendMail } from './mail';
 
 /**
  * Better Auth, mounted in-app with its tables in our Postgres
- * (IMPLEMENTATION.md §8). It owns identity — users, sessions, linked OAuth
- * accounts, email verification and API keys. It does **not** own traders:
- * `accounts` is ours, one row per Better Auth `user`, created with its signup
- * grant the moment the user is (see `databaseHooks`).
+ * (IMPLEMENTATION.md §8). It owns identity — users, sessions, email
+ * verification and API keys. It does **not** own traders: `accounts` is ours,
+ * one row per Better Auth `user`.
+ *
+ * Sign-up is email + password, and only from an address whose domain is on
+ * the institution allowlist (`server/institution-domains.ts`). The trader
+ * account — and with it the starting balance — is created only when that
+ * address is **confirmed**, which is also what marks the account verified.
  *
  * Nothing outside `server/auth.ts` should ask this module who a request is.
  */
@@ -28,50 +33,16 @@ export const API_KEY_PREFIX = 'pm_live_';
  */
 export const API_KEY_RESOURCE = 'api';
 
-function orcidProvider(): GenericOAuthConfig | null {
-  const clientId = process.env.ORCID_CLIENT_ID;
-  const clientSecret = process.env.ORCID_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-  return {
-    providerId: 'orcid',
-    clientId,
-    clientSecret,
-    authorizationUrl: 'https://orcid.org/oauth/authorize',
-    tokenUrl: 'https://orcid.org/oauth/token',
-    userInfoUrl: 'https://orcid.org/oauth/userinfo',
-    scopes: ['/authenticate', 'openid'],
-    mapProfileToUser: mapOrcidProfile,
-  };
-}
-
-/**
- * ORCID is identity, **not** verification: anyone can mint an iD in a minute
- * (§8). Its userinfo carries `sub` (the iD) and names, and usually no email —
- * ORCID only releases one the researcher made public. Better Auth needs an
- * email per user, so an iD without one gets an undeliverable placeholder under
- * the reserved `.invalid` TLD, marked unverified. It is never mailed.
- */
-export function mapOrcidProfile(profile: Record<string, unknown>): {
-  name: string;
-  email: string;
-  emailVerified: boolean;
-} {
-  const sub = String(profile.sub ?? profile.id ?? '');
-  const given = typeof profile.given_name === 'string' ? profile.given_name : '';
-  const family = typeof profile.family_name === 'string' ? profile.family_name : '';
-  const name = (typeof profile.name === 'string' && profile.name) || `${given} ${family}`.trim() || sub;
-  const email = typeof profile.email === 'string' && profile.email ? profile.email : `${sub}@orcid.invalid`;
-  return { name, email, emailVerified: false };
-}
-
 function baseURL(): string {
   const url = process.env.BETTER_AUTH_URL ?? process.env.APP_URL;
   if (!url) throw new Error('BETTER_AUTH_URL is not set');
   return url;
 }
 
+/** Thrown from the sign-up hook; Better Auth returns it as a 422 with this code. */
+export const EMAIL_DOMAIN_NOT_ALLOWED = 'EMAIL_DOMAIN_NOT_ALLOWED';
+
 export function createAuth(database: Database) {
-  const orcid = orcidProvider();
   return betterAuth({
     appName: 'papermarket',
     baseURL: baseURL(),
@@ -101,30 +72,35 @@ export function createAuth(database: Database) {
           text: `Confirm this address to finish signing up:\n\n${url}`,
         });
       },
+      // Confirmation is the institutional verification: it creates the trader
+      // account, grants the starting balance and sets `verified_at`, once.
+      // `server/auth.ts` repeats this lazily, so a failure here costs a retry.
+      afterEmailVerification: async (user) => {
+        await ensureAccountForUser({ id: user.id, name: user.name, email: user.email }, database);
+      },
     },
 
-    account: {
-      // Signing in with ORCID and with a password that share a verified email
-      // is one person.
-      accountLinking: { enabled: true, trustedProviders: ['orcid'] },
-    },
+    // The address can only be changed if this is turned on, and a new address
+    // would bypass the allowlist check below. Keep it off.
+    user: { changeEmail: { enabled: false } },
 
     databaseHooks: {
       user: {
         create: {
-          // Every signed-up human gets a trader row and the starting balance,
-          // as a `signup` ledger entry. `ensureAccountForUser` is idempotent,
-          // and `server/auth.ts` calls it again lazily, so a failure here
-          // costs a retry, not an orphaned user.
-          after: async (user) => {
-            await ensureAccountForUser({ id: user.id, name: user.name, email: user.email }, database);
-          },
-        },
-      },
-      account: {
-        create: {
-          after: async (linked) => {
-            if (linked.providerId === 'orcid') await recordOrcid(linked.userId, linked.accountId, database);
+          // Refuse an unlisted domain before a user row exists or any mail is sent.
+          // (Bots' login-less users are inserted directly and never pass here.)
+          //
+          // 422, not 403: Better Auth answers a 403 from user creation with a
+          // fake success (its guard against email enumeration), which would
+          // leave the person waiting for a mail that never comes. The domain
+          // list is not a secret, so saying no plainly leaks nothing.
+          before: async (user) => {
+            if (!institutionForEmail(user.email)) {
+              throw new APIError('UNPROCESSABLE_ENTITY', {
+                code: EMAIL_DOMAIN_NOT_ALLOWED,
+                message: 'sign-up is open to approved institutional email domains only',
+              });
+            }
           },
         },
       },
@@ -140,7 +116,6 @@ export function createAuth(database: Database) {
     },
 
     plugins: [
-      ...(orcid ? [genericOAuth({ config: [orcid] })] : []),
       apiKey({
         defaultPrefix: API_KEY_PREFIX,
         // §7: `pm_live_` + 32 random bytes. The plugin stores only its SHA-256.

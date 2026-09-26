@@ -270,29 +270,30 @@ Each of these came up while implementing §3–§8 and is load-bearing.
   verified or `is_bot`, else `403 not_verified`. Not in `engine.trade()`,
   which takes an account id and trusts its caller about who that is. M6's
   Server Actions must call it too.
-- **Every user gets exactly one account, with its grant, from
-  `ensureAccountForUser()`**: in Better Auth's `user.create.after` hook, and
-  again lazily on every session request, so a failed hook costs a retry and
-  never leaves a signed-in user without a trader. The unique index on
-  `accounts.user_id` decides a race. The grant happens at user creation, before
-  the email is confirmed (§12 Q2 is still open on grants in general).
-- **ORCID is optional at runtime.** The provider is registered only when
-  `ORCID_CLIENT_ID`/`_SECRET` are set. ORCID usually releases no email, and
-  Better Auth needs one, so an iD without a public email gets
-  `<orcid>@orcid.invalid`, unverified and never mailed. The iD is written to
-  `accounts.orcid` when the ORCID account is linked. Linking an ORCID to an
-  existing email user with the same verified address is allowed
-  (`trustedProviders: ['orcid']`).
-- **Institutional codes:** six digits, stored only as an HMAC keyed on
-  `BETTER_AUTH_SECRET`; 15 minutes, 5 wrong guesses (counted atomically), 5
-  codes per account per hour; a new code supersedes the old; a correct code is
-  consumed exactly once. The domain must resolve in the ROR index first, or no
-  mail is sent.
-- **The ROR index is built offline** (`npm run ror:index`) from the Zenodo
-  dump and read from `ROR_INDEX_PATH`. Active organisations only; a record's
-  `domains`, else its website host; a domain claimed by two organisations is
-  dropped; matching walks up subdomains but never to fewer than two labels, so
-  `ac.uk` matches nobody.
+- **Institutional verification is an email-domain allowlist, for now.**
+  `config/institution-domains.json` (`INSTITUTION_DOMAINS_PATH` overrides)
+  maps a domain to an institution name; subdomains match; matching never goes
+  below two labels. Sign-up from any other domain is refused in Better Auth's
+  `user.create.before` hook, before a user row exists or a mail is sent.
+  Confirming the address *is* the verification. This replaces §8's
+  institutional code + ROR lookup, and ORCID sign-in is deferred too; both
+  were built and then removed on the owner's call (git history has them).
+  The checked-in list is empty, so sign-up is closed until it is filled.
+- **The refusal is a 422 `EMAIL_DOMAIN_NOT_ALLOWED`, not a 403.** Better Auth
+  answers a 403 from user creation with a fake success (its guard against
+  email enumeration), so the person would wait for a mail that never comes.
+  The list is not secret, so saying no plainly leaks nothing.
+- **Email changes are off** (`user.changeEmail.enabled: false`): a changed
+  address would bypass the allowlist.
+- **No account, and no reputation, before the email is confirmed.**
+  `ensureAccountForUser()` creates the trader row, the `signup` grant and
+  `verified_at` + `institution_name` together, from Better Auth's
+  `emailVerification.afterEmailVerification`, and again lazily on every
+  session request (which `server/auth.ts` only accepts for a confirmed email),
+  so a failed callback costs a retry and never leaves a signed-in user
+  without a trader. The unique index on `accounts.user_id` decides a race, so
+  there is exactly one grant. A domain dropped from the list between sign-up
+  and confirmation gets a funded account that is not verified and cannot trade.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is
@@ -303,6 +304,8 @@ Each of these came up while implementing §3–§8 and is load-bearing.
   without time zone because that is what the CLI emits.
 - **`drizzle-kit generate` prompts "create or rename?"** whenever a migration
   drops one table and creates another, and refuses without a TTY. Migration
-  0002 answered "create" for every Better Auth table.
+  0002 answered "create" for every Better Auth table. Migration 0003 drops
+  0002's `institution_verifications` again (the code flow was removed); it is
+  a new migration rather than an edit because 0002 had already been applied.
 - **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
   server log, outside production; in production a missing key throws.

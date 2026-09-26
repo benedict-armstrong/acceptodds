@@ -1,34 +1,26 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { account as authAccount, user } from '@/db/auth-schema';
-import { accounts, institutionVerifications, ledgerEntries } from '@/db/schema';
+import { accounts, ledgerEntries } from '@/db/schema';
 import { ensureAccountForUser } from '@/server/accounts';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
-import { buildRorIndex } from '@/server/ror';
 import { api, authCall, cookieFrom, ORIGIN, signUp, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
 let fx: Fixture;
-let rorIndexPath: string;
-
-beforeAll(() => {
-  const dir = mkdtempSync(join(tmpdir(), 'pm-ror-'));
-  rorIndexPath = join(dir, 'ror-index.json');
-  const dump = JSON.parse(readFileSync('tests/fixtures/ror-dump.json', 'utf8'));
-  writeFileSync(rorIndexPath, JSON.stringify(buildRorIndex(dump, 'fixture')));
-});
+const FIXTURE_DOMAINS = 'tests/fixtures/institution-domains.json';
 
 beforeEach(async () => {
   await resetDatabase();
   process.env.API_RATE_LIMIT_BURST = '1000';
   process.env.API_RATE_LIMIT_PER_SECOND = '1000';
   process.env.STARTING_BALANCE_MICRO = STARTING_MICRO.toString();
-  process.env.ROR_INDEX_PATH = rorIndexPath;
+  process.env.INSTITUTION_DOMAINS_PATH = FIXTURE_DOMAINS;
   clearDevOutbox();
   fx = await seedMarket(0, 10);
 }, 60_000);
@@ -37,10 +29,17 @@ afterAll(async () => {
   await closePool();
 });
 
-function lastCode(to: string): string {
-  const mail = [...devOutbox()].reverse().find((m) => m.to === to);
-  if (!mail) throw new Error(`no mail to ${to}`);
-  return /\b(\d{6})\b/.exec(mail.text)![1];
+/** Sign up without clicking the link. */
+async function signUpUnconfirmed(email: string, name = 'Pending Person'): Promise<Response> {
+  return authCall('POST', '/sign-up/email', { body: { email, password: 'correct horse battery', name } });
+}
+
+async function accountsFor(email: string) {
+  return db
+    .select({ account: accounts })
+    .from(accounts)
+    .innerJoin(user, eq(user.id, accounts.userId))
+    .where(eq(user.email, email));
 }
 
 const order = (outcomeId: string) => ({ outcomeId, sharesMicro: '1000000', maxCostMicro: '10000000' });
@@ -50,7 +49,7 @@ const order = (outcomeId: string) => ({ outcomeId, sharesMicro: '1000000', maxCo
 // ---------------------------------------------------------------------------
 
 describe('sign-up with email and password', () => {
-  it('creates a trader with the starting balance as a signup ledger entry, and a session', async () => {
+  it('confirming the email creates a verified trader with the starting balance, and a session', async () => {
     const cookie = await signUp('ada@example.org', 'Ada Lovelace');
 
     const me = await api('GET', '/me', { cookie });
@@ -59,14 +58,44 @@ describe('sign-up with email and password', () => {
       handle: 'ada-lovelace',
       displayName: 'Ada Lovelace',
       isBot: false,
-      verifiedAt: null,
-      canTrade: false,
+      institutionName: 'Example University',
+      verifiedAt: expect.any(String),
+      canTrade: true,
       balanceMicro: STARTING_MICRO.toString(),
       auth: { method: 'session', scopes: ['read', 'trade'] },
     });
 
     const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, me.body.id));
     expect(entries).toEqual([expect.objectContaining({ reason: 'signup', deltaMicro: STARTING_MICRO })]);
+
+    // Verified by construction, so it can trade straight away.
+    const trade = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
+    expect(trade.status).toBe(201);
+  });
+
+  it('grants nothing, and creates no trader, until the email is confirmed', async () => {
+    expect((await signUpUnconfirmed('later@example.org')).status).toBe(200);
+    expect(await accountsFor('later@example.org')).toEqual([]);
+    const [{ total }] = await db
+      .select({ total: sql<string>`coalesce(sum(${ledgerEntries.deltaMicro}), 0)::text` })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.reason, 'signup'));
+    // Only the fixture's house grant, which createHouse records as a signup.
+    const [house] = await db.select().from(accounts).where(eq(accounts.handle, 'house'));
+    expect(BigInt(total)).toBe(house.balanceMicro + fx.subsidyMicro);
+
+    // Clicking the link now creates it, with exactly one grant.
+    const mail = devOutbox().find((m) => m.to === 'later@example.org')!;
+    const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+    await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    const [row] = await accountsFor('later@example.org');
+    expect(row.account.balanceMicro).toBe(STARTING_MICRO);
+    expect(row.account.verifiedAt).not.toBeNull();
+
+    // A second click grants nothing more.
+    await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    const grants = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, row.account.id));
+    expect(grants).toHaveLength(1);
   });
 
   it('refuses to sign in before the email is confirmed', async () => {
@@ -90,7 +119,7 @@ describe('sign-up with email and password', () => {
     expect(b.body.handle).toMatch(/^sam-smith-[a-z0-9]{4}$/);
   });
 
-  it('provisions exactly one account per user, however many callers race', async () => {
+  it('provisions exactly one account per confirmed user, however many callers race', async () => {
     const id = 'race-user';
     await db.insert(user).values({ id, name: 'Racer', email: 'racer@example.org', emailVerified: true });
     const results = await Promise.all(
@@ -164,16 +193,17 @@ describe('a session on /api/v1', () => {
 // ---------------------------------------------------------------------------
 
 describe('trading eligibility', () => {
-  it('refuses an unverified human with not_verified, by session or by token', async () => {
-    const cookie = await signUp('unverified@example.org');
-    const bySession = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
-    expect(bySession.status).toBe(403);
-    expect(bySession.body.error.code).toBe('not_verified');
-
+  it('refuses an unverified human with not_verified', async () => {
     const t = await trader('unverified-token', ['read', 'trade'], { verified: false });
-    const byToken = await api('POST', `/markets/${fx.marketId}/orders`, { token: t.token, body: order(fx.outcomeIds[0]) });
-    expect(byToken.status).toBe(403);
-    expect(byToken.body.error.code).toBe('not_verified');
+    const res = await api('POST', `/markets/${fx.marketId}/orders`, { token: t.token, body: order(fx.outcomeIds[0]) });
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('not_verified');
+    // Quoting is still open to them.
+    const q = await api('POST', `/markets/${fx.marketId}/quote`, {
+      token: t.token,
+      body: { outcomeId: fx.outcomeIds[0], sharesMicro: '1000000' },
+    });
+    expect(q.status).toBe(200);
   });
 
   it('exempts bots', async () => {
@@ -183,116 +213,49 @@ describe('trading eligibility', () => {
   });
 });
 
-describe('institutional verification', () => {
-  it('sends a code to an address at a ROR institution; confirming it unlocks trading', async () => {
-    const cookie = await signUp('grace@example.org', 'Grace');
+describe('the institution allowlist', () => {
+  it('refuses sign-up from an unlisted domain before creating a user or sending mail', async () => {
+    for (const email of ['me@gmail.com', 'me@notethz.ch', 'me@ethz.ch.evil.com', 'me@oxford.uk']) {
+      const res = await signUpUnconfirmed(email);
+      expect(res.status).toBe(422);
+      expect((await res.json()).code).toBe('EMAIL_DOMAIN_NOT_ALLOWED');
+    }
+    expect(await db.select().from(user)).toEqual([]);
+    expect(devOutbox()).toEqual([]);
+  });
 
-    const start = await api('POST', '/me/institution', { cookie, body: { email: 'Grace@Inf.ETHZ.ch' } });
-    expect(start.status).toBe(202);
-    expect(start.body).toMatchObject({
-      email: 'grace@inf.ethz.ch',
-      institution: { rorId: 'https://ror.org/05a28rw58', name: 'ETH Zurich' },
-    });
-    const code = lastCode('grace@inf.ethz.ch');
-
-    // The code is not stored anywhere readable.
-    const rows = await db.execute(sql`select * from institution_verifications`);
-    expect(JSON.stringify(rows.rows)).not.toContain(code);
-
-    const wrong = await api('POST', '/me/institution/verify', {
-      cookie,
-      body: { code: code === '000000' ? '000001' : '000000' },
-    });
-    expect(wrong.status).toBe(400);
-    expect(wrong.body.error).toMatchObject({ code: 'invalid_code', details: { attemptsRemaining: 4 } });
-
-    const ok = await api('POST', '/me/institution/verify', { cookie, body: { code } });
-    expect(ok.status).toBe(200);
-    expect(ok.body).toMatchObject({
-      canTrade: true,
-      institutionName: 'ETH Zurich',
-      rorId: 'https://ror.org/05a28rw58',
-      verifiedAt: expect.any(String),
-    });
-
-    // Used once.
-    const again = await api('POST', '/me/institution/verify', { cookie, body: { code } });
-    expect(again.status).toBe(404);
-
-    const trade = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
-    expect(trade.status).toBe(201);
-
-    // And the public profile shows the institution.
-    const profile = await api('GET', `/accounts/${ok.body.handle}`);
+  it('admits subdomains of a listed domain, and records the institution', async () => {
+    const cookie = await signUp('grace@inf.ethz.ch', 'Grace');
+    const me = await api('GET', '/me', { cookie });
+    expect(me.body).toMatchObject({ institutionName: 'ETH Zurich', canTrade: true });
+    const profile = await api('GET', `/accounts/${me.body.handle}`);
     expect(profile.body).toMatchObject({ institutionName: 'ETH Zurich', verifiedAt: expect.any(String) });
   });
 
-  it('refuses a domain that is not a registered institution, and sends nothing', async () => {
-    const cookie = await signUp('free@example.org');
-    for (const email of ['me@gmail.com', 'me@shared.org', 'me@defunct.edu']) {
-      const res = await api('POST', '/me/institution', { cookie, body: { email } });
-      expect(res.status).toBe(422);
-      expect(res.body.error.code).toBe('unknown_institution');
-    }
-    expect(devOutbox().filter((m) => m.to.startsWith('me@'))).toEqual([]);
-  });
+  it('a domain dropped from the list before confirmation gets a funded account that cannot trade', async () => {
+    expect((await signUpUnconfirmed('dropped@example.org')).status).toBe(200);
+    const narrower = join(mkdtempSync(join(tmpdir(), 'pm-domains-')), 'domains.json');
+    writeFileSync(narrower, JSON.stringify({ domains: { 'ethz.ch': 'ETH Zurich' } }));
+    process.env.INSTITUTION_DOMAINS_PATH = narrower;
 
-  it('expires a code after 15 minutes or 5 wrong guesses', async () => {
-    const cookie = await signUp('tries@example.org');
-    await api('POST', '/me/institution', { cookie, body: { email: 'tries@ethz.ch' } });
-    const code = lastCode('tries@ethz.ch');
-    const wrong = code === '999999' ? '999998' : '999999';
-    const guesses = [];
-    for (let i = 0; i < 5; i += 1) {
-      guesses.push((await api('POST', '/me/institution/verify', { cookie, body: { code: wrong } })).body.error);
-    }
-    expect(guesses.map((g) => g.details?.attemptsRemaining)).toEqual([4, 3, 2, 1, 0]);
-    const locked = await api('POST', '/me/institution/verify', { cookie, body: { code } });
-    expect(locked.status).toBe(410);
-    expect(locked.body.error.code).toBe('code_expired');
+    const mail = devOutbox().find((m) => m.to === 'dropped@example.org')!;
+    const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+    const verified = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    const cookie = cookieFrom(verified);
 
-    await api('POST', '/me/institution', { cookie, body: { email: 'tries@ethz.ch' } });
-    await db.update(institutionVerifications).set({ expiresAt: new Date(Date.now() - 1000) });
-    const stale = await api('POST', '/me/institution/verify', { cookie, body: { code: lastCode('tries@ethz.ch') } });
-    expect(stale.status).toBe(410);
-  });
-
-  it('a new code supersedes the old one', async () => {
-    const cookie = await signUp('twice@example.org');
-    await api('POST', '/me/institution', { cookie, body: { email: 'twice@ethz.ch' } });
-    const first = lastCode('twice@ethz.ch');
-    clearDevOutbox();
-    await api('POST', '/me/institution', { cookie, body: { email: 'twice@ethz.ch' } });
-    const second = lastCode('twice@ethz.ch');
-    if (first !== second) {
-      const old = await api('POST', '/me/institution/verify', { cookie, body: { code: first } });
-      expect(old.body.error.code).toBe('invalid_code');
-    }
-    expect((await api('POST', '/me/institution/verify', { cookie, body: { code: second } })).status).toBe(200);
-  });
-
-  it('limits how many codes an account may request per hour', async () => {
-    const cookie = await signUp('spam@example.org');
-    const statuses = [];
-    for (let i = 0; i < 6; i += 1) {
-      statuses.push((await api('POST', '/me/institution', { cookie, body: { email: 'spam@ethz.ch' } })).status);
-    }
-    expect(statuses).toEqual([202, 202, 202, 202, 202, 429]);
-  });
-
-  it('is unavailable, not broken, without a ROR index', async () => {
-    delete process.env.ROR_INDEX_PATH;
-    const cookie = await signUp('noindex@example.org');
-    const res = await api('POST', '/me/institution', { cookie, body: { email: 'x@ethz.ch' } });
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe('institution_directory_unavailable');
-  });
-
-  it('is session-only', async () => {
-    const t = await trader('tokened', ['read', 'trade'], { verified: false });
-    const res = await api('POST', '/me/institution', { token: t.token, body: { email: 'x@ethz.ch' } });
+    const me = await api('GET', '/me', { cookie });
+    expect(me.body).toMatchObject({ canTrade: false, verifiedAt: null, institutionName: null });
+    const res = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
     expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('session_required');
+    expect(res.body.error.code).toBe('not_verified');
+  });
+
+  it('does not let a user change their email to get round it', async () => {
+    const cookie = await signUp('stay@example.org');
+    const res = await authCall('POST', '/change-email', { cookie, body: { newEmail: 'me@gmail.com' } });
+    expect(res.status).not.toBe(200);
+    const [u] = await db.select().from(user).where(eq(user.email, 'stay@example.org'));
+    expect(u).toBeDefined();
   });
 });
 

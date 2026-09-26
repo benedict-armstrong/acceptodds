@@ -22,8 +22,6 @@ import * as portfolioRoute from '@/app/api/v1/me/portfolio/route';
 import * as myOrdersRoute from '@/app/api/v1/me/orders/route';
 import * as tokensRoute from '@/app/api/v1/me/tokens/route';
 import * as tokenRoute from '@/app/api/v1/me/tokens/[id]/route';
-import * as institutionRoute from '@/app/api/v1/me/institution/route';
-import * as institutionVerifyRoute from '@/app/api/v1/me/institution/verify/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
 import * as fallbackRoute from '@/app/api/v1/[...rest]/route';
 import { STARTING_MICRO } from './helpers';
@@ -52,8 +50,6 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/orders', myOrdersRoute],
   ['/me/tokens', tokensRoute],
   ['/me/tokens/[id]', tokenRoute],
-  ['/me/institution', institutionRoute],
-  ['/me/institution/verify', institutionVerifyRoute],
 ];
 
 export const ROUTE_PATTERNS = ROUTES.map(([p]) => p);
@@ -192,7 +188,7 @@ export async function trader(
         userId,
         ...(opts.verified === false
           ? {}
-          : { verifiedAt: new Date(), rorId: 'https://ror.org/test', institutionName: 'Test University' }),
+          : { verifiedAt: new Date(), institutionName: 'Test University' }),
       })
       .where(eq(accounts.id, account.id))
       .returning();

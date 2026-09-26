@@ -324,31 +324,6 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
 });
 
-/**
- * Institutional-address verification codes (§8). One row per code sent; the
- * code itself is never stored, only an HMAC of it. `ror_id` and
- * `institution_name` are what the domain resolved to when the code was sent,
- * and are copied onto `accounts` only when the code is confirmed.
- */
-export const institutionVerifications = pgTable(
-  'institution_verifications',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    accountId: uuid('account_id')
-      .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
-    email: text('email').notNull(),
-    rorId: text('ror_id').notNull(),
-    institutionName: text('institution_name').notNull(),
-    codeHash: text('code_hash').notNull(),
-    attempts: integer('attempts').notNull().default(0),
-    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
-    consumedAt: timestamp('consumed_at', { withTimezone: true, mode: 'date' }),
-    createdAt: createdAt(),
-  },
-  (t) => [index('institution_verifications_account_idx').on(t.accountId, t.createdAt)],
-);
-
 export type Account = typeof accounts.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;

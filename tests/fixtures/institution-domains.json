@@ -1,0 +1,7 @@
+{
+  "domains": {
+    "example.org": "Example University",
+    "ethz.ch": "ETH Zurich",
+    "uk": "A bare TLD, which must admit nobody"
+  }
+}

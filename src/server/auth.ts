@@ -113,9 +113,12 @@ async function authenticateToken(token: string | null): Promise<Principal> {
 async function authenticateSession(req: Request): Promise<Principal | null> {
   const session = await getAuth().api.getSession({ headers: req.headers });
   if (!session) return null;
+  // Better Auth refuses sign-in before confirmation; this makes sure an
+  // unconfirmed user can never reach the account (and grant) below either.
+  if (!session.user.emailVerified) return null;
   assertSameOrigin(req);
 
-  // Normally created by the sign-up hook; this makes a missed hook harmless.
+  // Normally created on email confirmation; this makes a missed hook harmless.
   const account = await ensureAccountForUser(session.user);
   const rateLimit = await limit(`user:${session.user.id}`);
   return { account, method: 'session', scopes: SESSION_SCOPES, credentialId: session.session.id, rateLimit };

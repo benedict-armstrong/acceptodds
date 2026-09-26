@@ -3,7 +3,6 @@ import { authenticate, requireAuth, requireSession, requireTradingEligibility, t
 import { getPortfolio, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import * as events from '../events';
-import { confirmVerification, startVerification } from '../institutions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import {
   accountOrders,
@@ -248,28 +247,6 @@ export const deleteMyToken = route(async (req, params) => {
     throw new ApiError(404, 'not_found', `no token ${id}`);
   }
   return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
-});
-
-// ---------------------------------------------------------------------------
-// institutional verification (§8) — what unlocks trading
-// ---------------------------------------------------------------------------
-
-export const postInstitution = route(async (req) => {
-  const principal = await requireSession(req);
-  const body = await parseBody(req, S.InstitutionRequest);
-  const pending = await startVerification(principal.account, body.email);
-  return respond(
-    S.InstitutionPending,
-    { email: pending.email, institution: pending.institution, expiresAt: toIso(pending.expiresAt) },
-    { status: 202, principal },
-  );
-});
-
-export const postInstitutionVerify = route(async (req) => {
-  const principal = await requireSession(req);
-  const body = await parseBody(req, S.InstitutionConfirm);
-  const account = await confirmVerification(principal.account, body.code);
-  return respond(S.Me, presentMe({ ...principal, account }), { principal });
 });
 
 // ---------------------------------------------------------------------------

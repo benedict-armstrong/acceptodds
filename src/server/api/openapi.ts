@@ -31,9 +31,9 @@ const idParam = z.object({ id: S.MarketRef });
 
 function op(
   config: Omit<RouteConfig, 'responses'> & {
-    ok: { status: 200 | 201 | 202; schema: z.ZodType; description: string };
+    ok: { status: 200 | 201; schema: z.ZodType; description: string };
     scope?: Scope;
-    errors?: Partial<Record<400 | 401 | 403 | 404 | 409 | 410 | 422 | 429 | 503, string>>;
+    errors?: Partial<Record<400 | 401 | 403 | 404 | 409 | 429, string>>;
   },
 ): RouteConfig {
   const { ok, scope, errors = {}, ...rest } = config;
@@ -79,7 +79,7 @@ export function buildRegistry(): OpenAPIRegistry {
     in: 'cookie',
     name: 'better-auth.session_token',
     description:
-      'A signed-in browser session (sign in at /api/auth). Equivalent to the `read` and `trade` scopes, never `admin`. Writes must come from our own Origin.',
+      'A signed-in browser session (sign up and sign in at /api/auth, with an email address at an approved institution). Equivalent to the `read` and `trade` scopes, never `admin`. Writes must come from our own Origin.',
   });
 
   r.registerComponent('securitySchemes', 'bearer', {
@@ -203,7 +203,7 @@ export function buildRegistry(): OpenAPIRegistry {
       },
       ok: { status: 201, schema: S.Fill, description: 'The fill (or, for a replayed key, the original fill).' },
       errors: {
-        403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has not confirmed an institutional address.',
+        403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
         404: 'not_found: no such market or outcome.',
         409:
           'slippage_exceeded | insufficient_balance | insufficient_shares | market_not_open | market_closed | idempotency_key_reused',
@@ -294,40 +294,6 @@ export function buildRegistry(): OpenAPIRegistry {
   delete revoke.responses[200];
   revoke.responses[204] = { description: 'Revoked. The token stops working immediately.' };
   r.registerPath(revoke);
-
-  r.registerPath(
-    sessionOnly({
-      method: 'post',
-      path: '/me/institution',
-      tags: ['me'],
-      summary: 'Start institutional verification',
-      description:
-        'Sends a six-digit code to an address at your institution. The domain must belong to an active organisation in the ROR registry. Confirming the code is what allows trading.',
-      request: { body: { content: { 'application/json': { schema: S.InstitutionRequest } } } },
-      ok: { status: 202, schema: S.InstitutionPending, description: 'Code sent.' },
-      errors: {
-        422: 'unknown_institution: no organisation is registered for that domain.',
-        429: 'rate_limited: too many codes requested in the last hour.',
-        503: 'institution_directory_unavailable: verification is not configured on this server.',
-      },
-    }),
-  );
-
-  r.registerPath(
-    sessionOnly({
-      method: 'post',
-      path: '/me/institution/verify',
-      tags: ['me'],
-      summary: 'Confirm institutional verification',
-      request: { body: { content: { 'application/json': { schema: S.InstitutionConfirm } } } },
-      ok: { status: 200, schema: S.Me, description: 'Verified. `canTrade` is now true.' },
-      errors: {
-        400: 'invalid_code (details.attemptsRemaining) | validation_error',
-        404: 'not_found: no verification in progress.',
-        410: 'code_expired: expired, used, or out of attempts. Request a new code.',
-      },
-    }),
-  );
 
   // -- admin ----------------------------------------------------------------
 

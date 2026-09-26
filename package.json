@@ -15,8 +15,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "token:mint": "tsx scripts/mint-token.ts",
     "api:smoke": "tsx scripts/api-smoke.ts",
-    "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts",
-    "ror:index": "tsx scripts/build-ror-index.ts"
+    "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",

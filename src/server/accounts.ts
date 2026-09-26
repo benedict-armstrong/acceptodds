@@ -8,6 +8,7 @@ import { costToMicro, microToFloat } from '@/lib/money';
 import { creditAccount, HOUSE_HANDLE, quote } from './engine';
 import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
+import { institutionForEmail } from './institution-domains';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -21,6 +22,9 @@ export interface CreateAccountInput {
   userId?: string | null;
   isBot?: boolean;
   isHouse?: boolean;
+  /** Set together, for an account whose institutional address is confirmed. */
+  institutionName?: string | null;
+  verifiedAt?: Date | null;
   /** Defaults to `STARTING_BALANCE_MICRO`. Pass `0n` for an unfunded account. */
   grantMicro?: bigint;
 }
@@ -46,6 +50,8 @@ export async function createAccount(
         userId: input.userId ?? null,
         isBot: input.isBot ?? false,
         isHouse: input.isHouse ?? false,
+        institutionName: input.institutionName ?? null,
+        verifiedAt: input.verifiedAt ?? null,
         balanceMicro: 0n,
       })
       .returning();
@@ -242,12 +248,16 @@ export function handleFrom(name: string | null | undefined, email: string): stri
 }
 
 /**
- * The trader row for a Better Auth user, creating it — with the signup grant —
- * if it does not exist yet. **Idempotent**, and safe to race: the unique index
- * on `accounts.user_id` decides, and the loser reads the winner's row.
+ * The trader row for a Better Auth user whose email is **confirmed**,
+ * creating it if it does not exist yet — with the signup grant, and verified
+ * against the institution allowlist. **Idempotent**, and safe to race: the
+ * unique index on `accounts.user_id` decides, and the loser reads the winner's
+ * row.
  *
- * Called from Better Auth's `user.create.after` hook and again, lazily, by
- * `server/auth.ts`, so a user can never be signed in without an account.
+ * Called from Better Auth's `afterEmailVerification` and again, lazily, by
+ * `server/auth.ts` for every session (a session implies a confirmed email), so
+ * a user can never be signed in without an account. Never call it for an
+ * unconfirmed user: the starting balance is granted on confirmation only.
  */
 export async function ensureAccountForUser(
   user: { id: string; name?: string | null; email: string },
@@ -256,12 +266,21 @@ export async function ensureAccountForUser(
   const [existing] = await database.select().from(accounts).where(eq(accounts.userId, user.id));
   if (existing) return existing;
 
+  // Sign-up already refused unlisted domains; a domain removed from the list
+  // since then gets an account that may browse but not trade.
+  const institution = institutionForEmail(user.email);
   const base = handleFrom(user.name, user.email);
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const handle = attempt === 0 ? base : `${base.slice(0, 25)}-${randomSuffix()}`;
     try {
       return await createAccount(
-        { handle, displayName: user.name?.trim() || handle, userId: user.id },
+        {
+          handle,
+          displayName: user.name?.trim() || handle,
+          userId: user.id,
+          institutionName: institution?.name ?? null,
+          verifiedAt: institution ? new Date() : null,
+        },
         database,
       );
     } catch (err) {
@@ -276,16 +295,4 @@ export async function ensureAccountForUser(
 
 function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
-}
-
-/** Store the ORCID iD a user signed in with on their trader row. Identity, not verification. */
-export async function recordOrcid(userId: string, orcid: string, database: Db = getDb()): Promise<void> {
-  const account = await database.select().from(accounts).where(eq(accounts.userId, userId));
-  if (account.length === 0) return;
-  try {
-    await database.update(accounts).set({ orcid }).where(eq(accounts.userId, userId));
-  } catch (err) {
-    // The same iD already belongs to another trader; leave both as they are.
-    if (!isUniqueViolation(err)) throw err;
-  }
 }
