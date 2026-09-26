@@ -1,0 +1,132 @@
+import type { z } from 'zod';
+import type { Account } from '@/db/schema';
+import type { Principal } from '../auth';
+import type { Portfolio as PortfolioModel } from '../accounts';
+import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
+import type { MarketView, OrderRow } from '../views';
+import { toIso, toIsoOrNull } from './http';
+import type * as S from './schemas';
+
+/**
+ * Domain objects → wire shapes. Every `bigint` becomes a decimal string here
+ * and nowhere else; the result is then checked against its schema by
+ * `respond()` before it leaves.
+ */
+
+export function presentMarket(v: MarketView): z.input<typeof S.Market> {
+  const m = v.market;
+  return {
+    id: m.id,
+    slug: m.slug,
+    question: m.question,
+    description: m.description,
+    kind: m.kind,
+    status: m.status,
+    b: m.b,
+    outcomes: v.outcomes.map((o) => ({
+      id: o.id,
+      label: o.label,
+      ordinal: o.ordinal,
+      sharesMicro: o.sharesMicro.toString(),
+      price: o.price,
+    })),
+    volumeMicro: v.volumeMicro.toString(),
+    orderCount: v.orderCount,
+    opensAt: toIsoOrNull(m.opensAt),
+    closesAt: toIso(m.closesAt),
+    createdAt: toIso(m.createdAt),
+    resolutionSource: m.resolutionSource,
+    resolvedOutcomeId: m.resolvedOutcomeId,
+    resolutionEvidenceUrl: m.resolutionEvidenceUrl,
+    settledAt: toIsoOrNull(m.settledAt),
+  };
+}
+
+/** The public tape entry. No account, no idempotency key: no identities. */
+export function presentTapeEntry(o: OrderRow): z.input<typeof S.TapeEntry> {
+  return {
+    id: o.id,
+    outcomeId: o.outcomeId,
+    sharesMicro: o.sharesMicro.toString(),
+    costMicro: o.costMicro.toString(),
+    priceBefore: o.priceBefore,
+    priceAfter: o.priceAfter,
+    createdAt: toIso(o.createdAt),
+  };
+}
+
+export function presentMyOrder(o: OrderRow): z.input<typeof S.MyOrder> {
+  return { ...presentTapeEntry(o), marketId: o.marketId, idempotencyKey: o.idempotencyKey };
+}
+
+export function presentQuote(q: QuoteModel): z.input<typeof S.Quote> {
+  return {
+    marketId: q.marketId,
+    outcomeId: q.outcomeId,
+    outcomeLabel: q.outcomeLabel,
+    sharesMicro: q.sharesMicro.toString(),
+    costMicro: q.costMicro.toString(),
+    priceBefore: q.priceBefore,
+    priceAfter: q.priceAfter,
+  };
+}
+
+export function presentFill(f: FillModel): z.input<typeof S.Fill> {
+  return {
+    orderId: f.orderId,
+    marketId: f.marketId,
+    outcomeId: f.outcomeId,
+    sharesMicro: f.sharesMicro.toString(),
+    costMicro: f.costMicro.toString(),
+    priceBefore: f.priceBefore,
+    priceAfter: f.priceAfter,
+    balanceAfterMicro: f.balanceAfterMicro.toString(),
+    positionAfterMicro: f.positionAfterMicro.toString(),
+    createdAt: toIso(f.createdAt),
+    replayed: f.replayed,
+  };
+}
+
+export function presentMe(p: Principal): z.input<typeof S.Me> {
+  const a: Account = p.account;
+  return {
+    id: a.id,
+    handle: a.handle,
+    displayName: a.displayName,
+    isBot: a.isBot,
+    institutionName: a.institutionName,
+    verifiedAt: toIsoOrNull(a.verifiedAt),
+    balanceMicro: a.balanceMicro.toString(),
+    createdAt: toIso(a.createdAt),
+    auth: { method: p.method, scopes: [...p.scopes] },
+  };
+}
+
+export const NET_WORTH_CAVEAT =
+  'Mid-market net worth marks open positions at the current price, which includes your own price impact: ' +
+  'a trader can show a profit while holding only losing positions. It is correct at settlement and ' +
+  'meaningless before it. It is not a score and nothing is ranked on it; the leaderboard uses settled P&L only.';
+
+export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio> {
+  return {
+    accountId: p.accountId,
+    balanceMicro: p.balanceMicro.toString(),
+    holdings: p.holdings.map((h) => ({
+      marketId: h.marketId,
+      marketSlug: h.marketSlug,
+      question: h.question,
+      marketStatus: h.marketStatus,
+      outcomeId: h.outcomeId,
+      outcomeLabel: h.outcomeLabel,
+      sharesMicro: h.sharesMicro.toString(),
+      price: h.price,
+      markMicro: h.markMicro.toString(),
+      quotedExitMicro: h.quotedExitMicro.toString(),
+    })),
+    unsettledValuation: {
+      midMarketNetWorthMicro: p.markedNetWorthMicro.toString(),
+      liquidationValueMicro: p.liquidationValueMicro.toString(),
+      caveat: NET_WORTH_CAVEAT,
+    },
+  };
+}

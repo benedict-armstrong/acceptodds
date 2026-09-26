@@ -86,6 +86,12 @@ export const accounts = pgTable(
   ],
 );
 
+/**
+ * What a bearer token may do. Checked per endpoint by `server/auth.ts`; none
+ * implies another, so an admin bot that also trades carries both.
+ */
+export const tokenScope = pgEnum('token_scope', ['read', 'trade', 'admin']);
+
 /** Bot credentials. The secret is never stored: `pm_live_` + 32 bytes, SHA-256 at rest. */
 export const apiTokens = pgTable(
   'api_tokens',
@@ -98,6 +104,7 @@ export const apiTokens = pgTable(
     prefix: text('prefix').notNull(),
     tokenHash: text('token_hash').notNull(),
     name: text('name').notNull(),
+    scopes: tokenScope('scopes').array().notNull().default(sql`'{read}'`),
     createdAt: createdAt(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'date' }),
     revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
@@ -328,8 +335,26 @@ export const usdCosts = pgTable(
   (t) => [index('usd_costs_incurred_at_idx').on(t.incurredAt)],
 );
 
+/**
+ * Per-credential token buckets for the API rate limit (IMPLEMENTATION.md §7).
+ *
+ * One row per bucket, updated in the request it limits. `key` is opaque
+ * (`token:<api_tokens.id>` today; a session key in M5) and carries no foreign
+ * key, for the same reason `events` doesn't: this table is bookkeeping, and it
+ * must never take a lock on a row anything else is holding.
+ *
+ * `tokens` is a fractional count of requests, not money, so it is a double.
+ */
+export const rateLimitBuckets = pgTable('rate_limit_buckets', {
+  key: text('key').primaryKey(),
+  tokens: doublePrecision('tokens').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
+});
+
 export type Account = typeof accounts.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Position = typeof positions.$inferSelect;
+export type ApiToken = typeof apiTokens.$inferSelect;
+export type TokenScope = (typeof tokenScope.enumValues)[number];

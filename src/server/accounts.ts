@@ -85,6 +85,7 @@ export interface Holding {
   marketId: string;
   marketSlug: string;
   question: string;
+  marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
   outcomeLabel: string;
   sharesMicro: bigint;
@@ -164,6 +165,7 @@ export async function getPortfolio(
       marketId: row.market.id,
       marketSlug: row.market.slug,
       question: row.market.question,
+      marketStatus: row.market.status,
       outcomeId: row.outcome.id,
       outcomeLabel: row.outcome.label,
       sharesMicro: row.position.sharesMicro,

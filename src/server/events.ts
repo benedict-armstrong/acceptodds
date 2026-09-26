@@ -26,12 +26,17 @@ import { getPool } from '@/db';
 export type EventKind =
   | 'market.read'
   | 'market.list'
+  | 'market.history.read'
+  | 'market.tape.read'
   | 'market.created'
   | 'market.closed'
   | 'market.settled'
   | 'quote.read'
   | 'order.placed'
   | 'portfolio.read'
+  | 'me.read'
+  | 'me.orders.read'
+  | 'token.minted'
   | 'leaderboard.read'
   | 'account.read';
 
