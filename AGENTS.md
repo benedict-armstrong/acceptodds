@@ -146,7 +146,7 @@ Write both in the same transaction, always.
 
 ## Decisions the plan did not make
 
-Each of these came up while implementing §3–§6 and is load-bearing.
+Each of these came up while implementing §3–§7 and is load-bearing.
 
 - **No naked shorts.** A trader may only sell shares they hold. The plan is
   silent, and it is not cosmetic: an unbacked short takes the proceeds now and
@@ -173,3 +173,70 @@ Each of these came up while implementing §3–§6 and is load-bearing.
 - **Lock order is market, then trader account.** Always the same order, so
   concurrent trades cannot deadlock. `settle()` takes position and account rows
   ordered by account id for the same reason.
+- **Read Postgres error codes through `db/errors.ts`.** Drizzle wraps a failed
+  query in a `DrizzleQueryError` whose `cause` holds the SQLSTATE; `err.code`
+  on the wrapper is undefined. The engine's idempotency race check once looked
+  only at the top level, so a retry racing its original on a *different
+  market* (different row locks, so only the unique index can catch it) came
+  back as a 500 instead of the original fill. `isUniqueViolation()` walks the
+  cause chain; use it, never `err.code === '23505'`.
+
+### The public API (M4)
+
+- **`src/server/api/schemas.ts` is the contract.** One Zod schema per boundary,
+  used to parse requests, to validate every response on the way out
+  (`respond()` turns a mismatch into a 500 rather than a surprise in a client),
+  and to generate `/api/v1/openapi.json`. An endpoint added under
+  `app/api/v1` must be added to `server/api/openapi.ts`; a test fails
+  otherwise.
+- **Route handlers never write.** They read through `server/views.ts` and
+  write only by calling the engine. Route files under `app/api/v1` only
+  re-export handlers from `server/api/handlers.ts`.
+- **Amounts on the wire are `…Micro` decimal strings.** Money and share counts
+  go out as strings so no client parses them into a float (§1.6); requests
+  accept a string or a safe JSON integer. The order body is therefore
+  `{ outcomeId, sharesMicro, maxCostMicro }`, not the plan's `shares`: one unit
+  convention per body, the same as everywhere else.
+- **Error codes are a public contract.** `server/api/errors.ts` lists them;
+  renaming one breaks bots. Engine codes map onto HTTP statuses there.
+- **Scopes do not imply each other.** `read` guards `/me*`, `trade` guards
+  `POST …/orders`, `admin` guards create/close/settle. An admin bot that also
+  trades carries both. Public endpoints need no scope — but a token that *is*
+  sent must be valid (401 otherwise, never a silent downgrade to anonymous),
+  and it is counted against its rate-limit bucket and attributed in `events`.
+- **Request → account resolution lives only in `server/auth.ts`.** M5 adds
+  sessions by adding a branch to `authenticate()` that returns
+  `method: 'session'`; no route should change. `POST /me/tokens` is
+  session-only (`requireSession`) so a leaked token cannot mint its successor;
+  until M5 it always refuses, and tokens are minted with `npm run token:mint`.
+- **A reused `Idempotency-Key` for a *different* order is a 409
+  `idempotency_key_reused`.** The engine returns the original fill for any
+  reused key; answering "filled" to a request for a different order would tell
+  the client an order went through that never did. Same order → the original
+  fill, `201`, `replayed: true`, header `Idempotent-Replayed: true`.
+- **Settling with a different winner after settlement is a 409
+  `market_already_settled`.** `engine.settle` is a silent no-op on a settled
+  market; the handler re-reads the market and refuses rather than answer 200 to
+  a settlement that did not happen. Repeating the same settlement is a 200.
+- **The rate limit is a token bucket per credential** in `rate_limit_buckets`
+  (`key = token:<id>`), updated in a short transaction of its own with
+  `SELECT … FOR UPDATE`, on Postgres's clock. It has no foreign keys, like
+  `events`, so it can never take a lock on a row anything else holds. Every
+  token-authenticated request costs one unit, reads included. Anonymous traffic
+  is the edge's job (§11) and is not limited in-app.
+- **Client IP is read only by `clientIp()`** in `server/api/http.ts`, from
+  `Cf-Connecting-Ip`. An ESLint rule rejects the header names anywhere else.
+  Nothing is keyed on it yet.
+- **The leaderboard is `trade` + `settlement` ledger rows on settled markets.**
+  Exact, and immune to self-marking, because a settled market has nothing left
+  to mark. House accounts (treasury and makers) are excluded, as they are from
+  public profiles.
+- **Price history is replayed from the fills,** not sampled: `orders` stores
+  only the traded outcome's price, and LMSR prices are a function of the share
+  vector, which is the running sum of order shares.
+- **Cursors carry Postgres timestamps as text, at microsecond precision.** A
+  JS `Date` has milliseconds; two fills in one millisecond would make a page
+  boundary skip or repeat a row.
+- **Market list filter is `kind`, not `venue`.** There is no venue column and
+  adding one would start to answer §12 Q1; `kind` is already the opaque
+  grouping string. Drafts are hidden from the list unless asked for.

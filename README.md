@@ -33,7 +33,7 @@ to it. That is deliberate, and it is what keeps this a game.
 | 1 — LMSR core + property tests | done |
 | 2 — schema and migrations | done |
 | 3 — engine (quote / trade / settle) | done |
-| 4 — public API | not started |
+| 4 — public API | done |
 | 5 — auth and institutional signup | not started |
 | 6 — UI | not started |
 | 7 — jobs and backups | not started |
@@ -54,6 +54,13 @@ src/
   server/engine.ts   quote / trade / settle — the only writer of market state
   server/accounts.ts accounts, balances, portfolio
   server/events.ts   append-only log of things that leave no other trace
+  server/auth.ts     request -> account (bearer token today, session in M5)
+  server/tokens.ts   API tokens: mint, verify (SHA-256, constant time), revoke
+  server/ratelimit.ts per-token token bucket, a row in Postgres
+  server/views.ts    read models for the API (never writes)
+  server/api/        the /api/v1 contract (Zod), handlers, OpenAPI, errors
+  app/api/v1/        route files; each only re-exports a handler
+scripts/             token:mint, api:smoke
 drizzle/             generated migrations, checked in
 tests/unit/          no database, fast, property-based
 tests/integration/   real Postgres
@@ -84,11 +91,37 @@ npm run db:seed             # house account, one market, two traders
 npm run dev                 # http://localhost:3000, /healthz checks the database
 ```
 
+## The API
+
+`/api/v1` is documented at `/docs` (Scalar), from the OpenAPI 3.1 document at
+`/api/v1/openapi.json`, which is generated from the same Zod schemas the
+handlers validate with.
+
+There is no sign-in yet (M5), so tokens are minted by an operator:
+
+```sh
+# a bot account, created and funded with STARTING_BALANCE_MICRO
+npm run token:mint -- --handle my-bot --create-bot --scopes read,trade
+# an admin token for an existing account
+npm run token:mint -- --handle alice --scopes admin --name ops
+```
+
+The token is printed once and stored only as a hash. Scopes: `read` (`/me*`),
+`trade` (placing orders), `admin` (create/close/settle markets); none implies
+another. Then, against a running server:
+
+```sh
+PM_TOKEN=pm_live_… PM_BASE_URL=http://localhost:3000 npm run api:smoke
+```
+
+lists markets, quotes, trades (and retries with the same `Idempotency-Key`),
+reads the portfolio and sells back, using nothing but the token and HTTP.
+
 ## Tests
 
 ```sh
 npm test                 # unit + property tests, no database needed
-npm run test:integration # engine tests against real Postgres ($TEST_DATABASE_URL)
+npm run test:integration # engine and API tests against real Postgres ($TEST_DATABASE_URL)
 npm run test:all
 ```
 
