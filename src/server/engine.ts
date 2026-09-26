@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
+import { isUniqueViolation } from '@/db/errors';
 import * as schema from '@/db/schema';
 import {
   accounts,
@@ -347,10 +348,6 @@ export async function trade(
     }
     throw err;
   }
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
 }
 
 async function runTrade(

@@ -3,8 +3,8 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { accounts, ledgerEntries, markets, orders, outcomes, positions } from '@/db/schema';
 import { getPortfolio, reconcileBalances } from '@/server/accounts';
-import { closeMarket, quote, settle, trade } from '@/server/engine';
-import { closePool, resetDatabase, seedMarket, type Fixture } from './helpers';
+import { closeMarket, createMarket, quote, settle, trade } from '@/server/engine';
+import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
 
@@ -109,6 +109,35 @@ describe('idempotency', () => {
     expect(fulfilled).toHaveLength(5);
     const all = await db.select().from(orders).where(eq(orders.accountId, fx.traderIds[0]));
     expect(all).toHaveLength(1);
+  });
+
+  it('survives a retry that races the original on a different market', async () => {
+    // Different markets take different row locks, so the in-lock replay check
+    // cannot see the other attempt: the unique index is the only guard, and
+    // its violation must come back as the original fill, not as an error.
+    const other = await createMarket(
+      {
+        slug: 'other',
+        question: 'Another?',
+        outcomes: ['YES', 'NO'],
+        closesAt: new Date(Date.now() + 86_400_000),
+        startingBalanceMicro: STARTING_MICRO,
+        expectedTraders: 3,
+      },
+      db,
+    );
+    for (let round = 0; round < 5; round += 1) {
+      const key = `cross-market-${round}`;
+      const results = await Promise.allSettled([
+        trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 1_000_000n, 10n ** 12n, key, db),
+        trade(fx.traderIds[0], other.marketId, other.outcomeIds[0], 1_000_000n, 10n ** 12n, key, db),
+      ]);
+      expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+      const fills = results.map((r) => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof trade>>>).value);
+      expect(fills[0].orderId).toBe(fills[1].orderId);
+    }
+    const all = await db.select().from(orders).where(eq(orders.accountId, fx.traderIds[0]));
+    expect(all).toHaveLength(5);
   });
 });
 
