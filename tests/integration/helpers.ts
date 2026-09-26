@@ -12,7 +12,7 @@ export async function resetDatabase(): Promise<void> {
   await db.execute(sql`
     truncate table
       events, ledger_entries, orders, positions, outcomes,
-      markets, api_tokens, usd_costs, accounts
+      markets, api_tokens, usd_costs, rate_limit_buckets, accounts
     restart identity cascade
   `);
 }
