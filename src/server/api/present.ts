@@ -3,6 +3,7 @@ import type { Account } from '@/db/schema';
 import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
+import type { TokenRecord } from '../tokens';
 import type { MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
 import type * as S from './schemas';
@@ -94,8 +95,11 @@ export function presentMe(p: Principal): z.input<typeof S.Me> {
     handle: a.handle,
     displayName: a.displayName,
     isBot: a.isBot,
+    orcid: a.orcid,
     institutionName: a.institutionName,
+    rorId: a.rorId,
     verifiedAt: toIsoOrNull(a.verifiedAt),
+    canTrade: a.isBot || a.verifiedAt !== null,
     balanceMicro: a.balanceMicro.toString(),
     createdAt: toIso(a.createdAt),
     auth: { method: p.method, scopes: [...p.scopes] },
@@ -128,5 +132,17 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       liquidationValueMicro: p.liquidationValueMicro.toString(),
       caveat: NET_WORTH_CAVEAT,
     },
+  };
+}
+
+export function presentToken(t: TokenRecord): z.input<typeof S.TokenInfo> {
+  return {
+    id: t.id,
+    name: t.name,
+    start: t.start,
+    scopes: t.scopes,
+    createdAt: toIso(t.createdAt),
+    lastUsedAt: toIsoOrNull(t.lastUsedAt),
+    enabled: t.enabled,
   };
 }

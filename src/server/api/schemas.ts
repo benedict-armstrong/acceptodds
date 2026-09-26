@@ -281,8 +281,13 @@ export const Me = z
     handle: z.string(),
     displayName: z.string(),
     isBot: z.boolean(),
+    orcid: z.string().nullable().meta({ description: 'The ORCID iD signed in with, if any. Identity, not verification.' }),
     institutionName: z.string().nullable(),
+    rorId: z.string().nullable(),
     verifiedAt: Timestamp.nullable(),
+    canTrade: z.boolean().meta({
+      description: 'True for a verified account or a bot. Unverified accounts may browse and quote but not place orders.',
+    }),
     balanceMicro: Micro,
     createdAt: Timestamp,
     auth: z.object({
@@ -347,19 +352,49 @@ export const MyOrders = z
 export const CreateTokenRequest = z
   .object({
     name: z.string().min(1).max(100),
-    scopes: z.array(z.enum(TOKEN_SCOPES)).min(1),
+    scopes: z
+      .array(z.enum(['read', 'trade']))
+      .min(1)
+      .meta({ description: 'A signed-in user may mint `read` and `trade` tokens. `admin` is issued by an operator only.' }),
   })
   .meta({ id: 'CreateTokenRequest' });
 
+const TokenFields = {
+  id: z.string(),
+  name: z.string().nullable(),
+  start: z.string().nullable().meta({ description: 'The first 16 characters, to recognise a token by. Not usable.' }),
+  scopes: z.array(z.enum(TOKEN_SCOPES)),
+  createdAt: Timestamp,
+};
+
 export const CreatedToken = z
   .object({
-    id: Id,
+    ...TokenFields,
     token: z.string().meta({ description: 'The secret. Shown once, never again.' }),
-    name: z.string(),
-    scopes: z.array(z.enum(TOKEN_SCOPES)),
-    createdAt: Timestamp,
   })
   .meta({ id: 'CreatedToken' });
+
+export const TokenInfo = z
+  .object({ ...TokenFields, lastUsedAt: Timestamp.nullable(), enabled: z.boolean() })
+  .meta({ id: 'TokenInfo' });
+
+export const TokenList = z.object({ tokens: z.array(TokenInfo) }).meta({ id: 'TokenList' });
+
+export const InstitutionRequest = z
+  .object({ email: z.email().max(320).meta({ description: 'An address at your institution.' }) })
+  .meta({ id: 'InstitutionRequest' });
+
+export const InstitutionPending = z
+  .object({
+    email: z.string(),
+    institution: z.object({ rorId: z.string(), name: z.string() }),
+    expiresAt: Timestamp,
+  })
+  .meta({ id: 'InstitutionPending', description: 'A six-digit code has been sent to `email`.' });
+
+export const InstitutionConfirm = z
+  .object({ code: z.string().regex(/^\d{6}$/, 'six digits') })
+  .meta({ id: 'InstitutionConfirm' });
 
 // ---------------------------------------------------------------------------
 // admin
@@ -407,3 +442,5 @@ export const SettleRequest = z
 export const IdempotencyKey = z.string().min(1).max(255).regex(/^[\x21-\x7e]+$/, 'printable ASCII');
 
 export const Handle = z.string().min(1).max(100).meta({ description: 'An account handle.', example: 'alice' });
+
+export const TokenId = z.string().min(1).max(100);

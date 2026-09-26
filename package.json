@@ -14,12 +14,15 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "token:mint": "tsx scripts/mint-token.ts",
-    "api:smoke": "tsx scripts/api-smoke.ts"
+    "api:smoke": "tsx scripts/api-smoke.ts",
+    "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts",
+    "ror:index": "tsx scripts/build-ror-index.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "@better-auth/api-key": "^1.7.6",
     "@sentry/nextjs": "^11.0.0",
-    "better-auth": "^1.7.5",
+    "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",
     "next": "15.5.26",
     "pg": "^8.23.0",

@@ -27,6 +27,11 @@ export const API_ERROR_CODES = [
   'rate_limited',
   'slug_taken',
   'idempotency_key_reused',
+  'not_verified',
+  'unknown_institution',
+  'institution_directory_unavailable',
+  'invalid_code',
+  'code_expired',
   'method_not_allowed',
   'internal_error',
 ] as const;

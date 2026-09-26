@@ -1,0 +1,34 @@
+[
+  {
+    "id": "https://ror.org/05a28rw58",
+    "status": "active",
+    "domains": ["ethz.ch"],
+    "names": [{ "value": "ETH Zurich", "types": ["ror_display", "label"] }, { "value": "ETHZ", "types": ["acronym"] }],
+    "links": [{ "type": "website", "value": "https://ethz.ch" }]
+  },
+  {
+    "id": "https://ror.org/052gg0110",
+    "status": "active",
+    "domains": [],
+    "names": [{ "value": "University of Oxford", "types": ["ror_display"] }],
+    "links": [{ "type": "website", "value": "https://www.ox.ac.uk/" }]
+  },
+  {
+    "id": "https://ror.org/00inactive",
+    "status": "inactive",
+    "domains": ["defunct.edu"],
+    "names": [{ "value": "Defunct Institute", "types": ["ror_display"] }]
+  },
+  {
+    "id": "https://ror.org/0shared1",
+    "status": "active",
+    "domains": ["shared.org"],
+    "names": [{ "value": "Shared One", "types": ["ror_display"] }]
+  },
+  {
+    "id": "https://ror.org/0shared2",
+    "status": "active",
+    "domains": ["shared.org"],
+    "names": [{ "value": "Shared Two", "types": ["ror_display"] }]
+  }
+]

@@ -1,108 +1,163 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
-import { getDb, type Database } from '@/db';
-import { isUniqueViolation } from '@/db/errors';
-import { apiTokens, type ApiToken, type TokenScope } from '@/db/schema';
+import { randomUUID } from 'node:crypto';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { getDb } from '@/db';
+import { apikey, user } from '@/db/auth-schema';
+import { accounts, TOKEN_SCOPES, type Account, type TokenScope } from '@/db/schema';
+import { API_KEY_PREFIX, API_KEY_RESOURCE, getAuth } from './better-auth';
 
 /**
- * API tokens (IMPLEMENTATION.md §7).
+ * API tokens, on Better Auth's `apiKey` plugin (IMPLEMENTATION.md §7, §8).
  *
- * A token is `pm_live_` + 32 random bytes (base64url). It is shown **once**, at
- * minting, and never stored: the database holds its SHA-256 and a short
- * `prefix` to find the row by. Verification looks the row up by prefix and
- * compares hashes in constant time, so neither the lookup nor the compare
- * leaks how much of a guessed token was right.
+ * A token is `pm_live_` + 32 random bytes (base64url), shown **once**, at
+ * minting. The plugin stores its SHA-256 and looks a presented token up by
+ * that hash, so there is nothing to compare byte-by-byte and nothing to leak
+ * through timing. Scopes are stored as the plugin's permissions,
+ * `{ api: ['read', 'trade'] }`.
  *
- * M5 is expected to put session cookies next to this, not in place of it: the
- * resolution of a request to an account lives in `server/auth.ts`, and nothing
- * outside it should call `verifyToken`.
+ * The plugin keys every token on a Better Auth `user`. Humans have one; a bot
+ * gets a **login-less** user the first time it is issued a token — a row with
+ * an undeliverable `.invalid` email and no credential, so nothing can sign in
+ * as it.
+ *
+ * Nothing outside `server/auth.ts` should call `verifyToken`.
  */
 
-export const TOKEN_PREFIX = 'pm_live_';
-export const TOKEN_SCOPES = ['read', 'trade', 'admin'] as const satisfies readonly TokenScope[];
+export { TOKEN_SCOPES };
 
-/** `pm_live_` plus the first 8 characters of the secret: 48 bits to look up by. */
-const LOOKUP_LENGTH = TOKEN_PREFIX.length + 8;
 const TOKEN_PATTERN = /^pm_live_[A-Za-z0-9_-]{43}$/;
 
-function sha256(token: string): Buffer {
-  return createHash('sha256').update(token, 'utf8').digest();
+export interface TokenRecord {
+  id: string;
+  name: string | null;
+  /** The first 16 characters, `pm_live_` included: enough to recognise, useless to use. */
+  start: string | null;
+  scopes: TokenScope[];
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  enabled: boolean;
+}
+
+function scopesOf(permissions: unknown): TokenScope[] {
+  const parsed = typeof permissions === 'string' ? safeParse(permissions) : permissions;
+  const list = (parsed as Record<string, unknown> | null)?.[API_KEY_RESOURCE];
+  return Array.isArray(list)
+    ? TOKEN_SCOPES.filter((s) => list.includes(s))
+    : [];
+}
+
+function safeParse(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+/** The Better Auth user a token for this account is issued to, creating a login-less one for a bot. */
+async function userIdFor(account: Account): Promise<string> {
+  if (account.userId) return account.userId;
+  if (account.isHouse) throw new Error('house accounts do not get tokens');
+  if (!account.isBot) {
+    throw new Error(`account ${account.handle} has no user to issue a token to (humans get one by signing up)`);
+  }
+
+  const db = getDb();
+  const id = randomUUID();
+  await db.insert(user).values({
+    id,
+    name: account.displayName,
+    email: `${account.handle}@bots.papermarket.invalid`,
+    emailVerified: false,
+  });
+  // Only claim the account if nobody else did in the meantime.
+  const [claimed] = await db
+    .update(accounts)
+    .set({ userId: id })
+    .where(and(eq(accounts.id, account.id), isNull(accounts.userId)))
+    .returning();
+  if (claimed) return id;
+
+  // Lost a race with another mint: use the winner's user, drop ours.
+  await db.delete(user).where(eq(user.id, id));
+  const [current] = await db.select().from(accounts).where(eq(accounts.id, account.id));
+  return current.userId!;
 }
 
 export interface MintedToken {
   /** The secret. Returned here and nowhere else, ever. */
   token: string;
-  row: ApiToken;
+  record: TokenRecord;
 }
 
-export async function mintToken(
-  input: { accountId: string; name: string; scopes: TokenScope[] },
-  database: Database = getDb(),
-): Promise<MintedToken> {
-  const scopes = [...new Set(input.scopes)];
+export async function mintToken(input: {
+  account: Account;
+  name: string;
+  scopes: TokenScope[];
+}): Promise<MintedToken> {
+  const scopes = TOKEN_SCOPES.filter((s) => input.scopes.includes(s));
   if (scopes.length === 0) throw new Error('a token needs at least one scope');
+  const userId = await userIdFor(input.account);
 
-  // A prefix collision is a 1-in-2^48 event per pair; retry rather than reason about it.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const token = TOKEN_PREFIX + randomBytes(32).toString('base64url');
-    try {
-      const [row] = await database
-        .insert(apiTokens)
-        .values({
-          accountId: input.accountId,
-          prefix: token.slice(0, LOOKUP_LENGTH),
-          tokenHash: sha256(token).toString('hex'),
-          name: input.name,
-          scopes,
-        })
-        .returning();
-      return { token, row };
-    } catch (err) {
-      if (!isUniqueViolation(err)) throw err;
-    }
-  }
-  throw new Error('could not mint a token with a unique prefix');
+  const created = await getAuth().api.createApiKey({
+    body: { userId, name: input.name, permissions: { [API_KEY_RESOURCE]: scopes } },
+  });
+  return {
+    token: created.key,
+    record: {
+      id: created.id,
+      name: created.name,
+      start: created.start,
+      scopes,
+      createdAt: new Date(created.createdAt),
+      lastUsedAt: null,
+      enabled: true,
+    },
+  };
+}
+
+export interface VerifiedToken {
+  id: string;
+  userId: string;
+  scopes: TokenScope[];
 }
 
 /**
- * The token's row, or `null` if it is malformed, unknown or revoked. Never
- * throws for a bad token: the caller turns `null` into a 401.
+ * The token's owner and scopes, or `null` if it is malformed, unknown,
+ * disabled or expired. Never throws for a bad token: the caller turns `null`
+ * into a 401.
  */
-export async function verifyToken(
-  token: string,
-  database: Database = getDb(),
-): Promise<ApiToken | null> {
+export async function verifyToken(token: string): Promise<VerifiedToken | null> {
   if (!TOKEN_PATTERN.test(token)) return null;
+  const result = await getAuth().api.verifyApiKey({ body: { key: token } });
+  if (!result.valid || !result.key) return null;
+  return { id: result.key.id, userId: result.key.referenceId, scopes: scopesOf(result.key.permissions) };
+}
 
-  const [row] = await database
+export async function listTokens(userId: string): Promise<TokenRecord[]> {
+  const rows = await getDb()
     .select()
-    .from(apiTokens)
-    .where(eq(apiTokens.prefix, token.slice(0, LOOKUP_LENGTH)));
-  if (!row || row.revokedAt) return null;
-
-  const stored = Buffer.from(row.tokenHash, 'hex');
-  const presented = sha256(token);
-  if (stored.length !== presented.length || !timingSafeEqual(stored, presented)) return null;
-
-  // Bookkeeping, at most once a minute per token, and never allowed to fail
-  // the request it is attached to.
-  database
-    .update(apiTokens)
-    .set({ lastUsedAt: sql`now()` })
-    .where(
-      and(
-        eq(apiTokens.id, row.id),
-        or(isNull(apiTokens.lastUsedAt), lt(apiTokens.lastUsedAt, sql`now() - interval '1 minute'`)),
-      ),
-    )
-    .catch(() => {});
-
-  return row;
+    .from(apikey)
+    .where(eq(apikey.referenceId, userId))
+    .orderBy(desc(apikey.createdAt));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    start: r.start,
+    scopes: scopesOf(r.permissions),
+    createdAt: r.createdAt,
+    lastUsedAt: r.lastRequest,
+    enabled: r.enabled !== false,
+  }));
 }
 
-export async function revokeToken(tokenId: string, database: Database = getDb()): Promise<void> {
-  await database
-    .update(apiTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(and(eq(apiTokens.id, tokenId), isNull(apiTokens.revokedAt)));
+/** Revoke (disable) a token. `false` if the user has no such token. */
+export async function revokeToken(userId: string, tokenId: string): Promise<boolean> {
+  const updated = await getDb()
+    .update(apikey)
+    .set({ enabled: false, updatedAt: new Date() })
+    .where(and(eq(apikey.id, tokenId), eq(apikey.referenceId, userId)))
+    .returning({ id: apikey.id });
+  return updated.length > 0;
 }
+
+export { API_KEY_PREFIX };

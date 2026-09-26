@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { eq } from 'drizzle-orm';
-import { createDb, createPool } from '@/db';
+import { getDb, getPool } from '@/db';
 import { accounts, type TokenScope } from '@/db/schema';
 import { createAccount } from '@/server/accounts';
 import { mintToken, TOKEN_SCOPES } from '@/server/tokens';
@@ -17,7 +17,10 @@ import { mintToken, TOKEN_SCOPES } from '@/server/tokens';
  *   npm run token:mint -- --handle my-bot --create-bot --scopes read,trade
  *
  * `--create-bot` creates the account first, as a bot funded with
- * STARTING_BALANCE_MICRO. The token is printed once and is not recoverable.
+ * STARTING_BALANCE_MICRO. A bot gets a login-less Better Auth user the first
+ * time it is issued a token (the API-key plugin keys tokens on users). A human
+ * account must already have signed up. The token is printed once and is not
+ * recoverable.
  */
 async function main() {
   const { values } = parseArgs({
@@ -36,10 +39,9 @@ async function main() {
   const unknown = scopes.filter((s) => !(TOKEN_SCOPES as readonly string[]).includes(s));
   if (unknown.length) throw new Error(`unknown scope(s): ${unknown.join(', ')}; use ${TOKEN_SCOPES.join(', ')}`);
 
-  const url = values['database-url'] ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is not set');
-  const pool = createPool(url);
-  const db = createDb(pool);
+  if (values['database-url']) process.env.DATABASE_URL = values['database-url'];
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+  const db = getDb();
   try {
     let [account] = await db.select().from(accounts).where(eq(accounts.handle, values.handle));
     if (!account && values['create-bot']) {
@@ -51,15 +53,12 @@ async function main() {
     if (!account) throw new Error(`no account "${values.handle}" (pass --create-bot to create one)`);
     if (account.isHouse) throw new Error('refusing to mint a token for a house account');
 
-    const { token, row } = await mintToken(
-      { accountId: account.id, name: values.name ?? `${values.handle} token`, scopes },
-      db,
-    );
+    const { token, record } = await mintToken({ account, name: values.name ?? `${values.handle} token`, scopes });
     console.error(`account ${account.handle} (${account.id})${account.isBot ? ' [bot]' : ''}`);
-    console.error(`token   ${row.id}  scopes=${row.scopes.join(',')}  — shown once, store it now:`);
+    console.error(`token   ${record.id}  scopes=${record.scopes.join(',')}  — shown once, store it now:`);
     console.log(token);
   } finally {
-    await pool.end();
+    await getPool().end();
   }
 }
 

@@ -12,7 +12,8 @@ export async function resetDatabase(): Promise<void> {
   await db.execute(sql`
     truncate table
       events, ledger_entries, orders, positions, outcomes,
-      markets, api_tokens, usd_costs, rate_limit_buckets, accounts
+      markets, usd_costs, rate_limit_buckets, institution_verifications, accounts,
+      apikey, session, account, verification, "user"
     restart identity cascade
   `);
 }

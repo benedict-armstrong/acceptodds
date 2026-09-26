@@ -268,7 +268,7 @@ describe('authentication', () => {
     const forged = t.token.slice(0, 16) + 'A'.repeat(t.token.length - 16);
     expect((await api('GET', '/me', { token: forged })).status).toBe(401);
 
-    await revokeToken(t.tokenId);
+    expect(await revokeToken(t.userId, t.tokenId)).toBe(true);
     const revoked = await api('GET', '/me', { token: t.token });
     expect(revoked.status).toBe(401);
     expect(revoked.body.error.code).toBe('unauthorized');
@@ -282,7 +282,7 @@ describe('authentication', () => {
 
   it('stores only a hash of the token', async () => {
     const t = await trader('hashy');
-    const rows = await db.execute(sql`select * from api_tokens`);
+    const rows = await db.execute(sql`select * from apikey`);
     expect(JSON.stringify(rows.rows)).not.toContain(t.token);
   });
 

@@ -10,6 +10,15 @@ import { ApiError, fromEngineError, type ApiErrorCode } from './errors';
  */
 
 /**
+ * The header carrying the real client IP. Exported for configuration that must
+ * name it (Better Auth's rate limiter); code that needs the IP calls
+ * `clientIp()`.
+ */
+// The one sanctioned spelling; see the lint rule in eslint.config.mjs.
+// eslint-disable-next-line no-restricted-syntax
+export const CLIENT_IP_HEADER = 'cf-connecting-ip';
+
+/**
  * The client's IP address. **The only place that reads it.**
  *
  * Every request reaches the origin from a Cloudflare proxy, so the socket
@@ -22,9 +31,7 @@ import { ApiError, fromEngineError, type ApiErrorCode } from './errors';
  * `null` when the header is absent (local dev, tests).
  */
 export function clientIp(req: Request): string | null {
-  // The one sanctioned read; see the lint rule in eslint.config.mjs.
-  // eslint-disable-next-line no-restricted-syntax
-  const ip = req.headers.get('cf-connecting-ip')?.trim();
+  const ip = req.headers.get(CLIENT_IP_HEADER)?.trim();
   return ip ? ip : null;
 }
 

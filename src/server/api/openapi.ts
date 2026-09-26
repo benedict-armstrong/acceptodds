@@ -31,9 +31,9 @@ const idParam = z.object({ id: S.MarketRef });
 
 function op(
   config: Omit<RouteConfig, 'responses'> & {
-    ok: { status: 200 | 201; schema: z.ZodType; description: string };
+    ok: { status: 200 | 201 | 202; schema: z.ZodType; description: string };
     scope?: Scope;
-    errors?: Partial<Record<400 | 401 | 403 | 404 | 409 | 429, string>>;
+    errors?: Partial<Record<400 | 401 | 403 | 404 | 409 | 410 | 422 | 429 | 503, string>>;
   },
 ): RouteConfig {
   const { ok, scope, errors = {}, ...rest } = config;
@@ -61,13 +61,26 @@ function op(
   }
   return {
     ...rest,
-    security: scope ? [{ bearer: [scope] }] : [{}, { bearer: [] }],
+    // A session may read and trade, never administer.
+    security: scope
+      ? scope === 'admin'
+        ? [{ bearer: [scope] }]
+        : [{ bearer: [scope] }, { session: [] }]
+      : [{}, { bearer: [] }, { session: [] }],
     responses,
   };
 }
 
 export function buildRegistry(): OpenAPIRegistry {
   const r = new OpenAPIRegistry();
+
+  r.registerComponent('securitySchemes', 'session', {
+    type: 'apiKey',
+    in: 'cookie',
+    name: 'better-auth.session_token',
+    description:
+      'A signed-in browser session (sign in at /api/auth). Equivalent to the `read` and `trade` scopes, never `admin`. Writes must come from our own Origin.',
+  });
 
   r.registerComponent('securitySchemes', 'bearer', {
     type: 'http',
@@ -190,6 +203,7 @@ export function buildRegistry(): OpenAPIRegistry {
       },
       ok: { status: 201, schema: S.Fill, description: 'The fill (or, for a replayed key, the original fill).' },
       errors: {
+        403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has not confirmed an institutional address.',
         404: 'not_found: no such market or outcome.',
         409:
           'slippage_exceeded | insufficient_balance | insufficient_shares | market_not_open | market_closed | idempotency_key_reused',
@@ -233,23 +247,87 @@ export function buildRegistry(): OpenAPIRegistry {
     }),
   );
 
-  r.registerPath({
+  const sessionOnly = (config: Parameters<typeof op>[0]): RouteConfig => ({
     ...op({
+      ...config,
+      errors: {
+        401: 'unauthorized: not signed in.',
+        403: 'session_required: called with an API token. These endpoints never accept one.',
+        ...config.errors,
+      },
+    }),
+    security: [{ session: [] }],
+  });
+
+  r.registerPath(
+    sessionOnly({
       method: 'post',
       path: '/me/tokens',
       tags: ['me'],
-      summary: 'Mint an API token (signed-in session only)',
+      summary: 'Mint an API token',
       description:
-        'Never accepts a bearer token: a leaked token must not be able to mint its own successor. Not usable until sign-in ships; bot tokens are minted by an operator.',
+        'Scopes `read` and/or `trade`. The token is returned once and never again. `admin` tokens are issued by an operator only.',
       request: { body: { content: { 'application/json': { schema: S.CreateTokenRequest } } } },
       ok: { status: 201, schema: S.CreatedToken, description: 'The token, shown once.' },
+    }),
+  );
+
+  r.registerPath(
+    sessionOnly({
+      method: 'get',
+      path: '/me/tokens',
+      tags: ['me'],
+      summary: 'List your API tokens',
+      ok: { status: 200, schema: S.TokenList, description: 'Your tokens, newest first, without their secrets.' },
+    }),
+  );
+
+  const revoke = sessionOnly({
+    method: 'delete',
+    path: '/me/tokens/{id}',
+    tags: ['me'],
+    summary: 'Revoke an API token',
+    request: { params: z.object({ id: S.TokenId }) },
+    ok: { status: 200, schema: S.TokenList, description: 'unused' },
+    errors: { 404: 'not_found' },
+  });
+  delete revoke.responses[200];
+  revoke.responses[204] = { description: 'Revoked. The token stops working immediately.' };
+  r.registerPath(revoke);
+
+  r.registerPath(
+    sessionOnly({
+      method: 'post',
+      path: '/me/institution',
+      tags: ['me'],
+      summary: 'Start institutional verification',
+      description:
+        'Sends a six-digit code to an address at your institution. The domain must belong to an active organisation in the ROR registry. Confirming the code is what allows trading.',
+      request: { body: { content: { 'application/json': { schema: S.InstitutionRequest } } } },
+      ok: { status: 202, schema: S.InstitutionPending, description: 'Code sent.' },
       errors: {
-        401: 'unauthorized: not signed in.',
-        403: 'session_required: called with an API token.',
+        422: 'unknown_institution: no organisation is registered for that domain.',
+        429: 'rate_limited: too many codes requested in the last hour.',
+        503: 'institution_directory_unavailable: verification is not configured on this server.',
       },
     }),
-    security: [],
-  });
+  );
+
+  r.registerPath(
+    sessionOnly({
+      method: 'post',
+      path: '/me/institution/verify',
+      tags: ['me'],
+      summary: 'Confirm institutional verification',
+      request: { body: { content: { 'application/json': { schema: S.InstitutionConfirm } } } },
+      ok: { status: 200, schema: S.Me, description: 'Verified. `canTrade` is now true.' },
+      errors: {
+        400: 'invalid_code (details.attemptsRemaining) | validation_error',
+        404: 'not_found: no verification in progress.',
+        410: 'code_expired: expired, used, or out of attempts. Request a new code.',
+      },
+    }),
+  );
 
   // -- admin ----------------------------------------------------------------
 

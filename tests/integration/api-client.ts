@@ -1,7 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- response bodies are checked field by field */
-import type { TokenScope } from '@/db/schema';
+import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/db';
+import { user } from '@/db/auth-schema';
+import { accounts, type TokenScope } from '@/db/schema';
 import { createAccount } from '@/server/accounts';
+import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { mintToken } from '@/server/tokens';
+import * as authRoute from '@/app/api/auth/[...all]/route';
 import * as marketsRoute from '@/app/api/v1/markets/route';
 import * as marketRoute from '@/app/api/v1/markets/[id]/route';
 import * as historyRoute from '@/app/api/v1/markets/[id]/history/route';
@@ -15,6 +21,9 @@ import * as meRoute from '@/app/api/v1/me/route';
 import * as portfolioRoute from '@/app/api/v1/me/portfolio/route';
 import * as myOrdersRoute from '@/app/api/v1/me/orders/route';
 import * as tokensRoute from '@/app/api/v1/me/tokens/route';
+import * as tokenRoute from '@/app/api/v1/me/tokens/[id]/route';
+import * as institutionRoute from '@/app/api/v1/me/institution/route';
+import * as institutionVerifyRoute from '@/app/api/v1/me/institution/verify/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
 import * as fallbackRoute from '@/app/api/v1/[...rest]/route';
 import { STARTING_MICRO } from './helpers';
@@ -42,6 +51,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/portfolio', portfolioRoute],
   ['/me/orders', myOrdersRoute],
   ['/me/tokens', tokensRoute],
+  ['/me/tokens/[id]', tokenRoute],
+  ['/me/institution', institutionRoute],
+  ['/me/institution/verify', institutionVerifyRoute],
 ];
 
 export const ROUTE_PATTERNS = ROUTES.map(([p]) => p);
@@ -71,14 +83,29 @@ export interface ApiResult<T = any> {
   body: T;
 }
 
+export const ORIGIN = 'http://test.local';
+
 export async function api<T = any>(
   method: string,
   pathAndQuery: string,
-  opts: { token?: string; body?: unknown; headers?: Record<string, string>; rawBody?: string } = {},
+  opts: {
+    token?: string;
+    cookie?: string;
+    /** Defaults to our own origin when a cookie is sent; pass `null` to omit. */
+    origin?: string | null;
+    body?: unknown;
+    headers?: Record<string, string>;
+    rawBody?: string;
+  } = {},
 ): Promise<ApiResult<T>> {
-  const url = new URL(`/api/v1${pathAndQuery}`, 'http://test.local');
+  const url = new URL(`/api/v1${pathAndQuery}`, ORIGIN);
   const headers: Record<string, string> = { ...opts.headers };
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  if (opts.cookie) {
+    headers.cookie = opts.cookie;
+    const origin = opts.origin === undefined ? ORIGIN : opts.origin;
+    if (origin !== null) headers.origin = origin;
+  }
   let body: string | undefined = opts.rawBody;
   if (opts.body !== undefined) {
     body = JSON.stringify(opts.body);
@@ -96,18 +123,81 @@ export async function api<T = any>(
   return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : null };
 }
 
-/** A funded trader with a token. */
+/** Better Auth's own endpoints, under /api/auth. */
+export async function authCall(
+  method: string,
+  path: string,
+  opts: { body?: unknown; cookie?: string } = {},
+): Promise<Response> {
+  const headers: Record<string, string> = { origin: ORIGIN };
+  if (opts.cookie) headers.cookie = opts.cookie;
+  if (opts.body !== undefined) headers['content-type'] = 'application/json';
+  const req = new Request(new URL(`/api/auth${path}`, ORIGIN), {
+    method,
+    headers,
+    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+  });
+  return (method === 'GET' ? authRoute.GET : authRoute.POST)(req);
+}
+
+/** `name=value; …` from a response's Set-Cookie headers. */
+export function cookieFrom(res: Response): string {
+  return res.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ');
+}
+
+/**
+ * Sign up with email and password, click the verification link from the dev
+ * outbox, and return the session cookie — the whole human path, through
+ * Better Auth's real endpoints.
+ */
+export async function signUp(email: string, name = 'Test Person', password = 'correct horse battery'): Promise<string> {
+  clearDevOutbox();
+  const res = await authCall('POST', '/sign-up/email', { body: { email, password, name } });
+  if (res.status !== 200) throw new Error(`sign-up failed: ${res.status} ${await res.text()}`);
+  const mail = devOutbox().find((m) => m.to === email);
+  if (!mail) throw new Error('no verification mail');
+  const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+  const verified = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+  const cookie = cookieFrom(verified);
+  if (!cookie.includes('session_token')) throw new Error(`verification gave no session: ${verified.status}`);
+  return cookie;
+}
+
+/**
+ * A funded trader with a token. Humans get a Better Auth user (as sign-up
+ * would give them) and, unless `verified: false`, a confirmed institution;
+ * bots get their login-less user when the token is minted.
+ */
 export async function trader(
   handle: string,
   scopes: TokenScope[] = ['read', 'trade'],
-  opts: { isBot?: boolean; grantMicro?: bigint } = {},
-): Promise<{ id: string; token: string; tokenId: string }> {
-  const account = await createAccount({
+  opts: { isBot?: boolean; grantMicro?: bigint; verified?: boolean } = {},
+): Promise<{ id: string; userId: string; token: string; tokenId: string }> {
+  const db = getDb();
+  let account = await createAccount({
     handle,
     displayName: handle,
     isBot: opts.isBot ?? false,
     grantMicro: opts.grantMicro ?? STARTING_MICRO,
   });
-  const { token, row } = await mintToken({ accountId: account.id, name: `${handle} test`, scopes });
-  return { id: account.id, token, tokenId: row.id };
+  if (!account.isBot) {
+    const userId = randomUUID();
+    await db.insert(user).values({ id: userId, name: handle, email: `${handle}@example.org`, emailVerified: true });
+    [account] = await db
+      .update(accounts)
+      .set({
+        userId,
+        ...(opts.verified === false
+          ? {}
+          : { verifiedAt: new Date(), rorId: 'https://ror.org/test', institutionName: 'Test University' }),
+      })
+      .where(eq(accounts.id, account.id))
+      .returning();
+  }
+  const { token, record } = await mintToken({ account, name: `${handle} test`, scopes });
+  const [after] = await db.select().from(accounts).where(eq(accounts.id, account.id));
+  return { id: account.id, userId: after.userId!, token, tokenId: record.id };
 }
