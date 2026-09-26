@@ -1,1 +1,0 @@
-DROP TABLE "institution_verifications" CASCADE;

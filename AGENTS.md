@@ -13,6 +13,10 @@ anything that says otherwise.
 - **Migrations:** edit `src/db/schema.ts`, then `npm run db:generate`, then
   `npm run db:migrate`. The generated SQL in `drizzle/` is checked in and is
   the thing that actually runs. Never hand-edit an applied migration.
+  **Until the first production deploy** there is nothing to migrate, so
+  schema changes may instead be squashed: delete `drizzle/`, run
+  `npm run db:generate -- --name init`, and recreate the dev and test
+  databases. Once production exists, only new migrations.
 
 ## Invariants
 
@@ -243,7 +247,7 @@ Each of these came up while implementing §3–§8 and is load-bearing.
 ### Auth (M5)
 
 - **API tokens are Better Auth `apiKey`-plugin keys** (`@better-auth/api-key`),
-  not the M4 hand-rolled table, which migration 0002 drops. Format is still
+  not the M4 hand-rolled `api_tokens` table, which is gone. Format is still
   `pm_live_` + 32 random bytes (a custom key generator). The plugin stores the
   SHA-256 and looks a presented key up *by that hash*, so there is no prefix
   lookup or byte comparison to time; that replaces §7's "look up by prefix,
@@ -303,9 +307,7 @@ Each of these came up while implementing §3–§8 and is load-bearing.
   changing plugins, then `npm run db:generate`. Its timestamps are `timestamp`
   without time zone because that is what the CLI emits.
 - **`drizzle-kit generate` prompts "create or rename?"** whenever a migration
-  drops one table and creates another, and refuses without a TTY. Migration
-  0002 answered "create" for every Better Auth table. Migration 0003 drops
-  0002's `institution_verifications` again (the code flow was removed); it is
-  a new migration rather than an edit because 0002 had already been applied.
+  drops one table and creates another, and refuses without a TTY. Run it under
+  a pseudo-terminal (`script -qfc`) and answer "create", or squash (above).
 - **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
   server log, outside production; in production a missing key throws.
