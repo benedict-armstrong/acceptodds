@@ -109,7 +109,8 @@ Confirming the address is the institutional verification: it creates their
 trader account, grants `STARTING_BALANCE_MICRO` as a `signup` ledger entry,
 and sets `verified_at`, so they can trade straight away. Nothing is granted
 before confirmation. A signed-in user mints their own `read`/`trade` tokens
-with `POST /api/v1/me/tokens`.
+with `POST /api/v1/me/tokens`. A signed-in user whose email is in
+`ADMIN_EMAILS` (comma-separated) can also create, close and settle markets.
 
 Bots, and any `admin` token, are minted by an operator:
 
@@ -138,9 +139,9 @@ reads the portfolio and sells back, using nothing but the token and HTTP.
 ```
 
 Each listed domain also admits its subdomains (`inf.ethz.ch`). The name is
-what appears as the trader's institution. The checked-in list is **empty**,
-so nobody can sign up until you add domains; `INSTITUTION_DOMAINS_PATH`
-points at a different file. It is read once per process, so restart the app
+what appears as the trader's institution. The checked-in list is a
+placeholder: MIT (`mit.edu`) and ETH Zurich (`ethz.ch`).
+`INSTITUTION_DOMAINS_PATH` points at a different file. It is read once per process, so restart the app
 after editing it.
 
 ## Tests

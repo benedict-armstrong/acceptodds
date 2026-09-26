@@ -159,6 +159,20 @@ describe('a session on /api/v1', () => {
     expect(close.body.error).toMatchObject({ code: 'forbidden', details: { requiredScope: 'admin' } });
   });
 
+  it('gets admin only when the email is in ADMIN_EMAILS', async () => {
+    process.env.ADMIN_EMAILS = 'someone@else.org, Boss@Example.org';
+    try {
+      const cookie = await signUp('boss@example.org');
+      const me = await api('GET', '/me', { cookie });
+      expect(me.body.auth.scopes).toEqual(['read', 'trade', 'admin']);
+      const close = await api('POST', `/markets/${fx.marketId}/close`, { cookie });
+      expect(close.status).toBe(200);
+      expect(close.body.status).toBe('closed');
+    } finally {
+      delete process.env.ADMIN_EMAILS;
+    }
+  });
+
   it('refuses a cookie-authenticated write from another origin, or with no Origin', async () => {
     const cookie = await signUp('csrf@example.org');
     for (const origin of ['https://evil.example', null]) {

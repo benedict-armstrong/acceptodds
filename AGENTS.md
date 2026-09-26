@@ -261,9 +261,11 @@ Each of these came up while implementing §3–§8 and is load-bearing.
   sign in as it. `is_bot` is still what marks a bot.
 - **One rate limiter.** The plugin's own per-key limiter is disabled; the M4
   token bucket keys on `apikey:<id>` or `user:<id>` (sessions).
-- **Sessions may `read` and `trade`, never `admin`.** Admin is a token scope,
-  minted by an operator with `npm run token:mint`; `POST /me/tokens` only
-  accepts `read`/`trade`. M6's admin pages will need a decision here.
+- **Sessions may `read` and `trade`; `admin` only via `ADMIN_EMAILS`.** The
+  owner asked for the simplest possible admin model: a signed-in user whose
+  email is in the comma-separated `ADMIN_EMAILS` env var also gets `admin`.
+  No role column, no admin UI; change the list and restart. `POST /me/tokens`
+  still mints only `read`/`trade`; admin tokens come from `npm run token:mint`.
 - **Cookie-authenticated writes must carry our Origin.** `SameSite=Lax`
   already stops a cross-site POST carrying the cookie; `assertSameOrigin` in
   `server/auth.ts` is the second lock and does not depend on the browser.
@@ -282,7 +284,8 @@ Each of these came up while implementing §3–§8 and is load-bearing.
   Confirming the address *is* the verification. This replaces §8's
   institutional code + ROR lookup, and ORCID sign-in is deferred too; both
   were built and then removed on the owner's call (git history has them).
-  The checked-in list is empty, so sign-up is closed until it is filled.
+  The checked-in list is MIT (`mit.edu`) and ETH Zurich (`ethz.ch`), a
+  placeholder the owner will replace.
 - **The refusal is a 422 `EMAIL_DOMAIN_NOT_ALLOWED`, not a 403.** Better Auth
   answers a 403 from user creation with a fake success (its guard against
   email enumeration), so the person would wait for a mail that never comes.
