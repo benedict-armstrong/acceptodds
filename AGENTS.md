@@ -13,6 +13,10 @@ anything that says otherwise.
 - **Migrations:** edit `src/db/schema.ts`, then `npm run db:generate`, then
   `npm run db:migrate`. The generated SQL in `drizzle/` is checked in and is
   the thing that actually runs. Never hand-edit an applied migration.
+  **Until the first production deploy** there is nothing to migrate, so
+  schema changes may instead be squashed: delete `drizzle/`, run
+  `npm run db:generate -- --name init`, and recreate the dev and test
+  databases. Once production exists, only new migrations.
 
 ## Invariants
 
@@ -146,7 +150,7 @@ Write both in the same transaction, always.
 
 ## Decisions the plan did not make
 
-Each of these came up while implementing §3–§7 and is load-bearing.
+Each of these came up while implementing §3–§8 and is load-bearing.
 
 - **No naked shorts.** A trader may only sell shares they hold. The plan is
   silent, and it is not cosmetic: an unbacked short takes the proceeds now and
@@ -204,11 +208,10 @@ Each of these came up while implementing §3–§7 and is load-bearing.
   trades carries both. Public endpoints need no scope — but a token that *is*
   sent must be valid (401 otherwise, never a silent downgrade to anonymous),
   and it is counted against its rate-limit bucket and attributed in `events`.
-- **Request → account resolution lives only in `server/auth.ts`.** M5 adds
-  sessions by adding a branch to `authenticate()` that returns
-  `method: 'session'`; no route should change. `POST /me/tokens` is
-  session-only (`requireSession`) so a leaked token cannot mint its successor;
-  until M5 it always refuses, and tokens are minted with `npm run token:mint`.
+- **Request → account resolution lives only in `server/auth.ts`.** A bearer
+  API key or the Better Auth session cookie; both resolve to one `accounts`
+  row. Token management (`/me/tokens*`) is session-only (`requireSession`) so
+  a leaked token cannot mint its successor or hide its revocation.
 - **A reused `Idempotency-Key` for a *different* order is a 409
   `idempotency_key_reused`.** The engine returns the original fill for any
   reused key; answering "filled" to a request for a different order would tell
@@ -240,3 +243,71 @@ Each of these came up while implementing §3–§7 and is load-bearing.
 - **Market list filter is `kind`, not `venue`.** There is no venue column and
   adding one would start to answer §12 Q1; `kind` is already the opaque
   grouping string. Drafts are hidden from the list unless asked for.
+
+### Auth (M5)
+
+- **API tokens are Better Auth `apiKey`-plugin keys** (`@better-auth/api-key`),
+  not the M4 hand-rolled `api_tokens` table, which is gone. Format is still
+  `pm_live_` + 32 random bytes (a custom key generator). The plugin stores the
+  SHA-256 and looks a presented key up *by that hash*, so there is no prefix
+  lookup or byte comparison to time; that replaces §7's "look up by prefix,
+  compare in constant time". Scopes live in the plugin's `permissions` as
+  `{ api: [...] }` and are checked by `server/auth.ts`, so a missing scope is a
+  403, not the plugin's 401.
+- **Bots have a Better Auth user, login-less.** The plugin keys every token on
+  a `user`, which contradicts §8's "bots have no user_id". A bot gets a user
+  the first time it is issued a token: email `<handle>@bots.papermarket.invalid`
+  (reserved TLD, never mailed), no credential, no linked provider — nothing can
+  sign in as it. `is_bot` is still what marks a bot.
+- **One rate limiter.** The plugin's own per-key limiter is disabled; the M4
+  token bucket keys on `apikey:<id>` or `user:<id>` (sessions).
+- **Sessions may `read` and `trade`, never `admin`.** Admin is a token scope,
+  minted by an operator with `npm run token:mint`; `POST /me/tokens` only
+  accepts `read`/`trade`. M6's admin pages will need a decision here.
+- **Cookie-authenticated writes must carry our Origin.** `SameSite=Lax`
+  already stops a cross-site POST carrying the cookie; `assertSameOrigin` in
+  `server/auth.ts` is the second lock and does not depend on the browser.
+  Better Auth's own origin check turns itself **off** when `NODE_ENV=test`;
+  it is pinned on (`advanced.disableOriginCheck: false`) so the tests exercise
+  what production runs.
+- **Trading is gated at the API layer**, by `requireTradingEligibility()`:
+  verified or `is_bot`, else `403 not_verified`. Not in `engine.trade()`,
+  which takes an account id and trusts its caller about who that is. M6's
+  Server Actions must call it too.
+- **Institutional verification is an email-domain allowlist, for now.**
+  `config/institution-domains.json` (`INSTITUTION_DOMAINS_PATH` overrides)
+  maps a domain to an institution name; subdomains match; matching never goes
+  below two labels. Sign-up from any other domain is refused in Better Auth's
+  `user.create.before` hook, before a user row exists or a mail is sent.
+  Confirming the address *is* the verification. This replaces §8's
+  institutional code + ROR lookup, and ORCID sign-in is deferred too; both
+  were built and then removed on the owner's call (git history has them).
+  The checked-in list is empty, so sign-up is closed until it is filled.
+- **The refusal is a 422 `EMAIL_DOMAIN_NOT_ALLOWED`, not a 403.** Better Auth
+  answers a 403 from user creation with a fake success (its guard against
+  email enumeration), so the person would wait for a mail that never comes.
+  The list is not secret, so saying no plainly leaks nothing.
+- **Email changes are off** (`user.changeEmail.enabled: false`): a changed
+  address would bypass the allowlist.
+- **No account, and no reputation, before the email is confirmed.**
+  `ensureAccountForUser()` creates the trader row, the `signup` grant and
+  `verified_at` + `institution_name` together, from Better Auth's
+  `emailVerification.afterEmailVerification`, and again lazily on every
+  session request (which `server/auth.ts` only accepts for a confirmed email),
+  so a failed callback costs a retry and never leaves a signed-in user
+  without a trader. The unique index on `accounts.user_id` decides a race, so
+  there is exactly one grant. A domain dropped from the list between sign-up
+  and confirmation gets a funded account that is not verified and cannot trade.
+- **Better Auth's client IP header is `Cf-Connecting-Ip`**
+  (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
+  `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is
+  correct for the single app container in §11 and wrong for more than one.
+- **`db/auth-schema.ts` is generated** by `npm run auth:generate` (the
+  `auth` CLI, reading `auth.config.ts`). Don't hand-edit it; regenerate after
+  changing plugins, then `npm run db:generate`. Its timestamps are `timestamp`
+  without time zone because that is what the CLI emits.
+- **`drizzle-kit generate` prompts "create or rename?"** whenever a migration
+  drops one table and creates another, and refuses without a TTY. Run it under
+  a pseudo-terminal (`script -qfc`) and answer "create", or squash (above).
+- **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
+  server log, outside production; in production a missing key throws.

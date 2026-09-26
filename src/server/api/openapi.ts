@@ -61,13 +61,26 @@ function op(
   }
   return {
     ...rest,
-    security: scope ? [{ bearer: [scope] }] : [{}, { bearer: [] }],
+    // A session may read and trade, never administer.
+    security: scope
+      ? scope === 'admin'
+        ? [{ bearer: [scope] }]
+        : [{ bearer: [scope] }, { session: [] }]
+      : [{}, { bearer: [] }, { session: [] }],
     responses,
   };
 }
 
 export function buildRegistry(): OpenAPIRegistry {
   const r = new OpenAPIRegistry();
+
+  r.registerComponent('securitySchemes', 'session', {
+    type: 'apiKey',
+    in: 'cookie',
+    name: 'better-auth.session_token',
+    description:
+      'A signed-in browser session (sign up and sign in at /api/auth, with an email address at an approved institution). Equivalent to the `read` and `trade` scopes, never `admin`. Writes must come from our own Origin.',
+  });
 
   r.registerComponent('securitySchemes', 'bearer', {
     type: 'http',
@@ -190,6 +203,7 @@ export function buildRegistry(): OpenAPIRegistry {
       },
       ok: { status: 201, schema: S.Fill, description: 'The fill (or, for a replayed key, the original fill).' },
       errors: {
+        403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
         404: 'not_found: no such market or outcome.',
         409:
           'slippage_exceeded | insufficient_balance | insufficient_shares | market_not_open | market_closed | idempotency_key_reused',
@@ -233,23 +247,53 @@ export function buildRegistry(): OpenAPIRegistry {
     }),
   );
 
-  r.registerPath({
+  const sessionOnly = (config: Parameters<typeof op>[0]): RouteConfig => ({
     ...op({
+      ...config,
+      errors: {
+        401: 'unauthorized: not signed in.',
+        403: 'session_required: called with an API token. These endpoints never accept one.',
+        ...config.errors,
+      },
+    }),
+    security: [{ session: [] }],
+  });
+
+  r.registerPath(
+    sessionOnly({
       method: 'post',
       path: '/me/tokens',
       tags: ['me'],
-      summary: 'Mint an API token (signed-in session only)',
+      summary: 'Mint an API token',
       description:
-        'Never accepts a bearer token: a leaked token must not be able to mint its own successor. Not usable until sign-in ships; bot tokens are minted by an operator.',
+        'Scopes `read` and/or `trade`. The token is returned once and never again. `admin` tokens are issued by an operator only.',
       request: { body: { content: { 'application/json': { schema: S.CreateTokenRequest } } } },
       ok: { status: 201, schema: S.CreatedToken, description: 'The token, shown once.' },
-      errors: {
-        401: 'unauthorized: not signed in.',
-        403: 'session_required: called with an API token.',
-      },
     }),
-    security: [],
+  );
+
+  r.registerPath(
+    sessionOnly({
+      method: 'get',
+      path: '/me/tokens',
+      tags: ['me'],
+      summary: 'List your API tokens',
+      ok: { status: 200, schema: S.TokenList, description: 'Your tokens, newest first, without their secrets.' },
+    }),
+  );
+
+  const revoke = sessionOnly({
+    method: 'delete',
+    path: '/me/tokens/{id}',
+    tags: ['me'],
+    summary: 'Revoke an API token',
+    request: { params: z.object({ id: S.TokenId }) },
+    ok: { status: 200, schema: S.TokenList, description: 'unused' },
+    errors: { 404: 'not_found' },
   });
+  delete revoke.responses[200];
+  revoke.responses[204] = { description: 'Revoked. The token stops working immediately.' };
+  r.registerPath(revoke);
 
   // -- admin ----------------------------------------------------------------
 

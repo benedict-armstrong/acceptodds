@@ -6,7 +6,9 @@ import { accounts, ledgerEntries, markets, outcomes, positions } from '@/db/sche
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { creditAccount, HOUSE_HANDLE, quote } from './engine';
+import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
+import { institutionForEmail } from './institution-domains';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -20,6 +22,9 @@ export interface CreateAccountInput {
   userId?: string | null;
   isBot?: boolean;
   isHouse?: boolean;
+  /** Set together, for an account whose institutional address is confirmed. */
+  institutionName?: string | null;
+  verifiedAt?: Date | null;
   /** Defaults to `STARTING_BALANCE_MICRO`. Pass `0n` for an unfunded account. */
   grantMicro?: bigint;
 }
@@ -45,6 +50,8 @@ export async function createAccount(
         userId: input.userId ?? null,
         isBot: input.isBot ?? false,
         isHouse: input.isHouse ?? false,
+        institutionName: input.institutionName ?? null,
+        verifiedAt: input.verifiedAt ?? null,
         balanceMicro: 0n,
       })
       .returning();
@@ -216,4 +223,76 @@ export async function reconcileBalances(
       ledgerMicro: BigInt(r.ledgerMicro),
     }))
     .filter((r) => r.balanceMicro !== r.ledgerMicro);
+}
+
+// ---------------------------------------------------------------------------
+// accounts for Better Auth users
+// ---------------------------------------------------------------------------
+
+/** A handle from a display name or an email local part: `[a-z0-9-]`, 3–30 chars. */
+export function handleFrom(name: string | null | undefined, email: string): string {
+  const pick = (s: string) =>
+    s
+      .normalize('NFKD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 30)
+      .replace(/-+$/, '');
+  const fromName = pick(name ?? '');
+  const fromEmail = pick(email.split('@')[0] ?? '');
+  const base = fromName.length >= 3 ? fromName : fromEmail.length >= 3 ? fromEmail : 'trader';
+  // `market:` and `house` are the engine's; a UUID-shaped handle would be confusing.
+  return base === 'house' ? 'house-trader' : base;
+}
+
+/**
+ * The trader row for a Better Auth user whose email is **confirmed**,
+ * creating it if it does not exist yet — with the signup grant, and verified
+ * against the institution allowlist. **Idempotent**, and safe to race: the
+ * unique index on `accounts.user_id` decides, and the loser reads the winner's
+ * row.
+ *
+ * Called from Better Auth's `afterEmailVerification` and again, lazily, by
+ * `server/auth.ts` for every session (a session implies a confirmed email), so
+ * a user can never be signed in without an account. Never call it for an
+ * unconfirmed user: the starting balance is granted on confirmation only.
+ */
+export async function ensureAccountForUser(
+  user: { id: string; name?: string | null; email: string },
+  database: Db = getDb(),
+): Promise<typeof accounts.$inferSelect> {
+  const [existing] = await database.select().from(accounts).where(eq(accounts.userId, user.id));
+  if (existing) return existing;
+
+  // Sign-up already refused unlisted domains; a domain removed from the list
+  // since then gets an account that may browse but not trade.
+  const institution = institutionForEmail(user.email);
+  const base = handleFrom(user.name, user.email);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const handle = attempt === 0 ? base : `${base.slice(0, 25)}-${randomSuffix()}`;
+    try {
+      return await createAccount(
+        {
+          handle,
+          displayName: user.name?.trim() || handle,
+          userId: user.id,
+          institutionName: institution?.name ?? null,
+          verifiedAt: institution ? new Date() : null,
+        },
+        database,
+      );
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      const [raced] = await database.select().from(accounts).where(eq(accounts.userId, user.id));
+      if (raced) return raced;
+      // Otherwise the handle was taken: try another.
+    }
+  }
+  throw new Error(`could not find a free handle for user ${user.id}`);
+}
+
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
 }

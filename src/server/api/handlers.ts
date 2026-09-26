@@ -1,9 +1,9 @@
 import { isUniqueViolation } from '@/db/errors';
-import { authenticate, requireAuth, requireSession, type Principal } from '../auth';
+import { authenticate, requireAuth, requireSession, requireTradingEligibility, type Principal } from '../auth';
 import { getPortfolio, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import * as events from '../events';
-import { mintToken } from '../tokens';
+import { listTokens, mintToken, revokeToken } from '../tokens';
 import {
   accountOrders,
   leaderboard as leaderboardView,
@@ -24,6 +24,7 @@ import {
   presentPortfolio,
   presentQuote,
   presentTapeEntry,
+  presentToken,
 } from './present';
 import * as S from './schemas';
 
@@ -152,6 +153,7 @@ export const getAccount = route(async (req, params) => {
 
 export const postOrder = route(async (req, params) => {
   const principal = await requireAuth(req, 'trade');
+  requireTradingEligibility(principal);
   const market = await resolveMarket(parseParam(params.id, S.MarketRef, 'id'));
   const body = await parseBody(req, S.OrderRequest);
 
@@ -211,19 +213,40 @@ export const getMyOrders = route(async (req) => {
 });
 
 /**
- * Session only, never a token (§7). Until M5 adds sessions this always
- * refuses; bot tokens are minted with `npm run token:mint`.
+ * Token management. **Session only, never a token** (§7): a leaked token must
+ * not be able to mint its successor or hide its own revocation. Bot tokens,
+ * and any `admin` token, are minted by an operator with `npm run token:mint`.
  */
+function userIdOf(p: Principal): string {
+  if (!p.account.userId) throw new ApiError(403, 'session_required', 'this account has no sign-in');
+  return p.account.userId;
+}
+
 export const postMyToken = route(async (req) => {
   const principal = await requireSession(req);
   const body = await parseBody(req, S.CreateTokenRequest);
-  const { token, row } = await mintToken({ accountId: principal.account.id, name: body.name, scopes: body.scopes });
+  const { token, record } = await mintToken({ account: principal.account, name: body.name, scopes: body.scopes });
   events.log('token.minted', { accountId: principal.account.id });
   return respond(
     S.CreatedToken,
-    { id: row.id, token, name: row.name, scopes: row.scopes, createdAt: toIso(row.createdAt) },
+    { id: record.id, name: record.name, start: record.start, scopes: record.scopes, createdAt: toIso(record.createdAt), token },
     { status: 201, principal },
   );
+});
+
+export const getMyTokens = route(async (req) => {
+  const principal = await requireSession(req);
+  const tokens = await listTokens(userIdOf(principal));
+  return respond(S.TokenList, { tokens: tokens.map(presentToken) }, { principal });
+});
+
+export const deleteMyToken = route(async (req, params) => {
+  const principal = await requireSession(req);
+  const id = parseParam(params.id, S.TokenId, 'id');
+  if (!(await revokeToken(userIdOf(principal), id))) {
+    throw new ApiError(404, 'not_found', `no token ${id}`);
+  }
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 });
 
 // ---------------------------------------------------------------------------
