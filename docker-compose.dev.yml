@@ -1,0 +1,37 @@
+# Dev database only.
+#
+# `next dev` runs on the host and talks to this over 127.0.0.1:55432. Only
+# production ever runs the app in a container (see the deployment section of
+# the plan; that compose file is not written yet).
+#
+# The host port is deliberately NOT 5432 or 6543 -- both are already taken by
+# unrelated Supabase containers on this box. Nothing in this stack may ever
+# share a database with them: the ledger is the asset.
+name: papermarket-dev
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: papermarket
+      POSTGRES_PASSWORD: papermarket
+      POSTGRES_DB: papermarket
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U papermarket -d papermarket"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # The default log driver is uncapped and this disk also holds the database.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  pgdata:
