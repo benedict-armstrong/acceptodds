@@ -61,12 +61,8 @@ function op(
   }
   return {
     ...rest,
-    // A session may read and trade, never administer.
-    security: scope
-      ? scope === 'admin'
-        ? [{ bearer: [scope] }]
-        : [{ bearer: [scope] }, { session: [] }]
-      : [{}, { bearer: [] }, { session: [] }],
+    // A session may read and trade; admin only if its email is in ADMIN_EMAILS.
+    security: scope ? [{ bearer: [scope] }, { session: [] }] : [{}, { bearer: [] }, { session: [] }],
     responses,
   };
 }
@@ -79,7 +75,7 @@ export function buildRegistry(): OpenAPIRegistry {
     in: 'cookie',
     name: 'better-auth.session_token',
     description:
-      'A signed-in browser session (sign up and sign in at /api/auth, with an email address at an approved institution). Equivalent to the `read` and `trade` scopes, never `admin`. Writes must come from our own Origin.',
+      'A signed-in browser session (sign up and sign in at /api/auth, with an email address at an approved institution). Equivalent to the `read` and `trade` scopes, plus `admin` if your email is in the server’s `ADMIN_EMAILS`. Writes must come from our own Origin.',
   });
 
   r.registerComponent('securitySchemes', 'bearer', {

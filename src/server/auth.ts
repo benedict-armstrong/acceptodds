@@ -15,8 +15,8 @@ import { verifyToken } from './tokens';
  *  - `Authorization: Bearer pm_live_…` — an API key (Better Auth's `apiKey`
  *    plugin), carrying its own scopes;
  *  - the Better Auth session cookie — a signed-in human, who may `read` and
- *    `trade` (trading is further gated on institutional verification, below)
- *    but never `admin`: admin is a token scope, issued by an operator.
+ *    `trade` (trading is further gated on institutional verification, below),
+ *    and `admin` only if their email is in `ADMIN_EMAILS`.
  *
  * A bearer token wins if both are sent. Routes ask for a principal and a
  * scope; they never read `Authorization` or a cookie themselves.
@@ -36,6 +36,19 @@ export interface Principal {
 }
 
 export const SESSION_SCOPES: readonly TokenScope[] = ['read', 'trade'];
+
+/**
+ * Human admins, deliberately the simplest thing that works: a signed-in user
+ * whose (confirmed) email is in `ADMIN_EMAILS`, comma-separated, also gets the
+ * `admin` scope. Change the list and restart; there is no admin UI for it.
+ */
+export function isAdminEmail(email: string): boolean {
+  const list = (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(email.trim().toLowerCase());
+}
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -121,7 +134,8 @@ async function authenticateSession(req: Request): Promise<Principal | null> {
   // Normally created on email confirmation; this makes a missed hook harmless.
   const account = await ensureAccountForUser(session.user);
   const rateLimit = await limit(`user:${session.user.id}`);
-  return { account, method: 'session', scopes: SESSION_SCOPES, credentialId: session.session.id, rateLimit };
+  const scopes: readonly TokenScope[] = isAdminEmail(session.user.email) ? [...SESSION_SCOPES, 'admin'] : SESSION_SCOPES;
+  return { account, method: 'session', scopes, credentialId: session.session.id, rateLimit };
 }
 
 /** A principal holding `scope`, or a 401/403. */
