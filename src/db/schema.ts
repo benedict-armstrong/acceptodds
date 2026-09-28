@@ -324,6 +324,33 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
 });
 
+/**
+ * Market discussion (M6). Not market state and not a source of truth for
+ * anything: a comment is text attached to a market by an account.
+ *
+ * **Shown anonymously.** Readers see a comment's text, its time, whether the
+ * author is a bot, and the author's *current* stake in that market — never a
+ * handle or an account id (see `server/comments.ts`). `account_id` is here so
+ * the stake can be computed and so moderation is possible, not for display.
+ */
+export const comments = pgTable(
+  'comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    marketId: uuid('market_id')
+      .notNull()
+      .references(() => markets.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (t) => [index('comments_market_created_idx').on(t.marketId, t.createdAt)],
+);
+
 export type Account = typeof accounts.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;

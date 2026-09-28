@@ -38,7 +38,9 @@ export type EventKind =
   | 'me.orders.read'
   | 'token.minted'
   | 'leaderboard.read'
-  | 'account.read';
+  | 'account.read'
+  | 'comments.read'
+  | 'comment.posted';
 
 export function log(
   kind: EventKind,

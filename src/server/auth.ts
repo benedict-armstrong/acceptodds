@@ -187,3 +187,19 @@ export function requireTradingEligibility(principal: Principal): void {
   if (a.isBot || a.verifiedAt) return;
   throw new ApiError(403, 'not_verified', 'confirm an institutional email address before trading');
 }
+
+/**
+ * The signed-in viewer of a server-rendered page, or `null`. For Server
+ * Components only: read-only, so it neither counts against the rate limit nor
+ * checks Origin. Anything that writes goes through the API (or through
+ * `authenticate()`), never through this.
+ */
+export async function viewerFromHeaders(
+  headers: Headers,
+): Promise<{ account: Account; isAdmin: boolean } | null> {
+  if (!headers.get('cookie')) return null;
+  const session = await getAuth().api.getSession({ headers });
+  if (!session || !session.user.emailVerified) return null;
+  const account = await ensureAccountForUser(session.user);
+  return { account, isAdmin: isAdminEmail(session.user.email) };
+}

@@ -35,7 +35,7 @@ to it. That is deliberate, and it is what keeps this a game.
 | 3 — engine (quote / trade / settle) | done |
 | 4 — public API | done |
 | 5 — auth and institutional signup | done (email domain allowlist; ORCID and ROR deferred) |
-| 6 — UI | not started |
+| 6 — UI | in progress: markets, market page (trade, chart, comments), sign-in/up, portfolio, leaderboard. Token management and admin pages still to do |
 | 7 — jobs and backups | not started |
 | deployment | not started (blocked on a domain and credentials) |
 
@@ -64,6 +64,9 @@ src/
   server/views.ts    read models for the API (never writes)
   server/api/        the /api/v1 contract (Zod), handlers, OpenAPI, errors
   app/api/v1/        route files; each only re-exports a handler
+  app/               the UI: / (markets), /markets/[slug], /portfolio, /leaderboard, /signin, /signup
+  components/        PriceChart, Sparkline (plain SVG)
+  server/comments.ts market discussion, anonymous but for each author's stake
 config/              institution-domains.json, the sign-up allowlist
 scripts/             token:mint, api:smoke
 drizzle/             generated migrations, checked in

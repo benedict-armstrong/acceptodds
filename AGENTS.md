@@ -150,7 +150,7 @@ Write both in the same transaction, always.
 
 ## Decisions the plan did not make
 
-Each of these came up while implementing §3–§8 and is load-bearing.
+Each of these came up while implementing §3–§9 and is load-bearing.
 
 - **No naked shorts.** A trader may only sell shares they hold. The plan is
   silent, and it is not cosmetic: an unbacked short takes the proceeds now and
@@ -314,3 +314,46 @@ Each of these came up while implementing §3–§8 and is load-bearing.
   a pseudo-terminal (`script -qfc`) and answer "create", or squash (above).
 - **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
   server log, outside production; in production a missing key throws.
+
+### UI (M6)
+
+- **Style is mockup J, "arXiv digest"**: one plain stylesheet
+  (`app/globals.css`), serif for reading, monospace for numbers, one maroon
+  accent. No utility classes, no component library. No invented ids or
+  numbers on screen: everything shown comes from the database.
+- **The UI writes through the public API, not Server Actions.** §9 suggests
+  Server Actions; the trade widget and the comment form `fetch` `/api/v1`
+  instead, so the UI gets the same validation, Origin check, trading gate,
+  idempotency and rate limit as every other client, and §0's "the UI is one
+  client of the API" holds literally. Pages are Server Components that *read*
+  through `server/views.ts` and render the same JSON shapes the API serves
+  (via `server/api/present.ts`), which the client then keeps live.
+- **Polling, 3 s, with SWR** (§9). Public reads go out with
+  `credentials: 'omit'`, so they are anonymous and don't spend the viewer's
+  rate-limit bucket; only portfolio and comments are fetched as the viewer.
+  The chart starts from the full server-side history and gains a point each
+  time the tape shows a new fill (the board's prices after a fill are the
+  exact post-fill vector).
+- **Server Components identify the viewer with `viewerFromHeaders()`** in
+  `server/auth.ts`: read-only, no rate limit, no Origin check. Anything that
+  writes goes through the API.
+- **The trade widget sends the quote it showed as `maxCostMicro`**, with a
+  fresh `Idempotency-Key` per order (kept across a network-error retry of the
+  same order, replaced when the order changes). So the charged cost is the
+  displayed cost or better, or the order is refused — checked end to end.
+- **"Venue" is the market's `kind`.** The home page filters on it and opens
+  on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
+  The platform still knows nothing about venues: it is a string the creating
+  client chose. Sorts: closing (grouped by day), volume, activity (last
+  fill), newest.
+- **Comments are anonymous but for the author's stake.** Each shows the
+  author's *current* position in that market and a bot badge — no handle, no
+  id (`server/comments.ts`). Posting needs the `trade` scope and a
+  trading-eligible account, so every comment has something behind it. The
+  stake is read at display time, so it is empty after settlement. The table
+  has foreign keys (unlike `events`) because it is written in its own tiny
+  transaction, never inside a trade.
+- **List sparklines come from `orders.price_after`**, which is exact for
+  binary markets (the other price is the complement) and needs no replay;
+  they start at the opening price (1/2). Multi-outcome markets show their
+  favourite's price instead of a line.

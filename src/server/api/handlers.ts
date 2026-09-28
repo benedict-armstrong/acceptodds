@@ -3,6 +3,7 @@ import { authenticate, requireAuth, requireSession, requireTradingEligibility, t
 import { getPortfolio, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import * as events from '../events';
+import { listComments, postComment } from '../comments';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import {
   accountOrders,
@@ -24,6 +25,7 @@ import {
   presentPortfolio,
   presentQuote,
   presentTapeEntry,
+  presentComments,
   presentToken,
 } from './present';
 import * as S from './schemas';
@@ -147,6 +149,15 @@ export const getAccount = route(async (req, params) => {
   );
 });
 
+export const getComments = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const market = await resolveMarket(parseParam(params.id, S.MarketRef, 'id'));
+  const q = parseQuery(req, S.PaginationQuery);
+  const page = await listComments(market.id, { ...q, viewerAccountId: accountIdOf(principal) });
+  events.log('comments.read', { accountId: accountIdOf(principal), marketId: market.id });
+  return respond(S.CommentList, presentComments(page), { principal });
+});
+
 // ---------------------------------------------------------------------------
 // authenticated
 // ---------------------------------------------------------------------------
@@ -188,6 +199,25 @@ export const postOrder = route(async (req, params) => {
     status: 201,
     principal,
     headers: fill.replayed ? { 'Idempotent-Replayed': 'true' } : {},
+  });
+});
+
+/**
+ * Commenting is a `trade`-scope action by a trading-eligible account: the
+ * point of the feed is that every comment comes with a real stake behind it.
+ */
+export const postMarketComment = route(async (req, params) => {
+  const principal = await requireAuth(req, 'trade');
+  requireTradingEligibility(principal);
+  const market = await resolveMarket(parseParam(params.id, S.MarketRef, 'id'));
+  const body = await parseBody(req, S.CommentRequest);
+  const created = await postComment({ marketId: market.id, accountId: principal.account.id, body: body.body });
+  events.log('comment.posted', { accountId: principal.account.id, marketId: market.id });
+  const page = await listComments(market.id, { limit: 50, viewerAccountId: principal.account.id });
+  const mine = page.comments.find((c) => c.id === created.id)!;
+  return respond(S.Comment, presentComments({ comments: [mine], nextCursor: null }).comments[0], {
+    status: 201,
+    principal,
   });
 });
 

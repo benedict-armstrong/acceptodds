@@ -406,3 +406,103 @@ export async function publicAccount(handle: string, database: Database = getDb()
   const record = result.rows[0] ?? { pnl: '0', markets: 0 };
   return { account, settledPnlMicro: BigInt(record.pnl), settledMarkets: record.markets };
 }
+
+// ---------------------------------------------------------------------------
+// browsing (the UI's home page)
+// ---------------------------------------------------------------------------
+
+export const MARKET_SORTS = ['closing', 'volume', 'activity', 'newest'] as const;
+export type MarketSort = (typeof MARKET_SORTS)[number];
+
+export interface BrowseRow extends MarketView {
+  lastTradeAt: Date | null;
+}
+
+/**
+ * Markets for the home page: filtered by `kind` (the opaque grouping string,
+ * which the creating client sets to a venue like "ICLR 2027") and status, and
+ * sorted by closing date, volume, recent activity or creation. Not paginated:
+ * a venue has at most a few hundred markets, and the page shows them all.
+ */
+export async function browseMarkets(
+  q: { kind?: string | null; status?: Market['status'] | 'all'; sort: MarketSort; limit?: number },
+  database: Database = getDb(),
+): Promise<BrowseRow[]> {
+  const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id = ${markets.id})`;
+  const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id = ${markets.id})`;
+  const order = {
+    closing: [sql`${markets.closesAt} asc`],
+    volume: [sql`${volume} desc`],
+    activity: [sql`${lastTrade} desc nulls last`],
+    newest: [sql`${markets.createdAt} desc`],
+  }[q.sort];
+
+  const status = q.status ?? 'open';
+  const rows = await database
+    .select({ market: markets, lastTradeAt: sql<string | null>`${lastTrade}::text` })
+    .from(markets)
+    .where(
+      and(
+        status === 'all' ? ne(markets.status, 'draft') : eq(markets.status, status),
+        q.kind ? eq(markets.kind, q.kind) : undefined,
+      ),
+    )
+    .orderBy(...order, desc(markets.id))
+    .limit(q.limit ?? 200);
+
+  const views = await marketViews(
+    rows.map((r) => r.market),
+    database,
+  );
+  return views.map((v, i) => ({
+    ...v,
+    lastTradeAt: rows[i].lastTradeAt ? new Date(rows[i].lastTradeAt!) : null,
+  }));
+}
+
+/** Every `kind` with at least one visible market, most markets first. */
+export async function marketKinds(database: Database = getDb()): Promise<{ kind: string; count: number }[]> {
+  return database
+    .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
+    .from(markets)
+    .where(ne(markets.status, 'draft'))
+    .groupBy(markets.kind)
+    .orderBy(sql`count(*) desc`, markets.kind);
+}
+
+/**
+ * The first outcome's price after each of a market's last `points` fills, for
+ * list sparklines. Exact for binary markets without a replay, because the
+ * other outcome's price is its complement; multi-outcome markets get none.
+ */
+export async function sparklines(
+  views: MarketView[],
+  points = 40,
+  database: Database = getDb(),
+): Promise<Map<string, number[]>> {
+  const binary = views.filter((v) => v.outcomes.length === 2);
+  if (binary.length === 0) return new Map();
+  const result = await database.execute<{ market_id: string; ordinal: number; price_after: number }>(sql`
+    select market_id, ordinal, price_after from (
+      select o.market_id, oc.ordinal, o.price_after, o.created_at, o.id,
+             row_number() over (partition by o.market_id order by o.created_at desc, o.id desc) as rn
+        from orders o join outcomes oc on oc.id = o.outcome_id
+       where o.market_id in (${sql.join(
+         binary.map((v) => sql`${v.market.id}::uuid`),
+         sql`, `,
+       )})
+    ) x where rn <= ${points}
+    order by market_id, created_at, id
+  `);
+  const out = new Map<string, number[]>();
+  for (const r of result.rows) {
+    const p = r.ordinal === 0 ? r.price_after : 1 - r.price_after;
+    const list = out.get(r.market_id) ?? [];
+    list.push(p);
+    out.set(r.market_id, list);
+  }
+  // A market with fewer fills than asked for is shown from its opening price,
+  // which for two outcomes is always 1/2.
+  for (const list of out.values()) if (list.length < points) list.unshift(0.5);
+  return out;
+}

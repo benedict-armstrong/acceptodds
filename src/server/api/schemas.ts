@@ -426,3 +426,32 @@ export const IdempotencyKey = z.string().min(1).max(255).regex(/^[\x21-\x7e]+$/,
 export const Handle = z.string().min(1).max(100).meta({ description: 'An account handle.', example: 'alice' });
 
 export const TokenId = z.string().min(1).max(100);
+
+// ---------------------------------------------------------------------------
+// comments
+// ---------------------------------------------------------------------------
+
+export const Comment = z
+  .object({
+    id: Id,
+    body: z.string(),
+    createdAt: Timestamp,
+    author: z
+      .object({
+        isBot: z.boolean(),
+        isYou: z.boolean().meta({ description: 'True when the authenticated caller wrote this comment.' }),
+        stake: z
+          .array(z.object({ outcomeId: Id, outcomeLabel: z.string(), sharesMicro: Micro }))
+          .meta({ description: "The author's current holdings in this market. Empty once it settles." }),
+      })
+      .meta({ description: 'Anonymous by design: no handle, no account id.' }),
+  })
+  .meta({ id: 'Comment' });
+
+export const CommentList = z
+  .object({ comments: z.array(Comment).meta({ description: 'Newest first.' }), nextCursor: Cursor })
+  .meta({ id: 'CommentList' });
+
+export const CommentRequest = z
+  .object({ body: z.string().trim().min(1).max(2000) })
+  .meta({ id: 'CommentRequest' });
