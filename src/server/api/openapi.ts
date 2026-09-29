@@ -155,6 +155,32 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'get',
+      path: '/listings',
+      tags: ['listings'],
+      summary: 'List listings',
+      description:
+        'Newest first. A listing is an opaque subject that markets are grouped under; each comes with its markets, main market first.',
+      request: { query: S.ListingListQuery },
+      ok: { status: 200, schema: S.ListingList, description: 'A page of listings.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/listings/{id}',
+      tags: ['listings'],
+      summary: 'A listing and its markets',
+      description: 'Markets are ordered by `listingRank`; the first is the main market. Drafts are left out.',
+      request: { params: z.object({ id: S.ListingRef }) },
+      ok: { status: 200, schema: S.Listing, description: 'The listing.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',
@@ -331,9 +357,26 @@ export function buildRegistry(): OpenAPIRegistry {
       scope: 'admin',
       request: { body: { content: { 'application/json': { schema: S.CreateMarketRequest } } } },
       ok: { status: 201, schema: S.CreatedMarket, description: 'The new market.' },
-      errors: { 409: 'slug_taken | house_underfunded' },
+      errors: { 404: 'not_found: no listing with `listingSlug`.', 409: 'slug_taken | house_underfunded' },
     }),
   );
+
+  const upsertListing = op({
+    method: 'post',
+    path: '/listings',
+    tags: ['admin'],
+    summary: 'Create or replace a listing',
+    description:
+      'By slug: creates the listing, or replaces every field of the existing one (a field left out is cleared). The venue stores these fields for display and never fetches or interprets them. Link URLs must be http(s).',
+    scope: 'admin',
+    request: { body: { content: { 'application/json': { schema: S.UpsertListingRequest } } } },
+    ok: { status: 201, schema: S.UpsertedListing, description: 'Created.' },
+  });
+  upsertListing.responses[200] = {
+    ...json(S.UpsertedListing, 'Replaced an existing listing.'),
+    headers: RATE_LIMIT_HEADERS,
+  };
+  r.registerPath(upsertListing);
 
   r.registerPath(
     op({
@@ -383,6 +426,7 @@ export function openApiDocument() {
     servers: [{ url: '/api/v1' }],
     tags: [
       { name: 'markets', description: 'Public market data.' },
+      { name: 'listings', description: 'Opaque subjects that group markets.' },
       { name: 'trading', description: 'Quotes and orders.' },
       { name: 'accounts', description: 'Public profiles and the leaderboard.' },
       { name: 'me', description: 'The authenticated account.' },

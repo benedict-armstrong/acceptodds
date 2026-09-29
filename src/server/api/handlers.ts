@@ -4,21 +4,26 @@ import { getPortfolio, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import * as events from '../events';
 import { listComments, postComment } from '../comments';
+import { upsertListing } from '../listings';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import {
   accountOrders,
   leaderboard as leaderboardView,
+  listListings as listListingsView,
   listMarkets as listMarketsView,
+  listingView,
   marketTape,
   marketView,
   priceHistory,
   publicAccount,
+  resolveListing,
   resolveMarket,
 } from '../views';
 import { ApiError } from './errors';
 import { parseBody, parseParam, parseQuery, respond, route, toIso, toIsoOrNull } from './http';
 import {
   presentFill,
+  presentListing,
   presentMarket,
   presentMe,
   presentMyOrder,
@@ -36,7 +41,8 @@ import * as S from './schemas';
  *
  * Handlers read through `views.ts` and write **only** by calling the engine
  * (`quote`, `trade`, `settle`, `closeMarket`, `createMarket`). None of them
- * touches market state directly. Selling is `POST …/orders` with negative
+ * touches market state directly. (Listings, which are not market state, are
+ * written by `listings.ts`; comments by `comments.ts`.) Selling is `POST …/orders` with negative
  * `sharesMicro`; there is no sell endpoint.
  *
  * Every read is logged to `events` with its kind and ids — no payload (§1.4) —
@@ -102,6 +108,22 @@ export const postQuote = route(async (req, params) => {
   const q = await engine.quote(market.id, body.outcomeId, body.sharesMicro);
   events.log('quote.read', { accountId: accountIdOf(principal), marketId: market.id });
   return respond(S.Quote, presentQuote(q), { principal });
+});
+
+export const listListings = route(async (req) => {
+  const principal = await authenticate(req);
+  const q = parseQuery(req, S.ListingListQuery);
+  const { views, nextCursor } = await listListingsView(q);
+  events.log('listing.list', { accountId: accountIdOf(principal) });
+  return respond(S.ListingList, { listings: views.map(presentListing), nextCursor }, { principal });
+});
+
+export const getListing = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const view = await listingView(listing);
+  events.log('listing.read', { accountId: accountIdOf(principal) });
+  return respond(S.Listing, presentListing(view), { principal });
 });
 
 export const getLeaderboard = route(async (req) => {
@@ -290,6 +312,11 @@ export const postMarket = route(async (req) => {
   if (closesAt.getTime() <= Date.now()) {
     throw new ApiError(400, 'validation_error', 'closesAt must be in the future');
   }
+  if (body.listingRank !== undefined && body.listingSlug === undefined) {
+    throw new ApiError(400, 'validation_error', 'listingRank needs a listingSlug');
+  }
+  // Listings are never deleted, so one that exists now still exists at the insert.
+  const listing = body.listingSlug === undefined ? null : await resolveListing(body.listingSlug);
 
   let created;
   try {
@@ -306,6 +333,8 @@ export const postMarket = route(async (req) => {
       startingBalanceMicro: startingBalanceMicro(),
       expectedTraders: body.expectedTraders,
       status: 'open',
+      listingId: listing?.id ?? null,
+      listingRank: body.listingRank ?? 0,
     });
   } catch (err) {
     // The market's slug, or its maker's `market:<slug>` handle, already exists.
@@ -320,6 +349,29 @@ export const postMarket = route(async (req) => {
     S.CreatedMarket,
     { market: presentMarket(view), subsidyMicro: created.subsidyMicro.toString() },
     { status: 201, principal },
+  );
+});
+
+/**
+ * Create or replace a listing by slug. Not market state: written by
+ * `listings.ts` in its own transaction. 201 when created, 200 when replaced.
+ */
+export const postListing = route(async (req) => {
+  const principal = await requireAuth(req, 'admin');
+  const body = await parseBody(req, S.UpsertListingRequest);
+  const { listing, created } = await upsertListing({
+    slug: body.slug,
+    title: body.title,
+    summary: body.summary ?? null,
+    authors: body.authors ?? [],
+    links: body.links ?? [],
+    kind: body.kind ?? null,
+  });
+  events.log(created ? 'listing.created' : 'listing.updated', { accountId: principal.account.id });
+  return respond(
+    S.UpsertedListing,
+    { listing: presentListing(await listingView(listing)), created },
+    { status: created ? 201 : 200, principal },
   );
 });
 

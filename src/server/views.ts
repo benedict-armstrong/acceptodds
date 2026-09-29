@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { accounts, markets, orders, outcomes, type Market, type Outcome } from '@/db/schema';
+import { accounts, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
 import { ApiError } from './api/errors';
@@ -155,6 +155,79 @@ export async function listMarkets(
       database,
     ),
     nextCursor: rows.length > q.limit && last ? encodeCursor({ t: last.ts, id: last.market.id }) : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// listings — opaque subjects that group markets (the UI calls one a "paper")
+// ---------------------------------------------------------------------------
+
+/** A listing by uuid or by slug, or a 404. */
+export async function resolveListing(ref: string, database: Database = getDb()): Promise<Listing> {
+  const [row] = await database
+    .select()
+    .from(listings)
+    .where(UUID.test(ref) ? eq(listings.id, ref.toLowerCase()) : eq(listings.slug, ref));
+  if (!row) throw new ApiError(404, 'not_found', `no listing ${ref}`);
+  return row;
+}
+
+export interface ListingView {
+  listing: Listing;
+  /** Visible (non-draft) markets, main market (lowest rank) first. */
+  markets: MarketView[];
+}
+
+export async function listingViews(rows: Listing[], database: Database = getDb()): Promise<ListingView[]> {
+  if (rows.length === 0) return [];
+  const marketRows = await database
+    .select()
+    .from(markets)
+    .where(
+      and(
+        inArray(
+          markets.listingId,
+          rows.map((l) => l.id),
+        ),
+        ne(markets.status, 'draft'),
+      ),
+    )
+    .orderBy(asc(markets.listingRank), asc(markets.createdAt), asc(markets.id));
+  const views = await marketViews(marketRows, database);
+  return rows.map((listing) => ({ listing, markets: views.filter((v) => v.market.listingId === listing.id) }));
+}
+
+export async function listingView(listing: Listing, database: Database = getDb()): Promise<ListingView> {
+  const [view] = await listingViews([listing], database);
+  return view;
+}
+
+export async function listListings(
+  q: { kind?: string; cursor?: string; limit: number },
+  database: Database = getDb(),
+): Promise<{ views: ListingView[]; nextCursor: string | null }> {
+  const after = decodeTimeCursor(q.cursor);
+  const rows = await database
+    .select({ listing: listings, ts: tsText(listings.createdAt) })
+    .from(listings)
+    .where(
+      and(
+        q.kind ? eq(listings.kind, q.kind) : undefined,
+        after
+          ? sql`(${listings.createdAt}, ${listings.id}) < (${after.t}::timestamptz, ${after.id}::uuid)`
+          : undefined,
+      ),
+    )
+    .orderBy(desc(listings.createdAt), desc(listings.id))
+    .limit(q.limit + 1);
+  const page = rows.slice(0, q.limit);
+  const last = page[page.length - 1];
+  return {
+    views: await listingViews(
+      page.map((r) => r.listing),
+      database,
+    ),
+    nextCursor: rows.length > q.limit && last ? encodeCursor({ t: last.ts, id: last.listing.id }) : null,
   };
 }
 
@@ -415,21 +488,54 @@ export const MARKET_SORTS = ['closing', 'volume', 'activity', 'newest'] as const
 export type MarketSort = (typeof MARKET_SORTS)[number];
 
 export interface BrowseRow extends MarketView {
+  /** The listing this row stands for, or null for a market that has none. */
+  listing: Listing | null;
+  /** Visible markets in the row: 1 for a standalone market. */
+  marketCount: number;
+  /** Volume and fills summed over every market in the row. */
+  totalVolumeMicro: bigint;
+  totalOrderCount: number;
+  /** The latest fill in any market in the row. */
   lastTradeAt: Date | null;
 }
 
 /**
- * Markets for the home page: filtered by `kind` (the opaque grouping string,
- * which the creating client sets to a venue like "ICLR 2027") and status, and
- * sorted by closing date, volume, recent activity or creation. Not paginated:
- * a venue has at most a few hundred markets, and the page shows them all.
+ * The market that stands for its row on the home page: a market with no
+ * listing, or a listing's **main market** — its visible market with the lowest
+ * `listing_rank` (ties by age). Filters and the closing sort read this market.
  */
-export async function browseMarkets(
+const isRowMarket = sql`(
+  ${markets.listingId} is null or ${markets.id} = (
+    select m2.id from markets m2
+     where m2.listing_id = ${markets.listingId} and m2.status <> 'draft'
+     order by m2.listing_rank, m2.created_at, m2.id
+     limit 1
+  )
+)`;
+
+/** The markets a row covers: itself, or every market of its listing. */
+const rowMarketIds = sql`(
+  select m2.id from markets m2
+   where m2.id = ${markets.id}
+      or (${markets.listingId} is not null and m2.listing_id = ${markets.listingId} and m2.status <> 'draft')
+)`;
+
+/**
+ * Rows for the home page: one per listing (a "paper"), plus one per market
+ * that belongs to no listing. Filtered by `kind` (the opaque grouping string,
+ * which the creating client sets to a venue like "ICLR 2027") and status, both
+ * read from the row's main market, and sorted by the main market's closing
+ * date, volume summed over the row, the latest fill in the row, or the main
+ * market's creation. Not paginated: a venue has at most a few hundred rows,
+ * and the page shows them all.
+ */
+export async function browseListings(
   q: { kind?: string | null; status?: Market['status'] | 'all'; sort: MarketSort; limit?: number },
   database: Database = getDb(),
 ): Promise<BrowseRow[]> {
-  const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id = ${markets.id})`;
-  const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id = ${markets.id})`;
+  const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id in ${rowMarketIds})`;
+  const count = sql`(select count(*) from orders o where o.market_id in ${rowMarketIds})`;
+  const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id in ${rowMarketIds})`;
   const order = {
     closing: [sql`${markets.closesAt} asc`],
     volume: [sql`${volume} desc`],
@@ -439,12 +545,22 @@ export async function browseMarkets(
 
   const status = q.status ?? 'open';
   const rows = await database
-    .select({ market: markets, lastTradeAt: sql<string | null>`${lastTrade}::text` })
+    .select({
+      market: markets,
+      listing: listings,
+      // `sum(bigint)` is `numeric`: read it as text, never as a JS number (§1.6).
+      volume: sql<string>`${volume}::text`,
+      count: sql<number>`${count}::int`,
+      markets: sql<number>`(select count(*) from ${rowMarketIds} x)::int`,
+      lastTradeAt: sql<string | null>`${lastTrade}::text`,
+    })
     .from(markets)
+    .leftJoin(listings, eq(listings.id, markets.listingId))
     .where(
       and(
         status === 'all' ? ne(markets.status, 'draft') : eq(markets.status, status),
         q.kind ? eq(markets.kind, q.kind) : undefined,
+        isRowMarket,
       ),
     )
     .orderBy(...order, desc(markets.id))
@@ -456,16 +572,20 @@ export async function browseMarkets(
   );
   return views.map((v, i) => ({
     ...v,
+    listing: rows[i].listing,
+    marketCount: rows[i].markets,
+    totalVolumeMicro: BigInt(rows[i].volume),
+    totalOrderCount: rows[i].count,
     lastTradeAt: rows[i].lastTradeAt ? new Date(rows[i].lastTradeAt!) : null,
   }));
 }
 
-/** Every `kind` with at least one visible market, most markets first. */
+/** Every `kind` with at least one visible row, most rows first. A listing counts once, by its main market. */
 export async function marketKinds(database: Database = getDb()): Promise<{ kind: string; count: number }[]> {
   return database
     .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
     .from(markets)
-    .where(ne(markets.status, 'draft'))
+    .where(and(ne(markets.status, 'draft'), isRowMarket))
     .groupBy(markets.kind)
     // Byte order, so ties sort the same whatever locale the database was created with.
     .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`);

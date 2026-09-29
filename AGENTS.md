@@ -113,6 +113,14 @@ in `../research`, which is just another API client.
 The venue never goes looking for outcomes either: settlement is an
 authenticated admin call made by `../research` when it observes a decision.
 
+**Listings are opaque subjects.** `listings` holds a title, a summary,
+names, labelled http(s) links and an opaque `kind`, all supplied whole by
+`../research` (`POST /listings`, an admin upsert by slug) and never fetched,
+checked or interpreted here. A market may belong to one (`listing_id`); its
+`listing_rank` orders them, and rank 0 is the listing's **main market**. No
+money lives on a listing, and it is written by `server/listings.ts` in its
+own transaction, never by the engine. Only the UI calls a listing a paper.
+
 ## Where the correctness lives
 
 `src/server/engine.ts` is the **only** module that writes market state.
@@ -362,6 +370,20 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   stake is read at display time, so it is empty after settlement. The table
   has foreign keys (unlike `events`) because it is written in its own tiny
   transaction, never inside a trade.
+- **The home page lists papers, not markets.** One row per listing, read
+  from its main market (status, `kind`, closing date, headline price,
+  sparkline), with volume summed and activity taken over all its markets;
+  a market with no listing is still its own row (`views.browseListings`).
+  A listing row opens `/papers/<slug>`: title, authors, links, a collapsible
+  abstract, its markets, and the selected one (`?market=`, default the main
+  market) rendered by the same `MarketLive` as `/markets/<slug>`, from the
+  same loader (`markets/[slug]/load.ts`). `/markets/<slug>` of a listed
+  market redirects there.
+- **Likelihood colours** are the `accept`, `accept-soft`, `reject`,
+  `reject-soft` and `toss-up` tokens, chosen by `lib/likelihood.ts` from a
+  binary market's first outcome (≥ 65% accept, ≤ 35% reject; the result once
+  settled; none for more outcomes). Muted on purpose: the maroon accent stays
+  the loud colour. Use the helper's class lists, not the tokens ad hoc.
 - **List sparklines come from `orders.price_after`**, which is exact for
   binary markets (the other price is the complement) and needs no replay;
   they start at the opening price (1/2). Multi-outcome markets show their

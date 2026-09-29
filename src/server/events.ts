@@ -40,7 +40,11 @@ export type EventKind =
   | 'leaderboard.read'
   | 'account.read'
   | 'comments.read'
-  | 'comment.posted';
+  | 'comment.posted'
+  | 'listing.list'
+  | 'listing.read'
+  | 'listing.created'
+  | 'listing.updated';
 
 export function log(
   kind: EventKind,

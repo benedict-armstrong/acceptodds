@@ -12,6 +12,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  jsonb,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { user } from './auth-schema';
@@ -89,6 +90,39 @@ export const accounts = pgTable(
 );
 
 /**
+ * A listing: an **opaque subject** that one or more markets are about.
+ *
+ * Supplied whole by the creating client (`../research`) and never fetched,
+ * checked or interpreted here: a title, a free-text summary, a list of names,
+ * a list of labelled links and an opaque `kind`. The venue does not know what
+ * a listing is — only the UI calls it a "paper". No money lives here.
+ *
+ * A market belongs to at most one listing (`markets.listing_id`); the market
+ * with the lowest `listing_rank` (0) is the listing's main market.
+ */
+export const listings = pgTable(
+  'listings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    authors: text('authors').array().notNull().default(sql`'{}'::text[]`),
+    /** `[{ label, url }]`, http(s) only (checked at the API). Display data, nothing more. */
+    links: jsonb('links').$type<ListingLink[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Opaque to the platform, like `markets.kind`. */
+    kind: text('kind'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('listings_slug_key').on(t.slug)],
+);
+
+export interface ListingLink {
+  label: string;
+  url: string;
+}
+
+/**
  * A market is a question, a set of outcomes, an id and a resolution rule.
  *
  * It is not a paper. There is no arXiv id, no venue client and no corpus
@@ -128,11 +162,16 @@ export const markets = pgTable(
     resolutionEvidenceUrl: text('resolution_evidence_url'),
     settledAt: timestamp('settled_at', { withTimezone: true, mode: 'date' }),
     createdBy: uuid('created_by').references(() => accounts.id),
+    /** The opaque subject this market is about, if any. Display grouping only. */
+    listingId: uuid('listing_id').references(() => listings.id),
+    /** Order within its listing; 0, the lowest, is the listing's main market. */
+    listingRank: integer('listing_rank').notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex('markets_slug_key').on(t.slug),
     index('markets_status_idx').on(t.status),
+    index('markets_listing_id_idx').on(t.listingId),
   ],
 );
 
@@ -352,6 +391,7 @@ export const comments = pgTable(
 );
 
 export type Account = typeof accounts.$inferSelect;
+export type Listing = typeof listings.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;
 export type Order = typeof orders.$inferSelect;

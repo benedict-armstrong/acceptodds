@@ -23,6 +23,15 @@
   --color-down: #b31b1b;
   --color-card: #fff;
 
+  /* Likelihood of a binary market's first ("yes"/accept) outcome: ≥65% accept,
+     ≤35% reject, else toss-up (lib/likelihood.ts). Muted, so the maroon
+     accent stays the only loud colour on the page. */
+  --color-accept: #3d7a4f;
+  --color-accept-soft: #eaf2e8;
+  --color-reject: #a24a3f;
+  --color-reject-soft: #f6e9e5;
+  --color-toss-up: #b8ab8c;
+
   --font-serif: Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-sans: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;

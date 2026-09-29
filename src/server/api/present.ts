@@ -5,7 +5,7 @@ import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
 import type { CommentView } from '../comments';
 import type { TokenRecord } from '../tokens';
-import type { MarketView, OrderRow } from '../views';
+import type { ListingView, MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
 import type * as S from './schemas';
 
@@ -41,6 +41,23 @@ export function presentMarket(v: MarketView): z.input<typeof S.Market> {
     resolvedOutcomeId: m.resolvedOutcomeId,
     resolutionEvidenceUrl: m.resolutionEvidenceUrl,
     settledAt: toIsoOrNull(m.settledAt),
+    listingId: m.listingId,
+    listingRank: m.listingRank,
+  };
+}
+
+export function presentListing(v: ListingView): z.input<typeof S.Listing> {
+  const l = v.listing;
+  return {
+    id: l.id,
+    slug: l.slug,
+    title: l.title,
+    summary: l.summary,
+    authors: l.authors,
+    links: l.links.map((k) => ({ label: k.label, url: k.url })),
+    kind: l.kind,
+    createdAt: toIso(l.createdAt),
+    markets: v.markets.map(presentMarket),
   };
 }
 

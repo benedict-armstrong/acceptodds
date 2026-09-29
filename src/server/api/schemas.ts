@@ -120,6 +120,10 @@ export const Market = z
     resolvedOutcomeId: Id.nullable(),
     resolutionEvidenceUrl: z.string().nullable(),
     settledAt: Timestamp.nullable(),
+    listingId: Id.nullable().meta({ description: 'The listing this market belongs to, if any.' }),
+    listingRank: z.number().int().meta({
+      description: 'Order within its listing. The lowest (0) is the listing’s main market.',
+    }),
   })
   .meta({ id: 'Market' });
 
@@ -133,6 +137,56 @@ export const MarketListQuery = PaginationQuery.extend({
 export const MarketList = z
   .object({ markets: z.array(Market), nextCursor: Cursor })
   .meta({ id: 'MarketList' });
+
+// ---------------------------------------------------------------------------
+// listings — opaque subjects that group markets
+// ---------------------------------------------------------------------------
+
+/** Path parameter: a listing's uuid or its slug. */
+export const ListingRef = z
+  .string()
+  .min(1)
+  .max(100)
+  .meta({ description: 'The listing’s id (uuid) or its slug.', example: 'example-listing' });
+
+export const ListingLink = z
+  .object({
+    label: z.string().min(1).max(100),
+    url: z.url({ protocol: /^https?$/ }).max(2000),
+  })
+  .meta({ id: 'ListingLink' });
+
+const ListingFields = {
+  id: Id,
+  slug: z.string(),
+  title: z.string(),
+  summary: z.string().nullable(),
+  authors: z.array(z.string()),
+  links: z.array(ListingLink),
+  kind: z.string().nullable().meta({ description: 'Opaque to the venue; whatever the creating client groups by.' }),
+  createdAt: Timestamp,
+};
+
+export const Listing = z
+  .object({
+    ...ListingFields,
+    markets: z.array(Market).meta({
+      description: 'Its markets, drafts excluded, by `listingRank` ascending: the first is the main market.',
+    }),
+  })
+  .meta({
+    id: 'Listing',
+    description:
+      'An opaque subject that markets are grouped under, supplied whole by the creating client. The venue never fetches or interprets any of it.',
+  });
+
+export const ListingListQuery = PaginationQuery.extend({
+  kind: z.string().max(100).optional().meta({ description: 'Filter by the opaque `kind` string.' }),
+});
+
+export const ListingList = z
+  .object({ listings: z.array(Listing), nextCursor: Cursor })
+  .meta({ id: 'ListingList' });
 
 export const HistoryPoint = z.object({
   at: Timestamp,
@@ -384,12 +438,14 @@ export const TokenList = z.object({ tokens: z.array(TokenInfo) }).meta({ id: 'To
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const Slug = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{0,99}$/, 'lowercase letters, digits and hyphens')
+  .refine((s) => !UUID_SHAPE.test(s), 'a slug must not look like a uuid');
+
 export const CreateMarketRequest = z
   .object({
-    slug: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9-]{0,99}$/, 'lowercase letters, digits and hyphens')
-      .refine((s) => !UUID_SHAPE.test(s), 'a slug must not look like a uuid'),
+    slug: Slug,
     question: z.string().min(1).max(500),
     description: z.string().max(10_000).nullish(),
     kind: z.string().min(1).max(100).optional().meta({ description: 'Opaque. Defaults to "binary".' }),
@@ -404,8 +460,32 @@ export const CreateMarketRequest = z
       description:
         'The expected field size. With STARTING_BALANCE_MICRO it sizes `b`, once; `b` is then frozen for the life of the market.',
     }),
+    listingSlug: Slug.optional().meta({
+      description: 'Attach the market to this listing, which must already exist (`POST /listings`).',
+    }),
+    listingRank: z.number().int().min(0).max(1000).optional().meta({
+      description: 'Order within the listing; defaults to 0, the main market.',
+    }),
   })
   .meta({ id: 'CreateMarketRequest' });
+
+export const UpsertListingRequest = z
+  .object({
+    slug: Slug,
+    title: z.string().trim().min(1).max(500),
+    summary: z.string().max(20_000).nullish(),
+    authors: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
+    links: z.array(ListingLink).max(20).optional(),
+    kind: z.string().min(1).max(100).nullish().meta({ description: 'Opaque.' }),
+  })
+  .meta({
+    id: 'UpsertListingRequest',
+    description: 'Creates the listing, or replaces every field of the one with this slug. A field left out is cleared.',
+  });
+
+export const UpsertedListing = z
+  .object({ listing: Listing, created: z.boolean() })
+  .meta({ id: 'UpsertedListing' });
 
 export const CreatedMarket = z
   .object({

@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
 import { ago, day, pct, rep, shares } from '@/lib/format';
+import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
 import { TradeBox } from './TradeBox';
@@ -31,7 +32,12 @@ export const viewerJson = (url: string) => fetch(url).then((r) => r.json());
 
 const POLL_MS = 3000;
 
-export function MarketLive({ initial }: { initial: Initial }) {
+/**
+ * A market's board, chart, trade box, tape and comments, kept live by polling.
+ * `embedded` when it sits under a listing's own title (the paper page): the
+ * question is then a sub-heading rather than the page title.
+ */
+export function MarketLive({ initial, embedded = false }: { initial: Initial; embedded?: boolean }) {
   const id = initial.market.id;
   const { data: market = initial.market, mutate: refreshMarket } = useSWR<Market>(`/api/v1/markets/${id}`, publicJson, {
     fallbackData: initial.market,
@@ -64,6 +70,7 @@ export function MarketLive({ initial }: { initial: Initial }) {
   const holdings = (portfolio?.holdings ?? []).filter((h) => h.marketId === id);
   const tradable = market.status === 'open' && new Date(market.closesAt).getTime() > Date.now();
   const sorted = market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
+  const lead = likelihoodClass(marketLikelihood(market)).text;
 
   const onFilled = () => {
     void refreshMarket();
@@ -76,12 +83,16 @@ export function MarketLive({ initial }: { initial: Initial }) {
       <div className="mt-4.5 text-center font-mono text-[13px] text-muted">
         {market.kind} · {statusLine(market)}
       </div>
-      <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">{market.question}</h1>
+      {embedded ? (
+        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal">{market.question}</h2>
+      ) : (
+        <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">{market.question}</h1>
+      )}
       {market.description && <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>}
 
       <div className="my-4.5 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">
         {sorted.map((o, i) => (
-          <span key={o.id} className={i === 0 ? '' : 'text-muted'}>
+          <span key={o.id} className={i === 0 ? lead : 'text-muted'}>
             <b>{pct(o.price)}</b> {o.label}
             {market.resolvedOutcomeId === o.id && ' ✓'}
           </span>

@@ -141,6 +141,10 @@ export interface CreateMarketInput {
   expectedTraders: number;
   /** `open` unless you want to stage it. */
   status?: 'draft' | 'open';
+  /** The opaque listing this market belongs to, if any. Display grouping only. */
+  listingId?: string | null;
+  /** Order within the listing; 0 is its main market. */
+  listingRank?: number;
 }
 
 export async function createMarket(
@@ -213,6 +217,8 @@ export async function createMarket(
         closesAt: input.closesAt,
         resolutionSource: input.resolutionSource ?? null,
         createdBy: input.createdBy ?? null,
+        listingId: input.listingId ?? null,
+        listingRank: input.listingRank ?? 0,
       })
       .returning();
 
