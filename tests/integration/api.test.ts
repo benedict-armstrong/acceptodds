@@ -10,6 +10,7 @@ import { liquidityFor } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
 import { reconcileBalances } from '@/server/accounts';
 import { createMarket } from '@/server/engine';
+import { upsertListing } from '@/server/listings';
 import { revokeToken } from '@/server/tokens';
 import { api, ROUTE_PATTERNS, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
@@ -573,11 +574,41 @@ describe('portfolio (§1.1)', () => {
 
     // Mid-market net worth is present only labelled, next to a caveat, and
     // nowhere at the top level where it could be read as a score.
-    expect(Object.keys(res.body).sort()).toEqual(['accountId', 'balanceMicro', 'holdings', 'unsettledValuation']);
+    expect(Object.keys(res.body).sort()).toEqual(['accountId', 'balanceMicro', 'holdings', 'summary', 'unsettledValuation']);
     expect(res.body.unsettledValuation.caveat).toMatch(/not a score/i);
     expect(BigInt(res.body.unsettledValuation.liquidationValueMicro)).toBeLessThan(
       BigInt(res.body.unsettledValuation.midMarketNetWorthMicro),
     );
+  });
+
+  it('summarises cash, liquidation net worth and P&L, with no gain from the trader’s own impact', async () => {
+    const t = await trader('summed');
+    await buy(t.token, fx.outcomeIds[0], 200_000_000n);
+    const res = await api('GET', '/me/portfolio', { token: t.token });
+    expect(res.status).toBe(200);
+    const s = res.body.summary;
+    const [h] = res.body.holdings;
+    expect(h.listingSlug).toBeNull();
+    expect(s.cashMicro).toBe(res.body.balanceMicro);
+    expect(s.holdingsValueMicro).toBe(h.quotedExitMicro);
+    expect(s.netWorthMicro).toBe(res.body.unsettledValuation.liquidationValueMicro);
+    expect(BigInt(s.netWorthMicro)).toBe(BigInt(s.cashMicro) + BigInt(s.holdingsValueMicro));
+    // The buy moved the price; marking it would show a profit. Liquidation does not.
+    expect(BigInt(res.body.unsettledValuation.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);
+    expect(BigInt(s.netWorthMicro)).toBeLessThanOrEqual(STARTING_MICRO);
+    // Nothing settled: all of the change is unrealized.
+    expect(s.realizedPnlMicro).toBe('0');
+    expect(BigInt(s.unrealizedPnlMicro)).toBe(BigInt(s.netWorthMicro) - STARTING_MICRO);
+    expect(BigInt(s.unrealizedPnlMicro)).toBeLessThanOrEqual(0n);
+  });
+
+  it('links a holding to its listing when the market has one', async () => {
+    const { listing } = await upsertListing({ slug: 'some-paper', title: 'Some paper' });
+    await db.update(markets).set({ listingId: listing.id }).where(eq(markets.id, fx.marketId));
+    const t = await trader('listed');
+    await buy(t.token, fx.outcomeIds[1], 5_000_000n);
+    const res = await api('GET', '/me/portfolio', { token: t.token });
+    expect(res.body.holdings[0]).toMatchObject({ marketSlug: 'concurrency', listingSlug: 'some-paper' });
   });
 
   it('/me/orders lists own fills only, with the idempotency key', async () => {
@@ -673,6 +704,76 @@ describe('leaderboard (§1.2)', () => {
     const p2 = await api('GET', `/leaderboard?limit=1&cursor=${p1.body.nextCursor}`);
     expect([p1.body.entries[0].handle, p2.body.entries[0].handle]).toEqual(['winner', 'loser']);
     expect(p2.body.nextCursor).toBeNull();
+  });
+
+  it('basis=net_worth ranks every trader on liquidation value, which own price impact cannot inflate', async () => {
+    const pumper = await trader('pumper');
+    const idle = await trader('idle', ['read'], { isBot: true });
+    await buy(pumper.token, fx.outcomeIds[0], 400_000_000n);
+
+    const res = await api('GET', '/leaderboard?basis=net_worth');
+    expect(res.status).toBe(200);
+    expect(res.body.basis).toBe('net_worth');
+    const byHandle = Object.fromEntries(res.body.entries.map((e: any) => [e.handle, e]));
+    // Everyone who is not the house, settled markets or not.
+    expect(Object.keys(byHandle).sort()).toEqual(['idle', 'pumper']);
+    expect(byHandle.idle).toMatchObject({ netWorthMicro: STARTING_MICRO.toString(), unrealizedPnlMicro: '0', settledPnlMicro: '0', rank: 1 });
+    // The pumper's mark says profit; the leaderboard does not.
+    const pf = await api('GET', '/me/portfolio', { token: pumper.token });
+    expect(BigInt(pf.body.unsettledValuation.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);
+    expect(BigInt(byHandle.pumper.netWorthMicro)).toBeLessThanOrEqual(STARTING_MICRO);
+    expect(byHandle.pumper.netWorthMicro).toBe(pf.body.summary.netWorthMicro);
+    expect(byHandle.pumper.unrealizedPnlMicro).toBe(pf.body.summary.unrealizedPnlMicro);
+    expect(res.body.entries.map((e: any) => e.handle)).toEqual(['idle', 'pumper']);
+    expect(idle.id).toBeTruthy();
+
+    // The default basis is still settled P&L, for bots written against it.
+    const dflt = await api('GET', '/leaderboard');
+    expect(dflt.body.basis).toBe('settled_pnl');
+    expect(dflt.body.entries).toEqual([]);
+    expect((await api('GET', '/leaderboard?basis=mark')).status).toBe(400);
+  });
+
+  it('basis=net_worth carries realized P&L after settlement and pages with its own cursor', async () => {
+    const admin = await trader('settler2', ['admin']);
+    const winner = await trader('winner');
+    const loser = await trader('loser');
+    await trader('bystander');
+    await buy(winner.token, fx.outcomeIds[0], 20_000_000n);
+    await buy(loser.token, fx.outcomeIds[1], 20_000_000n);
+    await api('POST', `/markets/${fx.marketId}/settle`, {
+      token: admin.token,
+      body: { winningOutcomeId: fx.outcomeIds[0], evidenceUrl: 'https://example.org/decision' },
+    });
+
+    const res = await api('GET', '/leaderboard?basis=net_worth');
+    const handles = res.body.entries.map((e: any) => e.handle);
+    expect(handles[0]).toBe('winner');
+    expect(handles[handles.length - 1]).toBe('loser');
+    const settledBoard = await api('GET', '/leaderboard');
+    for (const e of settledBoard.body.entries) {
+      const same = res.body.entries.find((x: any) => x.handle === e.handle);
+      expect(same.settledPnlMicro).toBe(e.settledPnlMicro);
+      expect(same.netWorthMicro).toBe(e.netWorthMicro);
+      // Settled: nothing left open, so net worth is starting balance + realized.
+      expect(BigInt(same.netWorthMicro)).toBe(STARTING_MICRO + BigInt(same.settledPnlMicro));
+      expect(same.unrealizedPnlMicro).toBe('0');
+    }
+
+    // Keyset pages walk the same order, with no repeats.
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: any = await api('GET', `/leaderboard?basis=net_worth&limit=2${cursor ? `&cursor=${cursor}` : ''}`);
+      expect(page.status).toBe(200);
+      seen.push(...page.body.entries.map((e: any) => e.handle));
+      cursor = page.body.nextCursor;
+    } while (cursor);
+    expect(seen).toEqual(handles);
+
+    // A cursor belongs to its basis.
+    const p1 = await api('GET', '/leaderboard?basis=net_worth&limit=1');
+    expect((await api('GET', `/leaderboard?cursor=${p1.body.nextCursor}`)).status).toBe(400);
   });
 
   it('public profiles show the settled record and no balance', async () => {

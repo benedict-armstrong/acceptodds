@@ -11,7 +11,7 @@ import { browseListings, MARKET_SORTS, marketKinds, sparklines, type BrowseRow, 
 export const dynamic = 'force-dynamic';
 
 /** The selected filter link. */
-const ON = 'font-semibold text-ink';
+const ON = ui.on;
 
 const STATUSES = ['open', 'closed', 'settled', 'all'] as const;
 type Status = (typeof STATUSES)[number];

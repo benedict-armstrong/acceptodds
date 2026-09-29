@@ -128,21 +128,23 @@ export const getListing = route(async (req, params) => {
 
 export const getLeaderboard = route(async (req) => {
   const principal = await authenticate(req);
-  const q = parseQuery(req, S.PaginationQuery);
+  const q = parseQuery(req, S.LeaderboardQuery);
   const { rows, nextCursor } = await leaderboardView(q);
   events.log('leaderboard.read', { accountId: accountIdOf(principal) });
   return respond(
     S.Leaderboard,
     {
-      basis: 'settled_pnl',
+      basis: q.basis,
       entries: rows.map((r) => ({
         rank: r.rank,
         handle: r.handle,
         displayName: r.displayName,
         isBot: r.isBot,
         institutionName: r.institutionName,
-        settledPnlMicro: r.pnlMicro.toString(),
-        settledMarkets: r.markets,
+        settledPnlMicro: r.settledPnlMicro.toString(),
+        settledMarkets: r.settledMarkets,
+        netWorthMicro: r.netWorthMicro.toString(),
+        unrealizedPnlMicro: r.unrealizedPnlMicro.toString(),
       })),
       nextCursor,
     },

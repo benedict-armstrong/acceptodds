@@ -196,10 +196,10 @@ export function requireTradingEligibility(principal: Principal): void {
  */
 export async function viewerFromHeaders(
   headers: Headers,
-): Promise<{ account: Account; isAdmin: boolean } | null> {
+): Promise<{ account: Account; isAdmin: boolean; email: string } | null> {
   if (!headers.get('cookie')) return null;
   const session = await getAuth().api.getSession({ headers });
   if (!session || !session.user.emailVerified) return null;
   const account = await ensureAccountForUser(session.user);
-  return { account, isAdmin: isAdminEmail(session.user.email) };
+  return { account, isAdmin: isAdminEmail(session.user.email), email: session.user.email };
 }

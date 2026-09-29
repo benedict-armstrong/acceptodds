@@ -295,22 +295,41 @@ export const SettledRecord = z
 
 export const LeaderboardEntry = z
   .object({
-    rank: z.number().int().min(1),
+    rank: z.number().int().min(1).meta({ description: 'Ties share a rank.' }),
     handle: z.string(),
     displayName: z.string(),
     isBot: z.boolean(),
     institutionName: z.string().nullable(),
-    settledPnlMicro: Micro,
+    settledPnlMicro: Micro.meta({
+      description: 'Realized: net reputation from trading and settlement, over settled markets only.',
+    }),
     settledMarkets: z.number().int(),
+    netWorthMicro: Micro.meta({
+      description:
+        'Liquidation value: cash + what selling every open holding now would actually pay (real quotes, slippage included). Not a mark.',
+    }),
+    unrealizedPnlMicro: Micro.meta({
+      description:
+        'What selling every open holding now would pay, minus what those markets’ trades cost net of sales, over markets not yet settled.',
+    }),
   })
   .meta({ id: 'LeaderboardEntry' });
 
+export const LEADERBOARD_BASIS_DESCRIPTION =
+  '`settled_pnl` (the default): P&L over settled markets only; accounts with no settled market are not listed. ' +
+  '`net_worth`: every trader, by liquidation value — cash plus what selling every open holding now would actually pay. ' +
+  'That cannot be inflated by the trader’s own price impact, because the exit quote walks back down the curve the buy walked up. ' +
+  'Mark-based (mid-market) net worth can be, and is never a ranking basis.';
+
+export const LeaderboardBasis = z.enum(['settled_pnl', 'net_worth']).meta({ description: LEADERBOARD_BASIS_DESCRIPTION });
+
+export const LeaderboardQuery = PaginationQuery.extend({
+  basis: LeaderboardBasis.default('settled_pnl'),
+});
+
 export const Leaderboard = z
   .object({
-    basis: z.literal('settled_pnl').meta({
-      description:
-        'Ranked on P&L over settled markets only. Mid-market net worth is never a ranking basis: a trader can mark their own price impact as profit.',
-    }),
+    basis: LeaderboardBasis,
     entries: z.array(LeaderboardEntry),
     nextCursor: Cursor,
   })
@@ -353,6 +372,7 @@ export const Holding = z
   .object({
     marketId: Id,
     marketSlug: z.string(),
+    listingSlug: z.string().nullable().meta({ description: 'The slug of the market’s listing, if it has one.' }),
     question: z.string(),
     marketStatus: MarketStatus,
     outcomeId: Id,
@@ -387,8 +407,25 @@ export const Portfolio = z
       })
       .meta({
         description:
-          'Valuations of open positions. Neither is a score, and the leaderboard ranks on neither.',
+          'Valuations of open positions. The mid-market one is not a score; the liquidation value is `summary.netWorthMicro`.',
       }),
+    summary: z
+      .object({
+        cashMicro: Micro.meta({ description: 'Your balance.' }),
+        holdingsValueMicro: Micro.meta({ description: 'Σ quotedExitMicro over your holdings.' }),
+        netWorthMicro: Micro.meta({
+          description:
+            'cash + holdings value: liquidation value, what you would hold if you sold everything now. The leaderboard’s `net_worth` basis.',
+        }),
+        unrealizedPnlMicro: Micro.meta({
+          description:
+            'holdings value + the net of your trades on markets not yet settled: what liquidating now would make or lose.',
+        }),
+        realizedPnlMicro: Micro.meta({
+          description: 'Net of your trades and settlement payouts on settled markets.',
+        }),
+      })
+      .meta({ id: 'PortfolioSummary' }),
   })
   .meta({ id: 'Portfolio' });
 

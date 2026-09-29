@@ -3,11 +3,11 @@
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 
-export function SignOut() {
+export function SignOut({ className = 'cursor-pointer hover:underline' }: { className?: string }) {
   const router = useRouter();
   return (
     <button
-      className="cursor-pointer hover:underline"
+      className={className}
       onClick={async () => {
         await authClient.signOut();
         router.push('/');

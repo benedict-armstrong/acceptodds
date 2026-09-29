@@ -9,6 +9,8 @@
 const label = 'font-sans text-xs font-semibold uppercase tracking-[.06em] text-muted';
 
 export const ui = {
+  /** The bare label, for a place that sets its own spacing. */
+  label,
   page: 'mx-auto max-w-[880px] px-6 pt-3 pb-15',
   groupHeading: `mt-6 mb-1 ${label}`,
   sectionHeading: `mb-2 ${label}`,
@@ -28,6 +30,13 @@ export const ui = {
   td: 'border-b border-dotted border-rule-strong py-[7px] pr-2',
   num: 'text-right font-mono text-[13px]',
   table: 'mt-3 w-full border-collapse',
+  /** The selected link in a row of filter or tab links. */
+  on: 'font-semibold text-ink',
+  /** A P&L's colour: profit green, loss red, zero plain ink. */
+  pnl: (micro: string | bigint) => {
+    const v = typeof micro === 'bigint' ? micro : BigInt(micro);
+    return v > 0n ? 'text-up' : v < 0n ? 'text-down' : 'text-ink';
+  },
   note: (ok: boolean) => `mt-2 text-[13px] ${ok ? 'text-up' : 'text-down'}`,
   btn: ({ ghost = false, inline = false } = {}) =>
     `mt-2 block cursor-pointer text-center font-sans text-sm leading-[normal] font-semibold hover:no-underline disabled:cursor-default disabled:opacity-50 ${

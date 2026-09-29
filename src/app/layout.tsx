@@ -2,10 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { LogoMark } from '@/components/Logo';
-import { SignOut } from '@/components/SignOut';
 import { ui } from '@/components/ui';
 import { rep } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
+import { valuation } from '@/server/valuation';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,6 +15,8 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const viewer = await viewerFromHeaders(await headers());
+  // Liquidation value, not a mark (§1.1, §1.2): what the viewer would hold if they sold everything now.
+  const worth = viewer ? await valuation(viewer.account.id) : null;
   return (
     <html lang="en">
       <body>
@@ -31,10 +33,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             {viewer ? (
               <>
                 <Link href="/portfolio">portfolio</Link>
-                <span className={ui.mono} title="your balance">
-                  {rep(viewer.account.balanceMicro)} rep
+                <span
+                  className={ui.mono}
+                  title={`net worth if you sold everything now (cash ${rep(worth?.cashMicro ?? viewer.account.balanceMicro)} rep)`}
+                >
+                  {rep(worth?.netWorthMicro ?? viewer.account.balanceMicro)} rep
                 </span>
-                <SignOut />
+                <Link href="/profile">profile</Link>
               </>
             ) : (
               <>

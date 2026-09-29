@@ -44,6 +44,12 @@ losing positions. This actually happened: a net worth of 1351 from a starting
 and meaningless before it. Label it as such in the API, and never rank a
 leaderboard on it for an open market.
 
+This is about the **mark**. Net worth at **liquidation value** — cash plus a
+real sell-everything quote per holding (`server/valuation.ts`) — is not
+self-markable: the exit walks back down the curve the buy walked up, and
+rounds in the house's favour, so a trader alone in a market can never show a
+gain from their own impact. That one may be shown and ranked on.
+
 ### 3. `b` is derived at market creation, then frozen
 
 `b` is sized from the expected field and the starting balance by
@@ -238,10 +244,17 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Client IP is read only by `clientIp()`** in `server/api/http.ts`, from
   `Cf-Connecting-Ip`. An ESLint rule rejects the header names anywhere else.
   Nothing is keyed on it yet.
-- **The leaderboard is `trade` + `settlement` ledger rows on settled markets.**
-  Exact, and immune to self-marking, because a settled market has nothing left
-  to mark. House accounts (treasury and makers) are excluded, as they are from
-  public profiles.
+- **The leaderboard has two bases, `?basis=settled_pnl|net_worth`.**
+  `settled_pnl` (the API default, so existing bots see no change) is `trade` +
+  `settlement` ledger rows on settled markets: exact, and immune to
+  self-marking because a settled market has nothing left to mark.
+  `net_worth` (the UI default) ranks every non-house trader on liquidation
+  value (§1.2's note), valued in one batch by `valuation.valuations()` with
+  the engine's own maths and rounding, then sorted and cursor-sliced in JS —
+  fine for the field size; snapshot it if that changes. Every entry carries
+  both, plus unrealized P&L (holdings' exit value + `trade` rows on
+  unsettled markets). Mark-based net worth is never ranked. House accounts
+  (treasury and makers) are excluded, as they are from public profiles.
 - **Price history is replayed from the fills,** not sampled: `orders` stores
   only the traded outcome's price, and LMSR prices are a function of the share
   vector, which is the running sum of order shares.
@@ -358,6 +371,12 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   fresh `Idempotency-Key` per order (kept across a network-error retry of the
   same order, replaced when the order changes). So the charged cost is the
   displayed cost or better, or the order is refused — checked end to end.
+  The Buy/Sell toggle and sell buttons show only while the viewer holds
+  shares in that market; at zero the widget falls back to buy.
+- **The navbar shows net worth at liquidation value**, not cash (cash is in
+  its title), and a `profile` link. `/profile` has the account details, the
+  same cash / net worth / unrealized / realized row as `/portfolio`, and
+  sign-out at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
 - **"Venue" is the market's `kind`.** The home page filters on it and opens
   on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
   The platform still knows nothing about venues: it is a string the creating

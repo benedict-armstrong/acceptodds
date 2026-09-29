@@ -22,6 +22,12 @@ export function rep(micro: string | bigint, decimals = 2): string {
   return `${neg ? '−' : ''}${whole}${decimals > 0 ? '.' + frac : ''}`;
 }
 
+/** A P&L: "+12.30", "−3.00", "0.00". */
+export function signedRep(micro: string | bigint, decimals = 2): string {
+  const v = typeof micro === 'bigint' ? micro : BigInt(micro);
+  return `${v > 0n ? '+' : ''}${rep(v, decimals)}`;
+}
+
 /** Share counts: "40000000" -> "40", "12500000" -> "12.5". */
 export function shares(micro: string | bigint): string {
   const v = typeof micro === 'bigint' ? micro : BigInt(micro);

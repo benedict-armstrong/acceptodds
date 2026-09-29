@@ -2,13 +2,14 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import * as schema from '@/db/schema';
-import { accounts, ledgerEntries, markets, outcomes, positions } from '@/db/schema';
+import { accounts, ledgerEntries, listings, markets, outcomes, positions } from '@/db/schema';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { creditAccount, HOUSE_HANDLE, quote } from './engine';
 import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
 import { institutionForEmail } from './institution-domains';
+import { tradeFlows } from './valuation';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -91,6 +92,8 @@ export async function getAccountByHandle(
 export interface Holding {
   marketId: string;
   marketSlug: string;
+  /** The market's listing ("paper"), if it has one: the UI links there. */
+  listingSlug: string | null;
   question: string;
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
@@ -128,8 +131,26 @@ export interface Portfolio {
    * UI can show it *labelled*, not so that anything can score on it.
    */
   markedNetWorthMicro: bigint;
-  /** `balance + Σ quoted exit`. The honest one, and still not a score. */
+  /**
+   * `balance + Σ quoted exit`. The honest one: a trader cannot mark their own
+   * price impact into it, because the quote walks back down the same curve.
+   * This is the net worth the navbar and the leaderboard show.
+   */
   liquidationValueMicro: bigint;
+  summary: PortfolioSummary;
+}
+
+/** The numbers above the holdings table. Same definitions as `valuation.ts`. */
+export interface PortfolioSummary {
+  cashMicro: bigint;
+  /** Σ quoted exit. */
+  holdingsValueMicro: bigint;
+  /** `cash + holdings value` = `liquidationValueMicro`. */
+  netWorthMicro: bigint;
+  /** `holdings value + Σ trade ledger rows on markets not yet settled`. */
+  unrealizedPnlMicro: bigint;
+  /** Σ `trade` + `settlement` ledger rows on settled markets. */
+  realizedPnlMicro: bigint;
 }
 
 export async function getPortfolio(
@@ -144,10 +165,12 @@ export async function getPortfolio(
       position: positions,
       outcome: outcomes,
       market: markets,
+      listingSlug: listings.slug,
     })
     .from(positions)
     .innerJoin(outcomes, eq(positions.outcomeId, outcomes.id))
     .innerJoin(markets, eq(outcomes.marketId, markets.id))
+    .leftJoin(listings, eq(listings.id, markets.listingId))
     .where(and(eq(positions.accountId, accountId), ne(positions.sharesMicro, 0n)))
     .orderBy(asc(markets.slug), asc(outcomes.ordinal));
 
@@ -171,6 +194,7 @@ export async function getPortfolio(
     holdings.push({
       marketId: row.market.id,
       marketSlug: row.market.slug,
+      listingSlug: row.listingSlug,
       question: row.market.question,
       marketStatus: row.market.status,
       outcomeId: row.outcome.id,
@@ -189,12 +213,21 @@ export async function getPortfolio(
     liquid += h.quotedExitMicro;
   }
 
+  const flows = (await tradeFlows([accountId], database)).get(accountId);
+  const holdingsValue = liquid - account.balanceMicro;
   return {
     accountId,
     balanceMicro: account.balanceMicro,
     holdings,
     markedNetWorthMicro: mark,
     liquidationValueMicro: liquid,
+    summary: {
+      cashMicro: account.balanceMicro,
+      holdingsValueMicro: holdingsValue,
+      netWorthMicro: liquid,
+      unrealizedPnlMicro: holdingsValue + (flows?.openTradeMicro ?? 0n),
+      realizedPnlMicro: flows?.realizedMicro ?? 0n,
+    },
   };
 }
 

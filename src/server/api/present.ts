@@ -125,7 +125,8 @@ export function presentMe(p: Principal): z.input<typeof S.Me> {
 export const NET_WORTH_CAVEAT =
   'Mid-market net worth marks open positions at the current price, which includes your own price impact: ' +
   'a trader can show a profit while holding only losing positions. It is correct at settlement and ' +
-  'meaningless before it. It is not a score and nothing is ranked on it; the leaderboard uses settled P&L only.';
+  'meaningless before it. It is not a score and nothing is ranked on it: the leaderboard ranks on settled P&L, ' +
+  'or on liquidation value (`summary.netWorthMicro`), which prices every holding at a real exit quote.';
 
 export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio> {
   return {
@@ -134,6 +135,7 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
     holdings: p.holdings.map((h) => ({
       marketId: h.marketId,
       marketSlug: h.marketSlug,
+      listingSlug: h.listingSlug,
       question: h.question,
       marketStatus: h.marketStatus,
       outcomeId: h.outcomeId,
@@ -147,6 +149,13 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       midMarketNetWorthMicro: p.markedNetWorthMicro.toString(),
       liquidationValueMicro: p.liquidationValueMicro.toString(),
       caveat: NET_WORTH_CAVEAT,
+    },
+    summary: {
+      cashMicro: p.summary.cashMicro.toString(),
+      holdingsValueMicro: p.summary.holdingsValueMicro.toString(),
+      netWorthMicro: p.summary.netWorthMicro.toString(),
+      unrealizedPnlMicro: p.summary.unrealizedPnlMicro.toString(),
+      realizedPnlMicro: p.summary.realizedPnlMicro.toString(),
     },
   };
 }

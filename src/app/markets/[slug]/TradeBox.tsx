@@ -31,6 +31,8 @@ function segment(on: boolean): string {
 
 /**
  * Buy or sell — one widget, because selling is a trade with negative shares.
+ * The Buy/Sell toggle and the per-holding sell buttons appear only when the
+ * viewer holds shares in this market.
  *
  * What it shows is what the engine charges: the quote prices the **whole**
  * order, and the order is sent with that quote as `maxCostMicro`, so it fills
@@ -48,7 +50,14 @@ export function TradeBox({
   onFilled: () => void;
 }) {
   const router = useRouter();
-  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [chosenSide, setSide] = useState<'buy' | 'sell'>('buy');
+  // Selling is offered only to a viewer who holds something here. When the
+  // stake goes to zero (sold out, or settled), the widget falls back to buy.
+  const canSell = holdings.length > 0;
+  const side = canSell ? chosenSide : 'buy';
+  useEffect(() => {
+    if (!canSell) setSide('buy');
+  }, [canSell]);
   const [idx, setIdx] = useState(0);
   const [amount, setAmount] = useState('10');
   const [quote, setQuote] = useState<{ key: string; q: Quote } | null>(null);
@@ -133,14 +142,16 @@ export function TradeBox({
 
   return (
     <div className={ui.box}>
-      <div className="mb-2 flex gap-1.5">
-        <button className={segment(side === 'buy')} onClick={() => setSide('buy')}>
-          Buy
-        </button>
-        <button className={segment(side === 'sell')} onClick={() => setSide('sell')}>
-          Sell
-        </button>
-      </div>
+      {canSell && (
+        <div className="mb-2 flex gap-1.5">
+          <button className={segment(side === 'buy')} onClick={() => setSide('buy')}>
+            Buy
+          </button>
+          <button className={segment(side === 'sell')} onClick={() => setSide('sell')}>
+            Sell
+          </button>
+        </div>
+      )}
       <div className="mb-2 flex gap-1.5">
         {market.outcomes.map((o, i) => (
           <button key={o.id} className={segment(i === idx)} onClick={() => setIdx(i)}>

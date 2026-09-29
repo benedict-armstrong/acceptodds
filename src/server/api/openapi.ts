@@ -184,9 +184,8 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',
-      description:
-        'Ranked on P&L over settled markets only. Never on mid-market net worth, which a trader can inflate with their own price impact.',
-      request: { query: S.PaginationQuery },
+      description: `Every entry carries settled (realized) P&L, liquidation net worth and unrealized P&L; \`basis\` picks the ranking. ${S.LEADERBOARD_BASIS_DESCRIPTION}`,
+      request: { query: S.LeaderboardQuery },
       ok: { status: 200, schema: S.Leaderboard, description: 'A page of the leaderboard.' },
     }),
   );
@@ -278,7 +277,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['me'],
       summary: 'Holdings',
       description:
-        'Each holding carries its **mark** (shares × price) and its **quoted exit value** (what selling it all now would pay) as separate fields. They differ, and only the second is a sale price.',
+        'Each holding carries its **mark** (shares × price) and its **quoted exit value** (what selling it all now would pay) as separate fields. They differ, and only the second is a sale price. `summary` gives cash, liquidation net worth, and unrealized and realized P&L.',
       scope: 'read',
       ok: { status: 200, schema: S.Portfolio, description: 'The portfolio.' },
     }),

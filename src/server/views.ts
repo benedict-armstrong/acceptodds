@@ -4,6 +4,7 @@ import { accounts, listings, markets, orders, outcomes, type Listing, type Marke
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
 import { ApiError } from './api/errors';
+import { valuations } from './valuation';
 
 /**
  * Read models for the public API. **Reads only** — nothing here writes, and
@@ -20,7 +21,7 @@ import { ApiError } from './api/errors';
 // cursors
 // ---------------------------------------------------------------------------
 
-type CursorKey = { t: string; id: string } | { p: string; id: string };
+type CursorKey = { t: string; id: string } | { p: string; id: string; k?: 'net_worth' };
 
 export function encodeCursor(key: CursorKey): string {
   return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
@@ -46,11 +47,22 @@ function decodeTimeCursor(cursor: string | undefined): { t: string; id: string }
   throw badCursor();
 }
 
-function decodePnlCursor(cursor: string | undefined): { p: string; id: string } | null {
+/** A leaderboard cursor. Net-worth cursors carry `k`, so one basis's cursor is refused by the other. */
+function decodePnlCursor(
+  cursor: string | undefined,
+  basis: 'settled_pnl' | 'net_worth',
+): { p: string; id: string } | null {
   if (cursor === undefined) return null;
   try {
     const key = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (typeof key?.p === 'string' && /^-?\d{1,20}$/.test(key.p) && typeof key?.id === 'string' && UUID.test(key.id)) {
+    const kindOk = basis === 'net_worth' ? key?.k === 'net_worth' : key?.k === undefined;
+    if (
+      kindOk &&
+      typeof key?.p === 'string' &&
+      /^-?\d{1,20}$/.test(key.p) &&
+      typeof key?.id === 'string' &&
+      UUID.test(key.id)
+    ) {
       return { p: key.p, id: key.id };
     }
   } catch {
@@ -382,7 +394,7 @@ export function accountOrders(accountId: string, q: { cursor?: string; limit: nu
 }
 
 // ---------------------------------------------------------------------------
-// settled P&L — the only thing anyone is ranked on
+// the leaderboard: settled P&L, or net worth at liquidation value
 // ---------------------------------------------------------------------------
 
 /**
@@ -407,22 +419,53 @@ const settledPnl = sql`
    group by le.account_id
 `;
 
-export interface SettledRow {
+export const LEADERBOARD_BASES = ['settled_pnl', 'net_worth'] as const;
+export type LeaderboardBasis = (typeof LEADERBOARD_BASES)[number];
+
+export interface LeaderboardRow {
   accountId: string;
   handle: string;
   displayName: string;
   isBot: boolean;
   institutionName: string | null;
-  pnlMicro: bigint;
-  markets: number;
+  /** Σ `trade` + `settlement` rows on settled markets. */
+  settledPnlMicro: bigint;
+  settledMarkets: number;
+  /** Liquidation value: cash + Σ quoted exit (`valuation.ts`), never a mark. */
+  netWorthMicro: bigint;
+  unrealizedPnlMicro: bigint;
   rank: number;
 }
 
+/**
+ * The leaderboard, on one of two bases:
+ *
+ * - `settled_pnl`: P&L over settled markets only (above). Exact; an account
+ *   with no settled market is not on it.
+ * - `net_worth`: **liquidation value** — cash plus what selling every open
+ *   holding now would actually pay (`valuation.ts`). Every non-house trader is
+ *   on it. This is not the mark-based net worth of invariant §1.2, which a
+ *   trader can inflate with their own price impact and which is still never
+ *   ranked: a quoted exit walks the price back down the curve the trader
+ *   pushed it up, so impact cannot be marked as profit.
+ *
+ * Either way house accounts are excluded, and `rank` is SQL `rank()`: ties
+ * share a rank.
+ */
 export async function leaderboard(
-  q: { cursor?: string; limit: number },
+  q: { basis?: LeaderboardBasis; cursor?: string; limit: number },
   database: Database = getDb(),
-): Promise<{ rows: SettledRow[]; nextCursor: string | null }> {
-  const after = decodePnlCursor(q.cursor);
+): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null }> {
+  return (q.basis ?? 'settled_pnl') === 'net_worth'
+    ? netWorthLeaderboard(q, database)
+    : settledLeaderboard(q, database);
+}
+
+async function settledLeaderboard(
+  q: { cursor?: string; limit: number },
+  database: Database,
+): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null }> {
+  const after = decodePnlCursor(q.cursor, 'settled_pnl');
   const result = await database.execute<{
     account_id: string;
     handle: string;
@@ -445,22 +488,91 @@ export async function leaderboard(
     limit ${q.limit + 1}
   `);
 
-  const rows: SettledRow[] = result.rows.map((r) => ({
-    accountId: r.account_id,
-    handle: r.handle,
-    displayName: r.display_name,
-    isBot: r.is_bot,
-    institutionName: r.institution_name,
-    pnlMicro: BigInt(r.pnl),
-    markets: r.markets,
-    rank: r.rank,
-  }));
-  const page = rows.slice(0, q.limit);
-  const last = page[page.length - 1];
+  const page = result.rows.slice(0, q.limit);
+  const values = await valuations(
+    page.map((r) => r.account_id),
+    database,
+  );
+  const rows: LeaderboardRow[] = page.map((r) => {
+    const v = values.get(r.account_id);
+    return {
+      accountId: r.account_id,
+      handle: r.handle,
+      displayName: r.display_name,
+      isBot: r.is_bot,
+      institutionName: r.institution_name,
+      settledPnlMicro: BigInt(r.pnl),
+      settledMarkets: r.markets,
+      netWorthMicro: v?.netWorthMicro ?? 0n,
+      unrealizedPnlMicro: v?.unrealizedPnlMicro ?? 0n,
+      rank: r.rank,
+    };
+  });
+  const last = rows[rows.length - 1];
   return {
-    rows: page,
+    rows,
     nextCursor:
-      rows.length > q.limit && last ? encodeCursor({ p: last.pnlMicro.toString(), id: last.accountId }) : null,
+      result.rows.length > q.limit && last
+        ? encodeCursor({ p: last.settledPnlMicro.toString(), id: last.accountId })
+        : null,
+  };
+}
+
+/**
+ * Valued and sorted in JS, then sliced at the cursor. Every page values the
+ * whole field — one query per table (`valuations()`), not per holding — which
+ * is fine for a field of hundreds to a few thousand traders and makes ranks
+ * exact across pages. If the field outgrows that, snapshot the valuations.
+ */
+async function netWorthLeaderboard(
+  q: { cursor?: string; limit: number },
+  database: Database,
+): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null }> {
+  const after = decodePnlCursor(q.cursor, 'net_worth');
+  const all = [...(await valuations(undefined, database)).values()].sort((x, y) =>
+    x.netWorthMicro !== y.netWorthMicro
+      ? x.netWorthMicro > y.netWorthMicro
+        ? -1
+        : 1
+      : x.accountId < y.accountId
+        ? -1
+        : x.accountId > y.accountId
+          ? 1
+          : 0,
+  );
+
+  const ranked: LeaderboardRow[] = [];
+  all.forEach((v, i) => {
+    const prev = ranked[i - 1];
+    ranked.push({
+      accountId: v.accountId,
+      handle: v.account.handle,
+      displayName: v.account.displayName,
+      isBot: v.account.isBot,
+      institutionName: v.account.institutionName,
+      settledPnlMicro: v.realizedPnlMicro,
+      settledMarkets: v.settledMarkets,
+      netWorthMicro: v.netWorthMicro,
+      unrealizedPnlMicro: v.unrealizedPnlMicro,
+      rank: prev && prev.netWorthMicro === v.netWorthMicro ? prev.rank : i + 1,
+    });
+  });
+
+  const start = after
+    ? ranked.findIndex((r) => {
+        const p = BigInt(after.p);
+        return r.netWorthMicro < p || (r.netWorthMicro === p && r.accountId > after.id);
+      })
+    : 0;
+  const rest = start < 0 ? [] : ranked.slice(start);
+  const rows = rest.slice(0, q.limit);
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    nextCursor:
+      rest.length > q.limit && last
+        ? encodeCursor({ p: last.netWorthMicro.toString(), id: last.accountId, k: 'net_worth' })
+        : null,
   };
 }
 
