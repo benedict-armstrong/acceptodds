@@ -185,7 +185,7 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',
-      description: `Every entry carries settled (realized) P&L, liquidation net worth and unrealized P&L; \`basis\` picks the ranking. ${S.LEADERBOARD_BASIS_DESCRIPTION}`,
+      description: `Every entry carries settled (realized) P&L, liquidation net worth and unrealized P&L; \`basis\` picks the ranking. ${S.LEADERBOARD_BASIS_DESCRIPTION} \`institution\` ranks one institution among itself; \`q\` finds traders by name and keeps their rank.`,
       request: { query: S.LeaderboardQuery },
       ok: { status: 200, schema: S.Leaderboard, description: 'A page of the leaderboard.' },
     }),

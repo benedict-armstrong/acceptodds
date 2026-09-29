@@ -4,6 +4,7 @@ import { accounts, listingFollows, listings, markets, orders, outcomes, type Lis
 import { headlinePrice, openingHeadline } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
+import { containsPattern, parseSearch, requiredText, websearchOf, type SearchNode } from '@/lib/query';
 import { normalizeSearch, prefixTsquery } from '@/lib/search';
 import { ApiError } from './api/errors';
 import { valuations } from './valuation';
@@ -136,6 +137,69 @@ function marketVector(alias: string): SQL {
 /** 0 for a document that does not match; `real`, never read into money. */
 function rankOf(vector: SQL, tq: SQL): SQL {
   return sql`coalesce(ts_rank_cd(${vector}, ${tq}), 0)`;
+}
+
+/**
+ * A home-page row's documents match `tq`: its listing's, its main market's
+ * (`m`), or any other visible market's in the listing. Never null, so it
+ * negates cleanly. Over `browseListings`' aliases: `m`, and `l` its listing.
+ */
+function rowMatches(tq: SQL): SQL {
+  return sql`(coalesce(${listingVector('l')} @@ ${tq}, false)
+    or ${marketVector('m')} @@ ${tq}
+    or exists (select 1 from markets s2
+                where s2.listing_id = m.listing_id and not s2.is_main and s2.status <> 'draft'
+                  and ${marketVector('s2')} @@ ${tq}))`;
+}
+
+const COMPARE_SQL = { '=': '=', '!=': '<>', '>': '>', '<': '<', '>=': '>=', '<=': '<=' } as const;
+
+/**
+ * A parsed search (`lib/query.ts`) as a predicate on a home-page row, over
+ * `browseListings`' aliases: `m` the row's main market, `l` its listing,
+ * `sec` its other visible markets' sums. Every value is a bound parameter;
+ * operators come from the fixed map above. `skip` is the required text the
+ * search join already enforces, left out here; `null` when nothing is left.
+ */
+function searchPredicate(node: SearchNode, skip: SearchNode | null): SQL | null {
+  switch (node.kind) {
+    case 'and':
+    case 'or': {
+      const parts = node.items.map((i) => searchPredicate(i, skip)).filter((p): p is SQL => p !== null);
+      if (parts.length === 0) return null;
+      return sql`(${sql.join(parts, node.kind === 'and' ? sql` and ` : sql` or `)})`;
+    }
+    case 'not': {
+      const inner = searchPredicate(node.item, null);
+      return inner === null ? null : sql`not ${inner}`;
+    }
+    case 'text':
+      if (node === skip) return null;
+      // Only exclusions: no document in the row may contain any of them.
+      return node.include.length > 0
+        ? rowMatches(tsquery(websearchOf(node)))
+        : sql`not ${rowMatches(sql`websearch_to_tsquery('english', ${node.exclude.join(' or ')})`)}`;
+    case 'match': {
+      const column = {
+        title: sql`coalesce(l.title, m.question)`,
+        author: sql`coalesce(array_to_string(l.authors, ' '), '')`,
+        venue: sql`m.kind`,
+      }[node.field];
+      return sql`${column} ${node.op === '=' ? sql`ilike` : sql`not ilike`} ${containsPattern(node.value)}`;
+    }
+    case 'status':
+      return sql`m.status ${sql.raw(COMPARE_SQL[node.op])} ${node.value}`;
+    case 'compare': {
+      const [column, value] = {
+        // Void has no headline, whatever the cache last held: it compares as unknown.
+        accept: [sql`(case when m.status = 'void' then null else m.headline end) * 100`, sql`${node.value}::float8`],
+        // `sum(bigint)` is numeric; so is the bound: no float touches money (§1.6).
+        volume: [sql`(m.volume_micro + coalesce(sec.volume_micro, 0))`, sql`${node.value}::numeric * 1000000`],
+        trades: [sql`(m.order_count + coalesce(sec.order_count, 0))`, sql`${node.value}::bigint`],
+      }[node.field];
+      return sql`coalesce(${column} ${sql.raw(COMPARE_SQL[node.op])} ${value}, false)`;
+    }
+  }
 }
 
 /**
@@ -596,6 +660,52 @@ const settledPnl = sql`
 export const LEADERBOARD_BASES = ['settled_pnl', 'net_worth'] as const;
 export type LeaderboardBasis = (typeof LEADERBOARD_BASES)[number];
 
+/** A trader as a people search finds them. */
+export interface PersonRow {
+  accountId: string;
+  handle: string;
+  displayName: string;
+  isBot: boolean;
+  institutionName: string | null;
+}
+
+/**
+ * Traders whose handle or display name matches `text`, fuzzily: a
+ * case-insensitive substring, or a word within `pg_trgm`'s word-similarity
+ * threshold (so "hintn" finds "Hinton"). Substring matches first, then by
+ * similarity, ties by handle. Both use the trigram GIN index on
+ * `handle || ' ' || display_name` (drizzle/0007). House accounts are never
+ * people. `text` is a bound parameter.
+ */
+export async function searchPeople(
+  text: string,
+  limit: number | null = 10,
+  database: Database = getDb(),
+): Promise<PersonRow[]> {
+  const doc = sql`(a.handle || ' ' || a.display_name)`;
+  const pattern = containsPattern(text);
+  const result = await database.execute<{
+    id: string;
+    handle: string;
+    display_name: string;
+    is_bot: boolean;
+    institution_name: string | null;
+  }>(sql`
+    select a.id, a.handle, a.display_name, a.is_bot, a.institution_name
+      from accounts a
+     where not a.is_house and (${doc} ilike ${pattern} or ${text}::text <% ${doc})
+     order by (${doc} ilike ${pattern}) desc, word_similarity(${text}::text, ${doc}) desc, a.handle
+     ${limit === null ? sql`` : sql`limit ${limit}`}
+  `);
+  return result.rows.map((r) => ({
+    accountId: r.id,
+    handle: r.handle,
+    displayName: r.display_name,
+    isBot: r.is_bot,
+    institutionName: r.institution_name,
+  }));
+}
+
 export interface LeaderboardRow {
   accountId: string;
   handle: string;
@@ -623,131 +733,134 @@ export interface LeaderboardRow {
  *   ranked: a quoted exit walks the price back down the curve the trader
  *   pushed it up, so impact cannot be marked as profit.
  *
- * Either way house accounts are excluded, and `rank` is SQL `rank()`: ties
- * share a rank.
+ * Either way house accounts are excluded, and ties share a rank (SQL
+ * `rank()`: 1, 2, 2, 4).
+ *
+ * `institution` narrows the field to one `institution_name` and ranks within
+ * it. `q` then keeps only the traders a people search finds
+ * (`searchPeople`), each keeping their rank in the field; `fieldSize` is the
+ * field before `q`, the denominator of a rank.
  */
 export async function leaderboard(
-  q: { basis?: LeaderboardBasis; cursor?: string; limit: number },
+  q: { basis?: LeaderboardBasis; institution?: string | null; q?: string | null; cursor?: string; limit: number },
   database: Database = getDb(),
-): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null }> {
-  return (q.basis ?? 'settled_pnl') === 'net_worth'
-    ? netWorthLeaderboard(q, database)
-    : settledLeaderboard(q, database);
-}
-
-async function settledLeaderboard(
-  q: { cursor?: string; limit: number },
-  database: Database,
-): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null }> {
-  const after = decodePnlCursor(q.cursor, 'settled_pnl');
-  const result = await database.execute<{
-    account_id: string;
-    handle: string;
-    display_name: string;
-    is_bot: boolean;
-    institution_name: string | null;
-    pnl: string;
-    markets: number;
-    rank: number;
-  }>(sql`
-    select * from (
-      select a.id as account_id, a.handle, a.display_name, a.is_bot, a.institution_name,
-             s.pnl::text as pnl, s.pnl as pnl_num, s.markets,
-             (rank() over (order by s.pnl desc))::int as rank
-        from (${settledPnl}) s
-        join accounts a on a.id = s.account_id and not a.is_house
-    ) ranked
-    ${after ? sql`where (ranked.pnl_num < ${after.p}::numeric or (ranked.pnl_num = ${after.p}::numeric and ranked.account_id > ${after.id}::uuid))` : sql``}
-    order by ranked.pnl_num desc, ranked.account_id asc
-    limit ${q.limit + 1}
-  `);
-
-  const page = result.rows.slice(0, q.limit);
-  const values = await valuations(
-    page.map((r) => r.account_id),
-    database,
-  );
-  const rows: LeaderboardRow[] = page.map((r) => {
-    const v = values.get(r.account_id);
-    return {
-      accountId: r.account_id,
-      handle: r.handle,
-      displayName: r.display_name,
-      isBot: r.is_bot,
-      institutionName: r.institution_name,
-      settledPnlMicro: BigInt(r.pnl),
-      settledMarkets: r.markets,
-      netWorthMicro: v?.netWorthMicro ?? 0n,
-      unrealizedPnlMicro: v?.unrealizedPnlMicro ?? 0n,
-      rank: r.rank,
-    };
-  });
-  const last = rows[rows.length - 1];
-  return {
-    rows,
-    nextCursor:
-      result.rows.length > q.limit && last
-        ? encodeCursor({ p: last.settledPnlMicro.toString(), id: last.accountId })
-        : null,
-  };
-}
-
-/**
- * Valued and sorted in JS, then sliced at the cursor. Every page values the
- * whole field — one query per table (`valuations()`), not per holding — which
- * is fine for a field of hundreds to a few thousand traders and makes ranks
- * exact across pages. If the field outgrows that, snapshot the valuations.
- */
-async function netWorthLeaderboard(
-  q: { cursor?: string; limit: number },
-  database: Database,
-): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null }> {
-  const after = decodePnlCursor(q.cursor, 'net_worth');
-  const all = [...(await valuations(undefined, database)).values()].sort((x, y) =>
-    x.netWorthMicro !== y.netWorthMicro
-      ? x.netWorthMicro > y.netWorthMicro
-        ? -1
-        : 1
-      : x.accountId < y.accountId
-        ? -1
-        : x.accountId > y.accountId
-          ? 1
-          : 0,
-  );
-
-  const ranked: LeaderboardRow[] = [];
-  all.forEach((v, i) => {
-    const prev = ranked[i - 1];
-    ranked.push({
-      accountId: v.accountId,
-      handle: v.account.handle,
-      displayName: v.account.displayName,
-      isBot: v.account.isBot,
-      institutionName: v.account.institutionName,
-      settledPnlMicro: v.realizedPnlMicro,
-      settledMarkets: v.settledMarkets,
-      netWorthMicro: v.netWorthMicro,
-      unrealizedPnlMicro: v.unrealizedPnlMicro,
-      rank: prev && prev.netWorthMicro === v.netWorthMicro ? prev.rank : i + 1,
-    });
-  });
+): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null; fieldSize: number }> {
+  const basis = q.basis ?? 'settled_pnl';
+  const after = decodePnlCursor(q.cursor, basis);
+  const field = await leaderboardStandings({ basis, institution: q.institution }, database);
+  const shown = await matchingTraders(field, q.q, database);
 
   const start = after
-    ? ranked.findIndex((r) => {
+    ? shown.findIndex((r) => {
         const p = BigInt(after.p);
-        return r.netWorthMicro < p || (r.netWorthMicro === p && r.accountId > after.id);
+        const s = leaderboardScore(r, basis);
+        return s < p || (s === p && r.accountId > after.id);
       })
     : 0;
-  const rest = start < 0 ? [] : ranked.slice(start);
+  const rest = start < 0 ? [] : shown.slice(start);
   const rows = rest.slice(0, q.limit);
   const last = rows[rows.length - 1];
   return {
     rows,
+    fieldSize: field.length,
     nextCursor:
       rest.length > q.limit && last
-        ? encodeCursor({ p: last.netWorthMicro.toString(), id: last.accountId, k: 'net_worth' })
+        ? encodeCursor({
+            p: leaderboardScore(last, basis).toString(),
+            id: last.accountId,
+            ...(basis === 'net_worth' ? { k: 'net_worth' as const } : {}),
+          })
         : null,
   };
+}
+
+/** What a basis ranks on. */
+export function leaderboardScore(row: LeaderboardRow, basis: LeaderboardBasis): bigint {
+  return basis === 'net_worth' ? row.netWorthMicro : row.settledPnlMicro;
+}
+
+/** `field` narrowed to the traders a people search for `q` finds, in rank order. Blank `q` is the whole field. */
+export async function matchingTraders(
+  field: LeaderboardRow[],
+  q: string | null | undefined,
+  database: Database = getDb(),
+): Promise<LeaderboardRow[]> {
+  const text = normalizeSearch(q);
+  if (text === null) return field;
+  const found = new Set((await searchPeople(text, null, database)).map((p) => p.accountId));
+  return field.filter((r) => found.has(r.accountId));
+}
+
+/**
+ * The whole ranked field, best first, ties by account id. Valued and sorted
+ * in JS: every call values the field — one query per table (`valuations()`),
+ * not per holding — which is fine for a field of hundreds to a few thousand
+ * traders and makes ranks exact however the list is sliced (pages, the UI's
+ * window around the viewer, a search). If the field outgrows that, snapshot
+ * the valuations.
+ */
+export async function leaderboardStandings(
+  q: { basis?: LeaderboardBasis; institution?: string | null },
+  database: Database = getDb(),
+): Promise<LeaderboardRow[]> {
+  const basis = q.basis ?? 'settled_pnl';
+  const institution = q.institution ?? null;
+  let rows: LeaderboardRow[];
+  if (basis === 'net_worth') {
+    rows = [...(await valuations(undefined, database)).values()]
+      .filter((v) => institution === null || v.account.institutionName === institution)
+      .map((v) => ({
+        accountId: v.accountId,
+        handle: v.account.handle,
+        displayName: v.account.displayName,
+        isBot: v.account.isBot,
+        institutionName: v.account.institutionName,
+        settledPnlMicro: v.realizedPnlMicro,
+        settledMarkets: v.settledMarkets,
+        netWorthMicro: v.netWorthMicro,
+        unrealizedPnlMicro: v.unrealizedPnlMicro,
+        rank: 0,
+      }));
+  } else {
+    // Only accounts with a settled market are on this board.
+    const result = await database.execute<{ account_id: string; pnl: string; markets: number }>(sql`
+      select s.account_id, s.pnl::text as pnl, s.markets
+        from (${settledPnl}) s
+        join accounts a on a.id = s.account_id and not a.is_house
+       ${institution === null ? sql`` : sql`where a.institution_name = ${institution}`}
+    `);
+    const values = await valuations(
+      result.rows.map((r) => r.account_id),
+      database,
+    );
+    rows = result.rows.map((r) => {
+      const v = values.get(r.account_id)!;
+      return {
+        accountId: r.account_id,
+        handle: v.account.handle,
+        displayName: v.account.displayName,
+        isBot: v.account.isBot,
+        institutionName: v.account.institutionName,
+        settledPnlMicro: BigInt(r.pnl),
+        settledMarkets: r.markets,
+        netWorthMicro: v.netWorthMicro,
+        unrealizedPnlMicro: v.unrealizedPnlMicro,
+        rank: 0,
+      };
+    });
+  }
+
+  rows.sort((x, y) => {
+    const a = leaderboardScore(x, basis);
+    const b = leaderboardScore(y, basis);
+    if (a !== b) return a > b ? -1 : 1;
+    return x.accountId < y.accountId ? -1 : x.accountId > y.accountId ? 1 : 0;
+  });
+  rows.forEach((r, i) => {
+    const prev = rows[i - 1];
+    r.rank = prev && leaderboardScore(prev, basis) === leaderboardScore(r, basis) ? prev.rank : i + 1;
+  });
+  return rows;
 }
 
 export async function publicAccount(handle: string, database: Database = getDb()) {
@@ -808,10 +921,14 @@ export interface BrowsePage {
  * moves with each fill, so a keyset cursor would be no steadier, and a page
  * number is what the list shows.
  *
- * With a non-blank `q`, only rows whose listing text or any visible market's
- * text in the row matches (see "free-text search"); the filters still apply,
- * and `relevance` orders by the best rank in the row. `relevance` without a
- * query falls back to `closing`.
+ * With a non-blank `q`, in the search syntax of `lib/query.ts`: words and
+ * phrases match a row when its listing text or any visible market's text in
+ * it does (see "free-text search"); filters compile to predicates on the row
+ * (`searchPredicate`). The page's own filters still apply. `relevance`
+ * orders by the best rank in the row of the text every match must contain
+ * (`requiredText`), which is also what the GIN-indexed join matches on; with
+ * none (only filters, or text only under `OR` or `-`) it falls back to
+ * `closing`, as it does without a query.
  */
 export async function browseListings(
   q: {
@@ -833,7 +950,10 @@ export async function browseListings(
   database: Database = getDb(),
 ): Promise<BrowsePage> {
   const text = normalizeSearch(q.q);
-  const tq = text === null ? null : tsquery(text);
+  const node = text === null ? null : parseSearch(text).node;
+  const required = requiredText(node);
+  const tq = required === null ? null : tsquery(websearchOf(required));
+  const predicate = node === null ? null : searchPredicate(node, required);
   const status = q.status ?? 'open';
   const limit = q.limit ?? 50;
   const offset = q.offset ?? 0;
@@ -855,6 +975,7 @@ export async function browseListings(
     q.heldBy ? held(q.heldBy) : undefined,
     q.exceptFollowedBy ? sql`not ${followed(q.exceptFollowedBy)}` : undefined,
     q.exceptHeldBy ? sql`not ${held(q.exceptHeldBy)}` : undefined,
+    predicate ?? undefined,
   ].filter((w): w is SQL => w !== undefined);
 
   // Search: the best rank per row, over the listing's own text and every
@@ -887,6 +1008,7 @@ export async function browseListings(
   const from = sql`
       from markets m
       ${hits}
+      ${node === null ? sql`` : sql`left join listings l on l.id = m.listing_id`}
       -- Visible markets of a listing other than its main one, summed into the
       -- row. Few listings have any, and markets_secondary_idx holds just those.
       left join (

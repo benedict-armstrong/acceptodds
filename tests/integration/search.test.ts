@@ -180,6 +180,52 @@ describe('browseListings with q', () => {
   });
 });
 
+describe('browseListings search syntax (#10)', () => {
+  it('filters on fields', async () => {
+    expect(await search('author:vaswani')).toEqual(['attention']);
+    expect(await search('a:"pieter abbeel"')).toEqual(['diffusion']);
+    expect(await search('title:diffusion')).toEqual(['diffusion']);
+    expect(await search('venue:neurips')).toEqual(['graphs']);
+    expect(await search('status:closed')).toEqual(['graphs']);
+    // An unlisted market's title is its question.
+    expect(await search('t:leaderboard')).toEqual(['unlisted-leaderboard']);
+  });
+
+  it('combines text and filters, with negation', async () => {
+    expect(await search('transformer -author:vaswani')).toEqual(['unlisted-leaderboard']);
+    expect(await search('attention venue:iclr')).toEqual(['attention', 'mixture']);
+    expect(await search('attention -title:attention')).toEqual(['mixture']);
+    expect(sorted(await search('-status:open'))).toEqual(['graphs']);
+  });
+
+  it('groups with OR and parentheses', async () => {
+    expect(sorted(await search('(venue:neurips OR author:abbeel)'))).toEqual(['diffusion', 'graphs']);
+    expect(sorted(await search('venue:iclr (vaswani OR abbeel)'))).toEqual(['attention', 'diffusion']);
+    expect(await search('-(venue:iclr OR venue:binary)')).toEqual(['graphs']);
+  });
+
+  it('excludes by text alone: no document in the row may match', async () => {
+    const all = await search(null, { sort: 'closing' });
+    const without = await search('-attention', { sort: 'closing' });
+    expect(without).toEqual(all.filter((s) => s !== 'attention' && s !== 'mixture'));
+  });
+
+  it('compares numbers: acceptance, volume, trades', async () => {
+    // Nothing has traded: every binary headline is its opening 50%.
+    const all = await search(null, { sort: 'closing' });
+    expect(await search('accept>=50', { sort: 'closing' })).toEqual(all);
+    expect(await search('accept>50%')).toEqual([]);
+    expect(await search('trades=0', { sort: 'closing' })).toEqual(all);
+    expect(await search('trades>0')).toEqual([]);
+    expect(await search('volume<0.5', { sort: 'closing' })).toEqual(all);
+  });
+
+  it('treats an unknown key as text, and a bad filter as absent', async () => {
+    expect(await search('Graph: neural')).toEqual(['graphs']);
+    expect(await search('graph accept>lots')).toEqual(['graphs']);
+  });
+});
+
 describe('GET /listings?q= and /markets?q=', () => {
   it('filters listings and markets by relevance', async () => {
     const listings = await api('GET', '/listings?q=vaswani');

@@ -3,11 +3,14 @@ import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
 import { MathText } from '@/components/MathText';
 import { OutcomeBar } from '@/components/OutcomeBar';
+import { Pager } from '@/components/Pager';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { Sparkline } from '@/components/Sparkline';
 import { ui } from '@/components/ui';
 import { pct, rep } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
+import { FIELD_HELP, parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
@@ -15,6 +18,7 @@ import {
   browseListings,
   MARKET_SORTS,
   marketKinds,
+  searchPeople,
   sparklines,
   type BrowsePage,
   type BrowseRow,
@@ -38,6 +42,8 @@ const FOLLOWING_COOKIE = 'home_following_open';
 /** Same for the "My positions" section. */
 const POSITIONS_PAGE = 10;
 const POSITIONS_COOKIE = 'home_positions_open';
+/** Traders shown above the papers when a search reads like a name. */
+const PEOPLE = 5;
 
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
 const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
@@ -83,6 +89,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   // A search keeps the venue and status filters (the form carries them) and
   // sorts by relevance unless another sort is asked for.
   const q = normalizeSearch(one(sp.q));
+  // The search syntax (`lib/query.ts`). A `venue:` or `status:` in the query
+  // says where to look, so the page's own filter of that kind steps aside.
+  const parsed = q ? parseSearch(q) : null;
+  const kindFilter = parsed?.fields.has('venue') ? null : kind;
+  const statusFilter: Status = parsed?.fields.has('status') ? 'all' : status;
   const sorts: readonly BrowseSort[] = q ? ['relevance', ...SORTS] : SORTS;
   const sort: BrowseSort = (sorts as readonly string[]).includes(one(sp.sort) ?? '')
     ? (one(sp.sort) as BrowseSort)
@@ -102,9 +113,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   // only followed papers.
   const pins = me !== null && !q && !onlyFollowed;
   const browse = { kind, status, sort };
-  const [all, followed, held] = await Promise.all([
+  // A search that is only words may be a name: traders above the papers, on
+  // the first page.
+  const who = peopleText(parsed?.node ?? null);
+  const [all, followed, held, people] = await Promise.all([
     pageOf(sp.page, PAGE, {
       ...browse,
+      kind: kindFilter,
+      status: statusFilter,
       q,
       followedBy: onlyFollowed ? me : null,
       exceptFollowedBy: pins ? me : null,
@@ -112,6 +128,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
     }),
     pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me }) : null,
     pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me, exceptFollowedBy: me }) : null,
+    who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
   ]);
   const cookieJar = await cookies();
   const followingOpen = cookieJar.get(FOLLOWING_COOKIE)?.value !== '0';
@@ -142,7 +159,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const pages = { page: String(all.page), fpage: String(followed?.page ?? 1), hpage: String(held?.page ?? 1) };
   const pageHref = (key: keyof typeof pages, anchor: string) => (p: number) =>
     `${href({ ...pages, [key]: String(p) })}${anchor}`;
-  const filtered = kind !== null || status !== 'all';
+  const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
 
   return (
@@ -157,8 +174,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           name="q"
           defaultValue={q ?? ''}
           maxLength={SEARCH_MAX_LENGTH}
-          aria-label="Search papers"
-          placeholder='Search titles, authors, abstracts — "a phrase", -without'
+          aria-label="Search papers and people"
+          placeholder='Search papers and people — "a phrase", -without, author:name, accept>=70'
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint focus:border-frame focus:outline-none"
         />
         <button
@@ -167,7 +184,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         >
           Search
         </button>
+        <SearchHelp />
       </form>
+
+      {parsed && parsed.errors.length > 0 && (
+        <div className="mt-2 font-sans text-[13px] text-down">
+          Ignored: {parsed.errors.join('; ')}
+        </div>
+      )}
 
       {q && (
         <div className="mt-2 font-sans text-[13px] text-muted">
@@ -175,13 +199,32 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           {filtered && (
             <>
               {' '}
-              in {kind ?? 'all venues'}
-              {status !== 'all' && `, ${status}`} ·{' '}
+              in {kindFilter ?? 'all venues'}
+              {statusFilter !== 'all' && `, ${statusFilter}`} ·{' '}
               <Link href={href({ kind: 'all', status: 'all' })}>search everything</Link>
             </>
           )}{' '}
           · <Link href={href({ q: '' })}>clear</Link>
         </div>
+      )}
+
+      {people.length > 0 && (
+        <section aria-label="People">
+          <h2 className={ui.groupHeading}>People</h2>
+          {people.map((p) => (
+            <Link
+              key={p.accountId}
+              href={`/leaderboard?around=${encodeURIComponent(p.handle)}#focus`}
+              className="flex items-baseline gap-2 border-b border-dotted border-rule-strong py-1.5 hover:bg-highlight hover:no-underline"
+            >
+              <span>{p.displayName}</span>
+              <span className="font-mono text-xs text-muted">@{p.handle}</span>
+              {p.isBot && <span className={ui.badge}>bot</span>}
+              <span className="flex-1" />
+              <span className="font-sans text-xs text-muted">{p.institutionName ?? ''}</span>
+            </Link>
+          ))}
+        </section>
       )}
 
       <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted">
@@ -307,41 +350,41 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   );
 }
 
-/**
- * Page links: prev, the first and last pages, a window around the current
- * one, next. Plain links, so paging works without JavaScript. Nothing for a
- * single page.
- */
-function Pager({ page, pages, href }: { page: number; pages: number; href: (p: number) => string }) {
-  if (pages <= 1) return null;
-  const shown = [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, pages])]
-    .filter((p) => p >= 1 && p <= pages)
-    .sort((a, b) => a - b);
+/** The search syntax (`lib/query.ts`), behind a `?` beside the Search button. */
+function SearchHelp() {
   return (
-    <nav aria-label="Pages" className="mt-2 flex flex-wrap justify-end gap-x-3 gap-y-1 font-sans text-[13px] text-muted">
-      {page > 1 && (
-        <Link href={href(page - 1)} rel="prev">
-          ← prev
-        </Link>
-      )}
-      {shown.map((p, i) => (
-        <span key={p} className="flex gap-3">
-          {i > 0 && p > shown[i - 1] + 1 && <span aria-hidden>…</span>}
-          {p === page ? (
-            <span aria-current="page" className={ON}>
-              {p}
-            </span>
-          ) : (
-            <Link href={href(p)}>{p}</Link>
-          )}
-        </span>
-      ))}
-      {page < pages && (
-        <Link href={href(page + 1)} rel="next">
-          next →
-        </Link>
-      )}
-    </nav>
+    <Popover>
+      <PopoverTrigger
+        type="button"
+        title="Search syntax"
+        aria-label="Search syntax"
+        className="cursor-pointer px-1 font-sans text-sm text-muted hover:text-accent"
+      >
+        ?
+      </PopoverTrigger>
+      <PopoverContent align="end" className="text-xs leading-normal text-muted">
+        <p>
+          Words search titles, authors and abstracts; the last one may be half-typed. <code>&quot;a phrase&quot;</code>{' '}
+          matches in order, <code>-word</code> excludes. Words alone also find people. Terms are ANDed; use{' '}
+          <code>OR</code> and <code>( )</code> to group, and <code>-</code> before a filter or group to negate it.
+        </p>
+        <table className="mt-1.5">
+          <tbody>
+            {FIELD_HELP.map((f) => (
+              <tr key={f.field}>
+                <td className="pr-3 font-mono text-ink">{f.example}</td>
+                <td className="pr-3">{f.means}</td>
+                <td className="text-faint">{f.aliases.map((a) => `${a}:`).join(' ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-1.5">
+          Numbers take <code>: = != &gt; &lt; &gt;= &lt;=</code>; text filters take <code>:</code> and <code>!=</code>. Quote a
+          value with spaces. For example: <code>(venue:iclr OR venue:neurips) diffusion accept&gt;=60 -status:settled</code>
+        </p>
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -379,11 +379,27 @@ export const LeaderboardBasis = z.enum(['settled_pnl', 'net_worth']).meta({ desc
 
 export const LeaderboardQuery = PaginationQuery.extend({
   basis: LeaderboardBasis.default('settled_pnl'),
+  institution: z.string().max(200).optional().meta({
+    description: 'Only traders at this institution (exactly its `institutionName`), ranked among themselves.',
+    example: 'ETH Zurich',
+  }),
+  q: z
+    .string()
+    .max(SEARCH_MAX_LENGTH)
+    .optional()
+    .meta({
+      description:
+        'Only traders whose handle or display name matches, fuzzily: a case-insensitive substring, or a word close to one (trigram similarity). Each keeps their rank on the board. Blank is ignored.',
+      example: 'hinton',
+    }),
 });
 
 export const Leaderboard = z
   .object({
     basis: LeaderboardBasis,
+    fieldSize: z.number().int().min(0).meta({
+      description: 'Traders on this board, after `institution` and before `q`: what a rank is out of.',
+    }),
     entries: z.array(LeaderboardEntry),
     nextCursor: Cursor,
   })

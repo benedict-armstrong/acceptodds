@@ -134,12 +134,13 @@ export const getListing = route(async (req, params) => {
 export const getLeaderboard = route(async (req) => {
   const principal = await authenticate(req);
   const q = parseQuery(req, S.LeaderboardQuery);
-  const { rows, nextCursor } = await leaderboardView(q);
+  const { rows, nextCursor, fieldSize } = await leaderboardView(q);
   events.log('leaderboard.read', { accountId: accountIdOf(principal) });
   return respond(
     S.Leaderboard,
     {
       basis: q.basis,
+      fieldSize,
       entries: rows.map((r) => ({
         rank: r.rank,
         handle: r.handle,

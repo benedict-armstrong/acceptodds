@@ -250,7 +250,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   self-marking because a settled market has nothing left to mark.
   `net_worth` (the UI default) ranks every non-house trader on liquidation
   value (§1.2's note), valued in one batch by `valuation.valuations()` with
-  the engine's own maths and rounding, then sorted and cursor-sliced in JS —
+  the engine's own maths and rounding. Both bases build the whole ranked
+  field (`views.leaderboardStandings`), then sort and cursor-slice it in JS —
   fine for the field size; snapshot it if that changes. Every entry carries
   both, plus unrealized P&L (holdings' exit value + `trade` rows on
   unsettled markets). Mark-based net worth is never ranked. House accounts
@@ -611,3 +612,44 @@ unpaginated, and 5 s for that search.
   markets traded by seed bots, and three settled ones. It back-dates their
   fills so charts have a history — the only place anything but the engine
   touches `orders`, and only timestamps. Never outside a seed.
+
+### Leaderboard, people search and search syntax (#10)
+
+- **A rank is always a rank in the field.** `leaderboardStandings` ranks
+  the whole board (after `institution`, which ranks one institution among
+  itself); a name search (`?q=`) then only *filters* it, so every row keeps
+  its real rank. `fieldSize` in the API is the denominator. Institution is
+  matched exactly on `institution_name`.
+- **The page opens compact**: the top 10, a "…", the viewer (or
+  `?around=<handle>`, where people results link) with 2 either side, and a
+  pager into the whole board (`?page=`, 50 a page). `lib/leaderboard.ts`
+  merges windows that touch and never hides a single row behind "…". The
+  viewer's row is highlighted, with "ahead of N% of traders" — the share of
+  the *others* scoring strictly lower, rounded down, so ties never flatter.
+- **People search is `views.searchPeople`**: substring (ILIKE, LIKE
+  characters escaped) or `pg_trgm` word similarity (`<%`), over
+  `handle || ' ' || display_name` — written exactly that way, since the
+  trigram GIN index in `drizzle/0007` is on that expression and it is not in
+  `schema.ts`. Never house accounts. The home page shows up to 5 people
+  above the papers when the query is only positive words (`peopleText`).
+- **The home search speaks a syntax** (`lib/query.ts`, modelled on
+  vvzapi.ch): `key:value` filters (`title author venue status accept
+  volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
+  `-` on a word, filter or group, `OR` and parentheses. A key that is not a
+  field is text, so "BERT: pre-training" still searches; a bad value drops
+  the term with a visible error. Never throws. Only the home page speaks
+  it: the API's `?q=` on `/listings` and `/markets` is still plain
+  websearch.
+  - **Words in one AND merge into one websearch string**, so a stop word
+    among them is dropped rather than matching nothing, and the last word
+    stays a prefix. `-(a b)` is "not both", so a multi-word text node only
+    negates by wrapping.
+  - **The text every match needs** (`requiredText`: the root's, or a root
+    AND's) drives the GIN-indexed hits join and the relevance rank, exactly
+    as before. Text under `OR` or `-` is a per-row predicate over the
+    stored vectors (`rowMatches`), unranked; relevance then falls back to
+    closing date. Text that only excludes means *no* document in the row
+    matches.
+  - `venue:` or `status:` in a query makes the page's own filter of that
+    kind step aside. `accept` compares the headline cache ×100 (a void
+    market fails every comparison, so a negated one includes it); `volume` compares in `numeric` micro-units, never a float.
