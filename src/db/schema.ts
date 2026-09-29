@@ -22,9 +22,9 @@ import { user } from './auth-schema';
 /**
  * Every monetary column below is a `BIGINT` of micro-units read as a
  * `bigint` (invariant §1.6). There is no `numeric` and no `double precision`
- * holding money anywhere in this file. The two `double precision` columns are
- * `markets.b` (a cost-function parameter, not money) and the price snapshots
- * on `orders` (probabilities).
+ * holding money anywhere in this file. The `double precision` columns are
+ * `markets.b` (a cost-function parameter, not money) and the prices on
+ * `orders` and `markets.headline` (probabilities).
  */
 const money = (name: string) => bigint(name, { mode: 'bigint' });
 
@@ -120,10 +120,15 @@ export const listings = pgTable(
   },
   (t) => [
     uniqueIndex('listings_slug_key').on(t.slug),
-    // Full-text search (`views.ts` `searchQuery`). The function is defined in
-    // drizzle/0003_search_functions.sql; a query must call it with the same
-    // arguments for the planner to use this index.
-    index('listings_search_idx').using('gin', sql`listing_search_vector(${t.title}, ${t.authors}, ${t.summary})`),
+    // Full-text search (`views.ts`). `search_vector` is a stored generated
+    // column, `listing_search_vector(title, authors, summary)`, added by
+    // drizzle/0006 and deliberately left out of this schema, so that no row
+    // read through Drizzle carries it. It is stored rather than an expression
+    // index because ranking — and the recheck of a lossy GIN match — would
+    // otherwise rebuild the vector for every matching row: 5 s for a query
+    // matching all of 30k papers, against 0.1 s stored.
+    index('listings_search_idx').using('gin', sql`search_vector`),
+    index('listings_created_idx').on(t.createdAt, t.id),
   ],
 );
 
@@ -176,14 +181,47 @@ export const markets = pgTable(
     listingId: uuid('listing_id').references(() => listings.id),
     /** Order within its listing; 0, the lowest, is the listing's main market. */
     listingRank: integer('listing_rank').notNull().default(0),
+    /**
+     * Whether this market stands for its row in browse lists: a visible market
+     * with no listing, or its listing's **main market** — the visible market
+     * with the lowest `listing_rank`, ties by age. Never true for a draft.
+     *
+     * Written only by `engine.createMarket`, under a per-listing advisory lock.
+     * It cannot change later: a draft never becomes visible, and nothing moves
+     * a market's rank. At most one per listing (`markets_main_per_listing_key`).
+     */
+    isMain: boolean('is_main').notNull().default(false),
+    /**
+     * Caches of the fills, for sorting browse lists without reading `orders`:
+     * Σ |cost_micro|, the fill count and the latest fill's `created_at`.
+     * Written by `engine.trade` in the fill's own transaction, under the
+     * market row lock it already holds — like `accounts.balance_micro`.
+     */
+    volumeMicro: money('volume_micro').notNull().default(sql`0`),
+    orderCount: integer('order_count').notNull().default(0),
+    lastTradeAt: timestamp('last_trade_at', { withTimezone: true, mode: 'date' }),
+    /**
+     * `marketHeadline` (`lib/headline.ts`), for sorting only: the headline
+     * price of the share vector, set at creation and after every fill; 1 or 0
+     * by the result once settled. A probability, not money. Readers treat a
+     * void market as having none, whatever this last held.
+     */
+    headline: doublePrecision('headline'),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex('markets_slug_key').on(t.slug),
     index('markets_status_idx').on(t.status),
     index('markets_listing_id_idx').on(t.listingId),
-    // Full-text search; see `listings_search_idx`.
-    index('markets_search_idx').using('gin', sql`market_search_vector(${t.question}, ${t.description})`),
+    index('markets_created_idx').on(t.createdAt, t.id),
+    // Browse rows (`views.browseListings`): the main markets of a venue.
+    index('markets_main_idx').on(t.kind, t.status).where(sql`is_main`),
+    uniqueIndex('markets_main_per_listing_key').on(t.listingId).where(sql`is_main`),
+    // The other visible markets of a listing, summed into its row.
+    index('markets_secondary_idx').on(t.listingId).where(sql`not is_main and status <> 'draft'`),
+    // Full-text search; see `listings_search_idx`. `search_vector` here is
+    // `market_search_vector(question, description)`, likewise stored.
+    index('markets_search_idx').using('gin', sql`search_vector`),
   ],
 );
 

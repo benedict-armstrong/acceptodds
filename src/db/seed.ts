@@ -546,6 +546,8 @@ async function spreadOverTime(db: Database, marketId: string, rand: () => number
     .update(markets)
     .set({
       createdAt: new Date(start - DAY),
+      // The engine's cache of the latest fill, moved with the fills.
+      lastTradeAt: sql`(select max(${orders.createdAt}) from ${orders} where ${orders.marketId} = ${marketId})`,
       ...(settled ? { settledAt: new Date(now - 2 * DAY), closesAt: new Date(now - 3 * DAY) } : {}),
     })
     .where(eq(markets.id, marketId));

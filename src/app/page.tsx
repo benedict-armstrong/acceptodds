@@ -16,6 +16,7 @@ import {
   MARKET_SORTS,
   marketKinds,
   sparklines,
+  type BrowsePage,
   type BrowseRow,
   type BrowseSort,
 } from '@/server/views';
@@ -28,8 +29,8 @@ const ON = ui.on;
 const STATUSES = ['open', 'closed', 'settled', 'all'] as const;
 type Status = (typeof STATUSES)[number];
 
-/** The home page shows at most this many rows; a search says "N+" when it hits it. */
-const LIMIT = 200;
+/** Papers per page in the main list; `?page=` pages it. */
+const PAGE = 50;
 /** Followed papers per page in the "Following" section; `?fpage=` pages it. */
 const FOLLOWING_PAGE = 10;
 /** The cookie remembering whether that section was left collapsed. */
@@ -52,6 +53,24 @@ function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+/**
+ * Page `requested` (1-based) of a list, `size` rows a page. Past the end it
+ * serves the last page, so a stale link after the list shrank still shows
+ * something.
+ */
+async function pageOf(
+  requested: string | string[] | undefined,
+  size: number,
+  query: Omit<Parameters<typeof browseListings>[0], 'offset' | 'limit'>,
+): Promise<BrowsePage & { page: number; pages: number }> {
+  const page = Math.max(1, Number.parseInt(one(requested) ?? '1', 10) || 1);
+  let result = await browseListings({ ...query, offset: (page - 1) * size, limit: size });
+  const pages = Math.max(1, Math.ceil(result.total / size));
+  if (page <= pages) return { ...result, page, pages };
+  result = await browseListings({ ...query, offset: (pages - 1) * size, limit: size });
+  return { ...result, page: pages, pages };
+}
+
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const kinds = await marketKinds();
@@ -72,42 +91,36 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       : SORTS[0];
 
   // One row per listing (a paper), read from its main market; plus one per
-  // market that belongs to no listing.
+  // market that belongs to no listing. Each section is paged in the database.
   const viewer = await viewerFromHeaders(await headers());
   // ?following=1: only papers the signed-in viewer follows.
   const onlyFollowed = viewer !== null && one(sp.following) === '1';
-  const rows = await browseListings({ kind, status, sort, q, limit: LIMIT, followedBy: onlyFollowed ? viewer.account.id : null });
-  // The part of this list the viewer follows, pinned above it: same venue,
-  // status and sort, paged on its own. Not while searching, nor when the list
-  // is already only followed papers.
-  const followedAll =
-    viewer && !q && !onlyFollowed
-      ? await browseListings({ kind, status, sort, limit: LIMIT, followedBy: viewer.account.id })
-      : [];
-  const fpages = Math.max(1, Math.ceil(followedAll.length / FOLLOWING_PAGE));
-  const fpage = Math.min(fpages, Math.max(1, Number.parseInt(one(sp.fpage) ?? '1', 10) || 1));
-  const followed = followedAll.slice((fpage - 1) * FOLLOWING_PAGE, fpage * FOLLOWING_PAGE);
-  const followingOpen = (await cookies()).get(FOLLOWING_COOKIE)?.value !== '0';
-  // Papers the viewer holds shares in. One row per paper already; those also
-  // in "Following" are shown there only, so no paper is pinned twice.
-  const followedIds = new Set(followedAll.map((r) => r.market.id));
-  const heldAll =
-    viewer && !q && !onlyFollowed
-      ? (await browseListings({ kind, status, sort, limit: LIMIT, heldBy: viewer.account.id })).filter(
-          (r) => !followedIds.has(r.market.id),
-        )
-      : [];
-  // "All papers" is the rest: nothing pinned above is repeated below.
-  const pinned = new Set([...followedIds, ...heldAll.map((r) => r.market.id)]);
-  const rest = rows.filter((r) => !pinned.has(r.market.id));
-  const hpages = Math.max(1, Math.ceil(heldAll.length / POSITIONS_PAGE));
-  const hpage = Math.min(hpages, Math.max(1, Number.parseInt(one(sp.hpage) ?? '1', 10) || 1));
-  const held = heldAll.slice((hpage - 1) * POSITIONS_PAGE, hpage * POSITIONS_PAGE);
-  const positionsOpen = (await cookies()).get(POSITIONS_COOKIE)?.value !== '0';
-  const sparks = await sparklines([...rows, ...followed, ...held]);
-  events.log('market.list', { accountId: viewer?.account.id ?? null });
+  const me = viewer?.account.id ?? null;
+  // Papers the viewer follows, then papers they hold shares in, are pinned
+  // above the list: same venue, status and sort, each paged on its own, and
+  // none repeated below. Not while searching, nor when the list is already
+  // only followed papers.
+  const pins = me !== null && !q && !onlyFollowed;
+  const browse = { kind, status, sort };
+  const [all, followed, held] = await Promise.all([
+    pageOf(sp.page, PAGE, {
+      ...browse,
+      q,
+      followedBy: onlyFollowed ? me : null,
+      exceptFollowedBy: pins ? me : null,
+      exceptHeldBy: pins ? me : null,
+    }),
+    pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me }) : null,
+    pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me, exceptFollowedBy: me }) : null,
+  ]);
+  const cookieJar = await cookies();
+  const followingOpen = cookieJar.get(FOLLOWING_COOKIE)?.value !== '0';
+  const positionsOpen = cookieJar.get(POSITIONS_COOKIE)?.value !== '0';
+  const sparks = await sparklines([...all.rows, ...(followed?.rows ?? []), ...(held?.rows ?? [])]);
+  events.log('market.list', { accountId: me });
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
+  // They go back to page 1: pages are kept only by the pagers' own links.
   const href = (patch: Record<string, string>) => {
     const params = new URLSearchParams({
       kind: kind ?? 'all',
@@ -122,9 +135,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       if (params.get('sort') === 'relevance') params.delete('sort');
     }
     if (params.get('following') === '0') params.delete('following');
+    for (const key of ['page', 'fpage', 'hpage']) if (params.get(key) === '1') params.delete(key);
     return `/?${params}`;
   };
+  // A pager's link to page `p` of its section, keeping the other sections' pages.
+  const pages = { page: String(all.page), fpage: String(followed?.page ?? 1), hpage: String(held?.page ?? 1) };
+  const pageHref = (key: keyof typeof pages, anchor: string) => (p: number) =>
+    `${href({ ...pages, [key]: String(p) })}${anchor}`;
   const filtered = kind !== null || status !== 'all';
+  const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
 
   return (
     <main className={ui.page}>
@@ -152,7 +171,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
       {q && (
         <div className="mt-2 font-sans text-[13px] text-muted">
-          {rows.length === LIMIT ? `${LIMIT}+` : rows.length} {rows.length === 1 ? 'result' : 'results'} for “{q}”
+          {all.total.toLocaleString('en')} {all.total === 1 ? 'result' : 'results'} for “{q}”
           {filtered && (
             <>
               {' '}
@@ -212,7 +231,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </details>
       </div>
 
-      {rows.length === 0 &&
+      {all.total + pinnedCount === 0 &&
         (q ? (
           <div className={ui.empty}>
             No {onlyFollowed ? 'papers you follow' : 'papers'} match “{q}”.
@@ -225,7 +244,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           <div className={ui.empty}>Nothing {status === 'all' ? '' : status + ' '}here yet.</div>
         ))}
 
-      {followedAll.length > 0 && (
+      {followed && followed.total > 0 && (
         <Collapsible
           id="following"
           cookie={FOLLOWING_COOKIE}
@@ -236,26 +255,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
               <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
                 ›
               </span>
-              Following <span className="font-normal">({followedAll.length})</span>
+              Following <span className="font-normal">({followed.total})</span>
             </summary>
           }
         >
-          {followed.map((r) => (
+          {followed.rows.map((r) => (
             <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
           ))}
-          {fpages > 1 && (
-            <div className="mt-1.5 flex justify-end gap-3 font-sans text-[13px] text-muted">
-              {fpage > 1 && <Link href={`${href({ fpage: String(fpage - 1) })}#following`}>← prev</Link>}
-              <span>
-                page {fpage} of {fpages}
-              </span>
-              {fpage < fpages && <Link href={`${href({ fpage: String(fpage + 1) })}#following`}>next →</Link>}
-            </div>
-          )}
+          <Pager page={followed.page} pages={followed.pages} href={pageHref('fpage', '#following')} />
         </Collapsible>
       )}
 
-      {heldAll.length > 0 && (
+      {held && held.total > 0 && (
         <Collapsible
           id="positions"
           cookie={POSITIONS_COOKIE}
@@ -266,32 +277,71 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
               <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
                 ›
               </span>
-              My positions <span className="font-normal">({heldAll.length})</span>
+              My positions <span className="font-normal">({held.total})</span>
             </summary>
           }
         >
-          {held.map((r) => (
+          {held.rows.map((r) => (
             <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
           ))}
-          {hpages > 1 && (
-            <div className="mt-1.5 flex justify-end gap-3 font-sans text-[13px] text-muted">
-              {hpage > 1 && <Link href={`${href({ hpage: String(hpage - 1) })}#positions`}>← prev</Link>}
-              <span>
-                page {hpage} of {hpages}
-              </span>
-              {hpage < hpages && <Link href={`${href({ hpage: String(hpage + 1) })}#positions`}>next →</Link>}
-            </div>
-          )}
+          <Pager page={held.page} pages={held.pages} href={pageHref('hpage', '#positions')} />
         </Collapsible>
       )}
 
-      <section>
-        {followedAll.length > 0 || heldAll.length > 0 ? <h2 className={ui.groupHeading}>All papers</h2> : <div className="h-3.5" />}
-        {rest.map((r) => (
-          <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
-        ))}
-      </section>
+      {all.total > 0 && (
+        <section id="all">
+          {pinnedCount > 0 ? (
+            <h2 className={ui.groupHeading}>
+              All papers <span className="font-normal">({all.total.toLocaleString('en')})</span>
+            </h2>
+          ) : (
+            <div className="h-3.5" />
+          )}
+          {all.rows.map((r) => (
+            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+          ))}
+          <Pager page={all.page} pages={all.pages} href={pageHref('page', pinnedCount > 0 ? '#all' : '')} />
+        </section>
+      )}
     </main>
+  );
+}
+
+/**
+ * Page links: prev, the first and last pages, a window around the current
+ * one, next. Plain links, so paging works without JavaScript. Nothing for a
+ * single page.
+ */
+function Pager({ page, pages, href }: { page: number; pages: number; href: (p: number) => string }) {
+  if (pages <= 1) return null;
+  const shown = [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, pages])]
+    .filter((p) => p >= 1 && p <= pages)
+    .sort((a, b) => a - b);
+  return (
+    <nav aria-label="Pages" className="mt-2 flex flex-wrap justify-end gap-x-3 gap-y-1 font-sans text-[13px] text-muted">
+      {page > 1 && (
+        <Link href={href(page - 1)} rel="prev">
+          ← prev
+        </Link>
+      )}
+      {shown.map((p, i) => (
+        <span key={p} className="flex gap-3">
+          {i > 0 && p > shown[i - 1] + 1 && <span aria-hidden>…</span>}
+          {p === page ? (
+            <span aria-current="page" className={ON}>
+              {p}
+            </span>
+          ) : (
+            <Link href={href(p)}>{p}</Link>
+          )}
+        </span>
+      ))}
+      {page < pages && (
+        <Link href={href(page + 1)} rel="next">
+          next →
+        </Link>
+      )}
+    </nav>
   );
 }
 

@@ -14,6 +14,7 @@ import {
 } from '@/db/schema';
 import { lifoTrim } from '@/lib/backing';
 import { cost, costToTrade, liquidityFor, maxSubsidy, prices } from '@/lib/lmsr';
+import { headlinePrice, openingHeadline } from '@/lib/headline';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { EngineError } from './errors';
 import * as events from './events';
@@ -160,6 +161,35 @@ export async function createMarket(
   }
 
   const created = await database.transaction(async (tx) => {
+    const status = input.status ?? 'open';
+    const listingId = input.listingId ?? null;
+    const listingRank = input.listingRank ?? 0;
+
+    /**
+     * `markets.is_main`: whether this market stands for its row in browse
+     * lists. A visible market with no listing always does; in a listing, the
+     * visible market with the lowest rank, ties by age, so a newcomer takes
+     * over only with a strictly lower rank. A draft never does.
+     *
+     * Serialized per listing by an advisory lock, so two markets created at
+     * once cannot both see no main market (the unique index on
+     * `(listing_id) where is_main` would refuse the second anyway). Done
+     * before the treasury lock: demoting the old main market locks its row,
+     * and markets are always locked before accounts.
+     */
+    let isMain = status !== 'draft' && listingId === null;
+    if (status !== 'draft' && listingId !== null) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${listingId}::text, 0))`);
+      const [current] = await tx
+        .select({ id: markets.id, listingRank: markets.listingRank })
+        .from(markets)
+        .where(and(eq(markets.listingId, listingId), eq(markets.isMain, true)));
+      isMain = !current || listingRank < current.listingRank;
+      if (isMain && current) {
+        await tx.update(markets).set({ isMain: false }).where(eq(markets.id, current.id));
+      }
+    }
+
     const [treasury] = await tx
       .select()
       .from(accounts)
@@ -214,15 +244,21 @@ export async function createMarket(
         question: input.question,
         description: input.description ?? null,
         kind: input.kind ?? 'binary',
-        status: input.status ?? 'open',
+        status,
         b,
         makerAccountId: maker.id,
         opensAt: input.opensAt ?? new Date(),
         closesAt: input.closesAt,
         resolutionSource: input.resolutionSource ?? null,
         createdBy: input.createdBy ?? null,
-        listingId: input.listingId ?? null,
-        listingRank: input.listingRank ?? 0,
+        listingId,
+        listingRank,
+        isMain,
+        headline: openingHeadline(input.outcomes.length),
+        // Taken after the listing lock above, not at transaction start, so a
+        // market created later is never older than the main market it
+        // ranks level with: `is_main` and "ties by age" stay the same order.
+        createdAt: sql`clock_timestamp()`,
       })
       .returning();
 
@@ -480,6 +516,21 @@ async function runTrade(
       })
       .returning();
 
+    // The browse caches (`markets.volume_micro` …), on the row this
+    // transaction already holds: no new lock, and never out of step.
+    const after = board.q.slice();
+    after[index] += microToFloat(sharesMicro);
+    await tx
+      .update(markets)
+      .set({
+        volumeMicro: sql`${markets.volumeMicro} + ${priced.costMicro < 0n ? -priced.costMicro : priced.costMicro}`,
+        orderCount: sql`${markets.orderCount} + 1`,
+        // The fill's own timestamp at full precision; a JS Date has only ms.
+        lastTradeAt: sql`(select ${orders.createdAt} from ${orders} where ${orders.id} = ${order.id})`,
+        headline: headlinePrice(prices(after, board.b)),
+      })
+      .where(eq(markets.id, marketId));
+
     // The balanced pair: what the trader pays, the maker receives.
     const balanceAfterMicro = await creditAccount(tx, accountId, -priced.costMicro, 'trade', {
       orderId: order.id,
@@ -670,6 +721,8 @@ export async function settle(
         resolvedOutcomeId: winningOutcomeId,
         resolutionEvidenceUrl: options.evidenceUrl ?? null,
         settledAt: new Date(),
+        // Settled, the headline is the result's: 1 or 0 (`marketHeadline`).
+        headline: headlinePrice(board.rows.map((r) => (r.id === winningOutcomeId ? 1 : 0))),
       })
       .where(eq(markets.id, marketId));
   });

@@ -132,7 +132,7 @@ describe('sparklines', () => {
     const p = await paper('p');
     await trade(fx.traderIds[0], p.marketId, p.outcomeIds[3], 10n * UNIT, 1_000n * UNIT); // Reject: down
     await trade(fx.traderIds[1], p.marketId, p.outcomeIds[1], 25n * UNIT, 1_000n * UNIT); // Spotlight: up
-    const rows = await browseListings({ kind: 'ICLR 2027', sort: 'closing' });
+    const { rows } = await browseListings({ kind: 'ICLR 2027', sort: 'closing' });
     const line = (await sparklines(rows)).get(p.marketId)!;
     expect(line).toHaveLength(3);
     expect(line[0]).toBeCloseTo(0.75, 12); // the opening headline, 1 − 1/4

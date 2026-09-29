@@ -12,7 +12,8 @@ import { valuations } from './valuation';
  * Read models for the public API. **Reads only** — nothing here writes, and
  * nothing here decides a price that anyone trades at; `engine.ts` does that.
  *
- * Pagination is keyset, never offset. A cursor is an opaque base64url blob
+ * API pagination is keyset, never offset (the home page's `browseListings`
+ * is the one exception, and says why). A cursor is an opaque base64url blob
  * holding the sort key of the last row served. Timestamps in cursors are kept
  * as Postgres text at **microsecond** precision: a JS `Date` has only
  * milliseconds, and two fills in the same millisecond would otherwise make a
@@ -106,9 +107,10 @@ function tsText(column: unknown): SQL<string> {
  *
  * Each is its own weighted document — listing: title A, authors B, summary C;
  * market: question A, description C — built by the immutable SQL functions
- * `listing_search_vector` / `market_search_vector` (drizzle/0003) and indexed
- * by GIN expression indexes on exactly those calls (`schema.ts`). Call them
- * only through `listingVector` / `marketVector`, or the index goes unused.
+ * `listing_search_vector` / `market_search_vector` (drizzle/0003) into stored
+ * generated `search_vector` columns (drizzle/0006) with GIN indexes. The
+ * columns are not in `schema.ts`, so no row read through Drizzle carries one;
+ * refer to them only through `listingVector` / `marketVector`.
  *
  * The query is `websearch_to_tsquery('english', q)` — stemmed, with quotes,
  * `OR` and `-word` — OR-ed with a prefix query on the last word
@@ -122,32 +124,13 @@ function tsquery(q: string): SQL {
     : sql`websearch_to_tsquery('english', ${q})`;
 }
 
-function listingVector(alias?: string): SQL {
-  return alias
-    ? sql`listing_search_vector(${sql.raw(alias)}.title, ${sql.raw(alias)}.authors, ${sql.raw(alias)}.summary)`
-    : sql`listing_search_vector(${listings.title}, ${listings.authors}, ${listings.summary})`;
+/** `alias` is a table alias written in the query, never input. */
+function listingVector(alias: string): SQL {
+  return sql.raw(`"${alias}"."search_vector"`);
 }
 
-function marketVector(alias?: string): SQL {
-  return alias
-    ? sql`market_search_vector(${sql.raw(alias)}.question, ${sql.raw(alias)}.description)`
-    : sql`market_search_vector(${markets.question}, ${markets.description})`;
-}
-
-/** Ids of listings whose own text matches. */
-function matchingListingIds(tq: SQL): SQL {
-  return sql`(select ls.id from listings ls where ${listingVector('ls')} @@ ${tq})`;
-}
-
-/** Listing ids of visible markets whose text matches. */
-function listingIdsOfMatchingMarkets(tq: SQL): SQL {
-  return sql`(select ms.listing_id from markets ms
-               where ms.listing_id is not null and ms.status <> 'draft' and ${marketVector('ms')} @@ ${tq})`;
-}
-
-/** Ids of markets whose own text matches. */
-function matchingMarketIds(tq: SQL): SQL {
-  return sql`(select ms.id from markets ms where ${marketVector('ms')} @@ ${tq})`;
+function marketVector(alias: string): SQL {
+  return sql.raw(`"${alias}"."search_vector"`);
 }
 
 /** 0 for a document that does not match; `real`, never read into money. */
@@ -166,18 +149,27 @@ async function searchMarkets(
   database: Database,
 ): Promise<{ views: MarketView[]; nextCursor: string | null }> {
   const tq = tsquery(text);
-  const rank = sql`greatest(${rankOf(marketVector(), tq)}, coalesce((
-    select ${rankOf(listingVector('lr'), tq)} from listings lr where lr.id = ${markets.listingId}
-  ), 0))`;
+  // Best rank per market, over its own text and its listing's, in one pass.
+  const hits = sql`(
+    select h.k, max(h.r) as r from (
+      select ms.id as k, ${rankOf(marketVector('ms'), tq)} as r
+        from markets ms where ${marketVector('ms')} @@ ${tq}
+      union all
+      select ml.id, ${rankOf(listingVector('ls'), tq)}
+        from listings ls join markets ml on ml.listing_id = ls.id
+       where ${listingVector('ls')} @@ ${tq}
+    ) h group by h.k
+  ) hit`;
+  const rank = sql`hit.r`;
   const after = decodeRankCursor(q.cursor);
   const rows = await database
     .select({ market: markets, rank: sql<string>`(${rank})::text` })
     .from(markets)
+    .innerJoin(hits, sql`hit.k = ${markets.id}`)
     .where(
       and(
         q.status ? eq(markets.status, q.status) : ne(markets.status, 'draft'),
         q.kind ? eq(markets.kind, q.kind) : undefined,
-        sql`(${markets.id} in ${matchingMarketIds(tq)} or ${markets.listingId} in ${matchingListingIds(tq)})`,
         after ? sql`(${rank}, ${markets.id}) < (${after.r}::real, ${after.id}::uuid)` : undefined,
       ),
     )
@@ -205,18 +197,26 @@ async function searchListings(
   database: Database,
 ): Promise<{ views: ListingView[]; nextCursor: string | null }> {
   const tq = tsquery(text);
-  const rank = sql`greatest(${rankOf(listingVector(), tq)}, coalesce((
-    select max(${rankOf(marketVector('mr'), tq)}) from markets mr
-     where mr.listing_id = ${listings.id} and mr.status <> 'draft'
-  ), 0))`;
+  // Best rank per listing, over its own text and its visible markets', in one pass.
+  const hits = sql`(
+    select h.k, max(h.r) as r from (
+      select ls.id as k, ${rankOf(listingVector('ls'), tq)} as r
+        from listings ls where ${listingVector('ls')} @@ ${tq}
+      union all
+      select ms.listing_id, ${rankOf(marketVector('ms'), tq)}
+        from markets ms
+       where ms.listing_id is not null and ms.status <> 'draft' and ${marketVector('ms')} @@ ${tq}
+    ) h group by h.k
+  ) hit`;
+  const rank = sql`hit.r`;
   const after = decodeRankCursor(q.cursor);
   const rows = await database
     .select({ listing: listings, rank: sql<string>`(${rank})::text` })
     .from(listings)
+    .innerJoin(hits, sql`hit.k = ${listings.id}`)
     .where(
       and(
         q.kind ? eq(listings.kind, q.kind) : undefined,
-        sql`(${listings.id} in ${matchingListingIds(tq)} or ${listings.id} in ${listingIdsOfMatchingMarkets(tq)})`,
         after ? sql`(${rank}, ${listings.id}) < (${after.r}::real, ${after.id}::uuid)` : undefined,
       ),
     )
@@ -263,30 +263,25 @@ export async function marketViews(rows: Market[], database: Database = getDb()):
     .from(outcomes)
     .where(inArray(outcomes.marketId, ids))
     .orderBy(asc(outcomes.marketId), asc(outcomes.ordinal));
-
-  const stats = await database
-    .select({
-      marketId: orders.marketId,
-      // `sum(bigint)` is `numeric`: read it as text, never as a JS number (§1.6).
-      volume: sql<string>`coalesce(sum(abs(${orders.costMicro})), 0)::text`,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(orders)
-    .where(inArray(orders.marketId, ids))
-    .groupBy(orders.marketId);
+  const byMarket = new Map<string, Outcome[]>();
+  for (const o of outcomeRows) {
+    const list = byMarket.get(o.marketId);
+    if (list) list.push(o);
+    else byMarket.set(o.marketId, [o]);
+  }
 
   return rows.map((market) => {
-    const mine = outcomeRows.filter((o) => o.marketId === market.id);
+    const mine = byMarket.get(market.id) ?? [];
     const p = prices(
       mine.map((o) => microToFloat(o.sharesMicro)),
       market.b,
     );
-    const s = stats.find((x) => x.marketId === market.id);
     return {
       market,
       outcomes: mine.map((o, i) => ({ ...o, price: p[i] })),
-      volumeMicro: BigInt(s?.volume ?? '0'),
-      orderCount: s?.count ?? 0,
+      // The engine's caches of the fills (`markets.volume_micro`, `order_count`).
+      volumeMicro: market.volumeMicro,
+      orderCount: market.orderCount,
     };
   });
 }
@@ -792,35 +787,26 @@ export interface BrowseRow extends MarketView {
   lastTradeAt: Date | null;
 }
 
-/**
- * The market that stands for its row on the home page: a market with no
- * listing, or a listing's **main market** — its visible market with the lowest
- * `listing_rank` (ties by age). Filters and the closing sort read this market.
- */
-const isRowMarket = sql`(
-  ${markets.listingId} is null or ${markets.id} = (
-    select m2.id from markets m2
-     where m2.listing_id = ${markets.listingId} and m2.status <> 'draft'
-     order by m2.listing_rank, m2.created_at, m2.id
-     limit 1
-  )
-)`;
-
-/** The markets a row covers: itself, or every market of its listing. */
-const rowMarketIds = sql`(
-  select m2.id from markets m2
-   where m2.id = ${markets.id}
-      or (${markets.listingId} is not null and m2.listing_id = ${markets.listingId} and m2.status <> 'draft')
-)`;
+/** Rows on one page of `browseListings`, and how many there are in all. */
+export interface BrowsePage {
+  rows: BrowseRow[];
+  total: number;
+}
 
 /**
  * Rows for the home page: one per listing (a "paper"), plus one per market
- * that belongs to no listing. Filtered by `kind` (the opaque grouping string,
- * which the creating client sets to a venue like "ICLR 2027") and status, both
- * read from the row's main market, and sorted by the main market's closing
- * date, its likelihood (the headline, `lib/headline.ts`, highest first), volume summed over
- * the row, the latest fill in the row, or the main market's creation. Not
- * paginated: a venue has at most a few hundred rows, and the page shows them all.
+ * that belongs to no listing, a page at a time.
+ *
+ * A row is read from the market that stands for it (`markets.is_main`: the
+ * standalone market, or the listing's main market). Filtered by its `kind`
+ * (the opaque grouping string, which the creating client sets to a venue like
+ * "ICLR 2027") and status, and sorted by its closing date, its headline
+ * (`markets.headline`, highest first), volume summed over the row, the latest
+ * fill in the row, or its creation. Sorting reads only the engine's caches on
+ * `markets`, never `orders`, so a venue of 30k papers costs a scan of 30k
+ * index entries, not of every fill. Paged by offset: every sort but `newest`
+ * moves with each fill, so a keyset cursor would be no steadier, and a page
+ * number is what the list shows.
  *
  * With a non-blank `q`, only rows whose listing text or any visible market's
  * text in the row matches (see "free-text search"); the filters still apply,
@@ -833,104 +819,138 @@ export async function browseListings(
     status?: Market['status'] | 'all';
     sort: BrowseSort;
     q?: string | null;
+    offset?: number;
     limit?: number;
     /** Only listings this account follows (so no unlisted markets). */
     followedBy?: string | null;
     /** Only rows where this account holds shares in any market of the row. */
     heldBy?: string | null;
+    /** Leave out the listings this account follows. */
+    exceptFollowedBy?: string | null;
+    /** Leave out the rows this account holds shares in. */
+    exceptHeldBy?: string | null;
   },
   database: Database = getDb(),
-): Promise<BrowseRow[]> {
+): Promise<BrowsePage> {
   const text = normalizeSearch(q.q);
   const tq = text === null ? null : tsquery(text);
-  const match = tq
-    ? sql`(${markets.id} in ${matchingMarketIds(tq)}
-         or ${markets.listingId} in ${matchingListingIds(tq)}
-         or ${markets.listingId} in ${listingIdsOfMatchingMarkets(tq)})`
-    : undefined;
-  const rank = tq
-    ? sql`greatest(${rankOf(listingVector(), tq)}, (
-        select max(${rankOf(marketVector('m3'), tq)}) from markets m3 where m3.id in ${rowMarketIds}
-      ))`
-    : null;
-  const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id in ${rowMarketIds})`;
-  const count = sql`(select count(*) from orders o where o.market_id in ${rowMarketIds})`;
-  const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id in ${rowMarketIds})`;
-  // The main market's headline (as `lib/headline.ts` reads it): 1 − P(last
-  // outcome), which for a binary market is its first outcome's price. P(last)
-  // is 1 / Σᵢ exp((qᵢ − q_last) / b); each exponent is clamped to ±700 because
-  // Postgres raises on float overflow *and* underflow, and a clamped term is
-  // either negligible or dominant, so the result is unchanged. 1/0 by the
-  // result once settled. Null (sorted last) for a void market.
-  const headline = sql`(
-    select case
-      when ${markets.status} = 'void' then null
-      when ${markets.status} = 'settled' then (${markets.resolvedOutcomeId} <> l.id)::int::float8
-      else 1 - 1 / (
-        select sum(exp(least(greatest((o.shares_micro - l.shares_micro)::float8 / ${markets.b}, -700), 700)))
-          from outcomes o where o.market_id = ${markets.id}
-      )
-    end
-      from outcomes l
-     where l.market_id = ${markets.id}
-       and l.ordinal = (select max(x.ordinal) from outcomes x where x.market_id = ${markets.id})
-       and l.ordinal > 0
-  )`;
+  const status = q.status ?? 'open';
+  const limit = q.limit ?? 50;
+  const offset = q.offset ?? 0;
+
+  // A row's key: its listing, or the standalone market itself.
+  const followed = (account: string) =>
+    sql`exists (select 1 from listing_follows lf where lf.account_id = ${account} and lf.listing_id = m.listing_id)`;
+  const held = (account: string) => sql`exists (
+    select 1 from positions p
+      join outcomes po on po.id = p.outcome_id
+      join markets pm on pm.id = po.market_id
+     where p.account_id = ${account} and p.shares_micro > 0
+       and coalesce(pm.listing_id, pm.id) = coalesce(m.listing_id, m.id))`;
+  const where = [
+    sql`m.is_main`,
+    status === 'all' ? undefined : sql`m.status = ${status}`,
+    q.kind ? sql`m.kind = ${q.kind}` : undefined,
+    q.followedBy ? followed(q.followedBy) : undefined,
+    q.heldBy ? held(q.heldBy) : undefined,
+    q.exceptFollowedBy ? sql`not ${followed(q.exceptFollowedBy)}` : undefined,
+    q.exceptHeldBy ? sql`not ${held(q.exceptHeldBy)}` : undefined,
+  ].filter((w): w is SQL => w !== undefined);
+
+  // Search: the best rank per row, over the listing's own text and every
+  // visible market's in it. Each document is matched through its GIN index
+  // and ranked on its stored vector.
+  const hits = tq
+    ? sql`join (
+        select h.k, max(h.r) as r from (
+          select coalesce(ms.listing_id, ms.id) as k, ${rankOf(marketVector('ms'), tq)} as r
+            from markets ms where ms.status <> 'draft' and ${marketVector('ms')} @@ ${tq}
+          union all
+          select ls.id, ${rankOf(listingVector('ls'), tq)}
+            from listings ls where ${listingVector('ls')} @@ ${tq}
+        ) h group by h.k
+      ) hit on hit.k = coalesce(m.listing_id, m.id)`
+    : sql``;
+
+  // Over the \`rows\` CTE below, whose columns are the main market's and the
+  // row's sums.
   const order = {
-    closing: [sql`${markets.closesAt} asc`],
-    likelihood: [sql`${headline} desc nulls last`, sql`${markets.closesAt} asc`],
-    volume: [sql`${volume} desc`],
-    activity: [sql`${lastTrade} desc nulls last`],
-    newest: [sql`${markets.createdAt} desc`],
-    relevance: rank ? [sql`${rank} desc`, sql`${markets.closesAt} asc`] : [sql`${markets.closesAt} asc`],
+    closing: [sql`m.closes_at asc`],
+    // Void has no headline, whatever the cache last held.
+    likelihood: [sql`(case when m.status = 'void' then null else m.headline end) desc nulls last`, sql`m.closes_at asc`],
+    volume: [sql`m.volume_micro + coalesce(sec.volume_micro, 0) desc`],
+    activity: [sql`greatest(m.last_trade_at, sec.last_trade_at) desc nulls last`],
+    newest: [sql`m.created_at desc`],
+    relevance: tq ? [sql`hit.r desc`, sql`m.closes_at asc`] : [sql`m.closes_at asc`],
   }[q.sort];
 
-  const status = q.status ?? 'open';
-  const rows = await database
-    .select({
-      market: markets,
-      listing: listings,
-      // `sum(bigint)` is `numeric`: read it as text, never as a JS number (§1.6).
-      volume: sql<string>`${volume}::text`,
-      count: sql<number>`${count}::int`,
-      markets: sql<number>`(select count(*) from ${rowMarketIds} x)::int`,
-      lastTradeAt: sql<string | null>`${lastTrade}::text`,
-    })
+  const from = sql`
+      from markets m
+      ${hits}
+      -- Visible markets of a listing other than its main one, summed into the
+      -- row. Few listings have any, and markets_secondary_idx holds just those.
+      left join (
+        select s.listing_id, sum(s.volume_micro) as volume_micro, sum(s.order_count) as order_count,
+               max(s.last_trade_at) as last_trade_at, count(*) as markets
+          from markets s
+         where not s.is_main and s.status <> 'draft'
+         group by s.listing_id
+      ) sec on sec.listing_id = m.listing_id
+     where ${sql.join(where, sql` and `)}`;
+  const result = await database.execute<{
+    id: string;
+    volume: string;
+    order_count: number;
+    last_trade_at: string | null;
+    markets: number;
+    total: number;
+  }>(sql`
+    select m.id,
+           (m.volume_micro + coalesce(sec.volume_micro, 0))::text as volume,
+           (m.order_count + coalesce(sec.order_count, 0))::int as order_count,
+           greatest(m.last_trade_at, sec.last_trade_at)::text as last_trade_at,
+           (1 + coalesce(sec.markets, 0))::int as markets,
+           (count(*) over ())::int as total
+    ${from}
+     order by ${sql.join([...order, sql`m.id desc`], sql`, `)}
+     limit ${limit} offset ${offset}
+  `);
+
+  const found = result.rows;
+  if (found.length === 0) {
+    // Past the end, or nothing at all: the page is empty, the total is not.
+    const total =
+      offset === 0 ? 0 : ((await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0);
+    return { rows: [], total };
+  }
+  const total = found[0].total;
+
+  const loaded = await database
+    .select({ market: markets, listing: listings })
     .from(markets)
     .leftJoin(listings, eq(listings.id, markets.listingId))
-    .where(
-      and(
-        status === 'all' ? ne(markets.status, 'draft') : eq(markets.status, status),
-        q.kind ? eq(markets.kind, q.kind) : undefined,
-        q.followedBy
-          ? sql`${markets.listingId} in (select lf.listing_id from listing_follows lf where lf.account_id = ${q.followedBy})`
-          : undefined,
-        q.heldBy
-          ? sql`exists (
-              select 1 from positions p
-                join outcomes po on po.id = p.outcome_id
-               where p.account_id = ${q.heldBy} and p.shares_micro > 0
-                 and po.market_id in ${rowMarketIds})`
-          : undefined,
-        isRowMarket,
-        match,
-      ),
-    )
-    .orderBy(...order, desc(markets.id))
-    .limit(q.limit ?? 200);
-
+    .where(inArray(
+      markets.id,
+      found.map((r) => r.id),
+    ));
+  const byId = new Map(loaded.map((r) => [r.market.id, r]));
+  const inOrder = found.map((r) => byId.get(r.id)!);
   const views = await marketViews(
-    rows.map((r) => r.market),
+    inOrder.map((r) => r.market),
     database,
   );
-  return views.map((v, i) => ({
-    ...v,
-    listing: rows[i].listing,
-    marketCount: rows[i].markets,
-    totalVolumeMicro: BigInt(rows[i].volume),
-    totalOrderCount: rows[i].count,
-    lastTradeAt: rows[i].lastTradeAt ? new Date(rows[i].lastTradeAt!) : null,
-  }));
+  return {
+    total,
+    rows: views.map((v, i) => ({
+      ...v,
+      listing: inOrder[i].listing,
+      marketCount: found[i].markets,
+      // `sum(bigint)` is `numeric`: read as text, never as a JS number (§1.6).
+      totalVolumeMicro: BigInt(found[i].volume),
+      totalOrderCount: found[i].order_count,
+      lastTradeAt: found[i].last_trade_at ? new Date(found[i].last_trade_at) : null,
+    })),
+  };
 }
 
 /** Every `kind` with at least one visible row, most rows first. A listing counts once, by its main market. */
@@ -938,7 +958,7 @@ export async function marketKinds(database: Database = getDb()): Promise<{ kind:
   return database
     .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
     .from(markets)
-    .where(and(ne(markets.status, 'draft'), isRowMarket))
+    .where(eq(markets.isMain, true))
     .groupBy(markets.kind)
     // Byte order, so ties sort the same whatever locale the database was created with.
     .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`);
@@ -949,8 +969,8 @@ export async function marketKinds(database: Database = getDb()): Promise<{ kind:
  * fills, for list sparklines. Replayed from the fills: the share vector is the
  * running sum of order shares, and the headline of a market with more than two
  * outcomes depends on all of it, so `orders.price_after` (the traded outcome's
- * price only) is not enough. One query for all markets; fine for a venue's few
- * hundred markets — keep a per-fill headline if the tape grows past that.
+ * price only) is not enough. One query for the markets on a page (their whole
+ * tapes); keep a per-fill headline if a single market's tape grows too long.
  */
 export async function sparklines(
   views: MarketView[],

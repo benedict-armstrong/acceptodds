@@ -114,7 +114,7 @@ describe('browsing markets', () => {
     await buy(t.token, a.outcomeIds[0], '50000000', a.marketId); // most volume
     await buy(t.token, b.outcomeIds[0], '5000000', b.marketId); // most recent
 
-    const slugs = async (q: Parameters<typeof browseListings>[0]) => (await browseListings(q)).map((r) => r.market.slug);
+    const slugs = async (q: Parameters<typeof browseListings>[0]) => (await browseListings(q)).rows.map((r) => r.market.slug);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'closing' })).toEqual(['b', 'a']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'volume' })).toEqual(['a', 'b']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'activity' })).toEqual(['b', 'a']);
@@ -134,7 +134,7 @@ describe('browsing markets', () => {
     const t = await trader('s');
     await buy(t.token, fx.outcomeIds[0], '10000000');
     await buy(t.token, fx.outcomeIds[1], '30000000');
-    const rows = await browseListings({ kind: null, sort: 'closing' });
+    const { rows } = await browseListings({ kind: null, sort: 'closing' });
     const sp = await sparklines(rows);
     const line = sp.get(fx.marketId)!;
     expect(line).toHaveLength(3);

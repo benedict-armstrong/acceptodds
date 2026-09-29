@@ -192,7 +192,7 @@ describe('browsing listings', () => {
     await buy(main.marketId, main.outcomeIds[0]);
     await buy(second.marketId, second.outcomeIds[1]);
 
-    const rows = await browseListings({ kind: null, sort: 'closing' });
+    const { rows } = await browseListings({ kind: null, sort: 'closing' });
     expect(rows.map((r) => [r.market.slug, r.listing?.slug ?? null, r.marketCount])).toEqual([
       ['concurrency', null, 1],
       ['p-accept', 'p', 2],
@@ -232,7 +232,7 @@ describe('browsing listings', () => {
     // There is no void path in the engine yet; the status is all the sort reads.
     await db.update(markets).set({ status: 'void' }).where(eq(markets.id, gone.marketId));
 
-    const rows = await browseListings({ kind: 'lk', sort: 'likelihood', status: 'all' });
+    const { rows } = await browseListings({ kind: 'lk', sort: 'likelihood', status: 'all' });
     expect(rows.map((r) => r.market.slug)).toEqual(['multi', 'high', 'mid', 'low', 'gone']);
     expect(rows[2].outcomes[0].price).toBeCloseTo(0.5);
     // The SQL headline is the same number `lib/headline.ts` computes.

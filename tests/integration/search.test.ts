@@ -100,7 +100,7 @@ afterAll(async () => {
 
 /** Row identities: a listing's slug, or an unlisted market's. */
 async function search(q: string | null, opts: { kind?: string | null; status?: any; sort?: any } = {}) {
-  const rows = await browseListings({ kind: opts.kind ?? null, status: opts.status ?? 'all', sort: opts.sort ?? 'relevance', q });
+  const { rows } = await browseListings({ kind: opts.kind ?? null, status: opts.status ?? 'all', sort: opts.sort ?? 'relevance', q });
   return rows.map((r) => r.listing?.slug ?? r.market.slug);
 }
 

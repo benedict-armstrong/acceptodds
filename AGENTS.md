@@ -267,11 +267,16 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Search is Postgres full text, `?q=` on `/listings` and `/markets`.**
   Each listing and market is its own weighted document (listing: title A,
   authors B, summary C; market: question A, description C), built by the
-  immutable SQL functions in `drizzle/0003_search_functions.sql` and indexed
-  by GIN *expression* indexes on those exact calls — no tsvector column, so
-  no row carries it. Query them only through `views.ts`'s
-  `listingVector`/`marketVector`, or the index goes unused; changing a
-  document is a new migration replacing the function. The query is
+  immutable SQL functions in `drizzle/0003_search_functions.sql` into stored
+  generated `search_vector` columns with GIN indexes (`drizzle/0006`). The
+  columns are **not in `schema.ts`**, so no row read through Drizzle carries
+  one; refer to them only through `views.ts`'s `listingVector`/`marketVector`.
+  They were expression indexes until #12: ranking, and rechecking a lossy
+  GIN match, rebuilt the vector per matching row — 5 s for a query matching
+  30k papers. Changing a document is a new migration replacing the function
+  and re-adding the column. A listing's or market's rank is the best of its
+  documents, computed in one pass (`group by` over the hits), never by a
+  correlated subquery per row. The query is
   `websearch_to_tsquery('english', q)`, OR-ed with a last-word prefix query
   (`lib/search.ts`) unless quotes, `OR` or `-word` are used, and is always a
   bound parameter. A listing matches on its text or any visible market's; a
@@ -402,8 +407,12 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   A signed-in viewer sees a **Following** section above the list: the
   followed subset of that same list (venue, status, sort), 10 a page on its
   own `?fpage=`, collapsible, the open state in the `home_following_open`
-  cookie so the server renders it as left. Hidden while searching or with
-  `?following=1`. Followed papers still appear in the list below.
+  cookie so the server renders it as left. Then **My positions**, the
+  papers the viewer holds shares in (any market of the row) and doesn't
+  follow, 10 a page on `?hpage=`, cookie `home_positions_open`. Hidden while
+  searching or with `?following=1`. "All papers" below is the rest: nothing
+  pinned above is repeated, and the exclusion is in SQL so its pages count
+  right.
 - **Comments are anonymous but for the author's stake.** Each shows the
   author's *current* position in that market and a bot badge — no handle, no
   id (`server/comments.ts`). Posting needs the `trade` scope and a
@@ -499,6 +508,41 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   day's mail rather than doubling it. The unsubscribe link is `/profile`, not
   a signed token. `digest.sent` is logged after the send, no payload.
 
+### The list at venue scale (#12)
+
+A venue is ~30k papers (ICLR's last round). Measured on 30k papers with
+~300k fills: a list page is ~25 ms at any sort, a typical search 5–45 ms,
+and a query matching every paper ~130 ms. It was 0.4 s a list query
+unpaginated, and 5 s for that search.
+
+- **The home list is paged by offset, 50 a page (`?page=`)**, with a total
+  (`count(*) over ()`), and so are Following and My positions. Offset, not
+  keyset, because every sort but `newest` moves with each fill and a page
+  number is what the list shows; the API stays keyset. A page past the end
+  serves the last page. The pager is plain links.
+- **Sorts never read `orders`.** The engine keeps caches on `markets`,
+  written in `trade()` under the market row lock it already holds (so no
+  new lock and no drift), like `balance_micro`: `volume_micro` (Σ |cost|),
+  `order_count`, `last_trade_at` (the fill's own timestamp, to the µs) and
+  `headline` (`marketHeadline`: the headline price, set at creation and
+  per fill; 1/0 by the result at settlement). A void market sorts as having
+  no headline whatever the cache holds, since nothing sets void yet.
+  `MarketView.volumeMicro`/`orderCount` read the same caches.
+  `npm run db:seed` moves `last_trade_at` along with the fills it back-dates.
+- **`markets.is_main` is the row.** True for a visible standalone market and
+  for a listing's main market (lowest rank, ties by age); never a draft. Set
+  only by `engine.createMarket`, under a per-listing advisory lock taken
+  *before* the treasury lock (demoting the old main market locks its row,
+  and markets lock before accounts); the new market's `created_at` is
+  `clock_timestamp()` after that lock, so "ties by age" agrees with the flag.
+  A unique partial index allows one per listing. It never changes after
+  creation: nothing turns a draft visible or moves a rank. Add a path that
+  does, and it must maintain the flag too.
+- **A listing's other markets are summed in** through
+  `markets_secondary_idx` (`not is_main and status <> 'draft'`), which
+  holds only those few, so a row's volume and activity stay the whole
+  listing's.
+
 ### Four-outcome papers and sharing (#11)
 
 - **A paper has one market by default: `Oral, Spotlight, Poster, Reject`**,
@@ -509,9 +553,10 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `1 − P(last)`** (`lib/headline.ts`) — for a paper, accepted in any form.
   For a binary `[YES, NO]` market that is exactly P(YES), so binary markets
   mean what they always did. Everything that summarises a market in one
-  number reads it: likelihood colours, the acceptance sort (the same formula
-  in SQL, `views.browseListings`, with exponents clamped because Postgres
-  raises on `exp` over- *and* underflow), sparklines, follows, the digest,
+  number reads it: likelihood colours, the acceptance sort (the engine's
+  `markets.headline` cache, #12; its backfill in `drizzle/0006` is the same
+  formula in SQL, exponents clamped because Postgres raises on `exp` over-
+  *and* underflow), sparklines, follows, the digest,
   badges and previews. The UI calls it "accept" on a paper; elsewhere it is
   the first label, or "not <last label>". A market with more outcomes that
   are not ordered will get a meaningless headline: that is the convention's
