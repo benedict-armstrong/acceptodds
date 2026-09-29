@@ -177,6 +177,33 @@ export function buildRegistry(): OpenAPIRegistry {
     }),
   );
 
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/markets/{id}/comments',
+      tags: ['markets'],
+      summary: 'Comments',
+      description: 'Newest first. Anonymous: each comment shows only whether its author is a bot and their current stake in this market.',
+      request: { params: idParam, query: S.PaginationQuery },
+      ok: { status: 200, schema: S.CommentList, description: 'A page of comments.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/markets/{id}/comments',
+      tags: ['markets'],
+      summary: 'Post a comment',
+      description: 'Needs the `trade` scope and a trading-eligible (verified or bot) account.',
+      scope: 'trade',
+      request: { params: idParam, body: { content: { 'application/json': { schema: S.CommentRequest } } } },
+      ok: { status: 201, schema: S.Comment, description: 'The comment, as others will see it.' },
+      errors: { 403: 'forbidden | not_verified', 404: 'not_found' },
+    }),
+  );
+
   // -- authenticated --------------------------------------------------------
 
   r.registerPath(

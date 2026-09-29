@@ -13,6 +13,7 @@ import * as marketRoute from '@/app/api/v1/markets/[id]/route';
 import * as historyRoute from '@/app/api/v1/markets/[id]/history/route';
 import * as ordersRoute from '@/app/api/v1/markets/[id]/orders/route';
 import * as quoteRoute from '@/app/api/v1/markets/[id]/quote/route';
+import * as commentsRoute from '@/app/api/v1/markets/[id]/comments/route';
 import * as closeRoute from '@/app/api/v1/markets/[id]/close/route';
 import * as settleRoute from '@/app/api/v1/markets/[id]/settle/route';
 import * as leaderboardRoute from '@/app/api/v1/leaderboard/route';
@@ -41,6 +42,7 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/markets/[id]/history', historyRoute],
   ['/markets/[id]/orders', ordersRoute],
   ['/markets/[id]/quote', quoteRoute],
+  ['/markets/[id]/comments', commentsRoute],
   ['/markets/[id]/close', closeRoute],
   ['/markets/[id]/settle', settleRoute],
   ['/leaderboard', leaderboardRoute],

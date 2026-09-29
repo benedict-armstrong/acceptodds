@@ -109,3 +109,17 @@ export function formatMicro(micro: bigint, decimals = 2): string {
   const fracStr = frac.toString().padStart(6, '0').slice(0, decimals);
   return `${sign}${whole}.${fracStr}`;
 }
+
+/**
+ * A decimal string a person typed ("12", "0.5", "1,000.25") -> micro-units,
+ * exactly, with no float in between. `null` for anything that is not a
+ * non-negative decimal with at most 6 places.
+ */
+export function parseUnits(input: string): bigint | null {
+  const s = input.trim().replace(/[,_\s]/g, '');
+  const m = /^(\d*)(?:\.(\d{0,6}))?$/.exec(s);
+  if (!m || (m[1] === '' && (m[2] ?? '') === '')) return null;
+  const whole = BigInt(m[1] || '0');
+  const frac = BigInt((m[2] ?? '').padEnd(6, '0') || '0');
+  return whole * MICRO_PER_UNIT + frac;
+}

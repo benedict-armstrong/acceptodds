@@ -3,6 +3,7 @@ import type { Account } from '@/db/schema';
 import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
+import type { CommentView } from '../comments';
 import type { TokenRecord } from '../tokens';
 import type { MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
@@ -142,5 +143,24 @@ export function presentToken(t: TokenRecord): z.input<typeof S.TokenInfo> {
     createdAt: toIso(t.createdAt),
     lastUsedAt: toIsoOrNull(t.lastUsedAt),
     enabled: t.enabled,
+  };
+}
+
+export function presentComments(page: {
+  comments: CommentView[];
+  nextCursor: string | null;
+}): z.input<typeof S.CommentList> {
+  return {
+    comments: page.comments.map((c) => ({
+      id: c.id,
+      body: c.body,
+      createdAt: toIso(c.createdAt),
+      author: {
+        isBot: c.author.isBot,
+        isYou: c.author.isYou,
+        stake: c.author.stake.map((s) => ({ ...s, sharesMicro: s.sharesMicro.toString() })),
+      },
+    })),
+    nextCursor: page.nextCursor,
   };
 }

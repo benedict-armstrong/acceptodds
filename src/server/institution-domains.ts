@@ -62,3 +62,8 @@ export function institutionForEmail(email: string): Institution | null {
   }
   return null;
 }
+
+/** Institution names on the allowlist, for telling people who may sign up. */
+export function allowedInstitutions(): string[] {
+  return [...new Set(domains().values())].sort();
+}

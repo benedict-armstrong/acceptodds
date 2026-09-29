@@ -15,6 +15,14 @@ CREATE TABLE "accounts" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "comments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"market_id" uuid NOT NULL,
+	"account_id" uuid NOT NULL,
+	"body" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT clock_timestamp() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "events" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"kind" text NOT NULL,
@@ -168,6 +176,8 @@ CREATE TABLE "verification" (
 );
 --> statement-breakpoint
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "comments" ADD CONSTRAINT "comments_market_id_markets_id_fk" FOREIGN KEY ("market_id") REFERENCES "public"."markets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "comments" ADD CONSTRAINT "comments_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_market_id_markets_id_fk" FOREIGN KEY ("market_id") REFERENCES "public"."markets"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -184,6 +194,7 @@ ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("
 CREATE UNIQUE INDEX "accounts_handle_key" ON "accounts" USING btree ("handle");--> statement-breakpoint
 CREATE UNIQUE INDEX "accounts_user_id_key" ON "accounts" USING btree ("user_id") WHERE user_id is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "accounts_orcid_key" ON "accounts" USING btree ("orcid") WHERE orcid is not null;--> statement-breakpoint
+CREATE INDEX "comments_market_created_idx" ON "comments" USING btree ("market_id","created_at");--> statement-breakpoint
 CREATE INDEX "events_created_at_idx" ON "events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "events_kind_created_idx" ON "events" USING btree ("kind","created_at");--> statement-breakpoint
 CREATE INDEX "ledger_entries_account_id_idx" ON "ledger_entries" USING btree ("account_id");--> statement-breakpoint
