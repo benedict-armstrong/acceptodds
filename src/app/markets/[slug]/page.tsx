@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { ui } from '@/components/ui';
 import { ApiError } from '@/server/api/errors';
 import { viewerFromHeaders } from '@/server/auth';
-import { shareSubject } from '@/server/share';
+import { shareSubject, siteName } from '@/server/share';
 import { resolveListing, resolveMarket } from '@/server/views';
 import { loadMarketLive } from './load';
 import { MarketLive } from './MarketLive';
@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${subject.title} · papermarket`,
     description,
     alternates: { canonical: subject.path },
-    openGraph: { title: subject.title, description, url: subject.path, siteName: 'papermarket' },
+    openGraph: { title: subject.title, description, url: subject.path, siteName: siteName() },
     twitter: { card: 'summary_large_image', title: subject.title, description },
   };
 }

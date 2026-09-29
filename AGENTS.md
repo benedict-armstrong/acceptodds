@@ -539,7 +539,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
     link), with "I'm 🟩. You?" while the viewer holds shares — the outcome
     they hold most of, never a size. Plus the badge's Markdown/HTML and the
     link. It reads the same SWR keys as `MarketLive`, so it adds no polling.
-- **`SITE_NAME`** (default `papermarket`) is the badge's label;
+- **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** gives a dev venue of invented papers with four-outcome
   markets traded by seed bots, and three settled ones. It back-dates their

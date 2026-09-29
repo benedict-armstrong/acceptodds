@@ -18,7 +18,7 @@ export function siteUrl(): string {
 
 /** The name on the badge. */
 export function siteName(): string {
-  return process.env.SITE_NAME ?? 'papermarket';
+  return process.env.SITE_NAME ?? 'acceptodds';
 }
 
 export interface ShareSubject {

@@ -15,7 +15,7 @@ import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
-import { shareSubject, siteUrl } from '@/server/share';
+import { shareSubject, siteName, siteUrl } from '@/server/share';
 import { listingView, resolveListing, type MarketView } from '@/server/views';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${subject.title.replace(/\$/g, '')} · papermarket`,
     description,
     alternates: { canonical: subject.path },
-    openGraph: { title: question, description, url: subject.path, type: 'article', siteName: 'papermarket' },
+    openGraph: { title: question, description, url: subject.path, type: 'article', siteName: siteName() },
     twitter: { card: 'summary_large_image', title: question, description },
   };
 }
