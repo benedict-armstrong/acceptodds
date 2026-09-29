@@ -207,4 +207,27 @@ describe('browsing listings', () => {
     // A listing counts once in its main market's kind.
     expect(await marketKinds()).toEqual([{ kind: 'binary', count: 2 }]);
   });
+
+  it('sorts by likelihood: first-outcome price, highest first, others last', async () => {
+    const opts = { startingBalanceMicro: STARTING_MICRO, expectedTraders: 10, kind: 'lk', closesAt: new Date(Date.now() + 86_400_000) };
+    const make = (slug: string, outcomes = ['YES', 'NO']) => createMarket({ ...opts, slug, question: `${slug}?`, outcomes });
+    const low = await make('low');
+    const high = await make('high');
+    await make('mid');
+    const multi = await make('multi', ['A', 'B', 'C']);
+
+    const t = await trader('t');
+    const buy = (marketId: string, outcomeId: string, units: number) =>
+      api('POST', `/markets/${marketId}/orders`, {
+        token: t.token,
+        body: { outcomeId, sharesMicro: String(units * 1_000_000), maxCostMicro: '1000000000' },
+      });
+    await buy(low.marketId, low.outcomeIds[1], 20);
+    await buy(high.marketId, high.outcomeIds[0], 30);
+    await buy(multi.marketId, multi.outcomeIds[0], 50);
+
+    const rows = await browseListings({ kind: 'lk', sort: 'likelihood' });
+    expect(rows.map((r) => r.market.slug)).toEqual(['high', 'mid', 'low', 'multi']);
+    expect(rows[1].outcomes[0].price).toBeCloseTo(0.5);
+  });
 });

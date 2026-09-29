@@ -1,14 +1,14 @@
 import Link from 'next/link';
-import { headers } from 'next/headers';
-import { FollowStar } from '@/components/FollowStar';
+import { cookies, headers } from 'next/headers';
+import { Collapsible } from '@/components/Collapsible';
+import { MathText } from '@/components/MathText';
 import { Sparkline } from '@/components/Sparkline';
 import { ui } from '@/components/ui';
-import { day, pct, rep } from '@/lib/format';
+import { pct, rep } from '@/lib/format';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
-import { followedListingIds } from '@/server/follows';
 import {
   browseListings,
   MARKET_SORTS,
@@ -28,6 +28,15 @@ type Status = (typeof STATUSES)[number];
 
 /** The home page shows at most this many rows; a search says "N+" when it hits it. */
 const LIMIT = 200;
+/** Followed papers per page in the "Following" section; `?fpage=` pages it. */
+const FOLLOWING_PAGE = 10;
+/** The cookie remembering whether that section was left collapsed. */
+const FOLLOWING_COOKIE = 'home_following_open';
+
+/** The home page's sorts, default first. The venue's `closing` is not offered. */
+const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
+/** Sort keys shown under another name. The venue's `likelihood` is the first outcome's price. */
+const SORT_LABEL: Partial<Record<BrowseSort, string>> = { likelihood: 'acceptance' };
 
 /** The venue shown first. Opaque to the platform: it is a `kind` string. */
 function defaultKind(): string {
@@ -50,12 +59,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   // A search keeps the venue and status filters (the form carries them) and
   // sorts by relevance unless another sort is asked for.
   const q = normalizeSearch(one(sp.q));
-  const sorts: readonly BrowseSort[] = q ? ['relevance', ...MARKET_SORTS] : MARKET_SORTS;
+  const sorts: readonly BrowseSort[] = q ? ['relevance', ...SORTS] : SORTS;
   const sort: BrowseSort = (sorts as readonly string[]).includes(one(sp.sort) ?? '')
     ? (one(sp.sort) as BrowseSort)
     : q
       ? 'relevance'
-      : 'closing';
+      : SORTS[0];
 
   // One row per listing (a paper), read from its main market; plus one per
   // market that belongs to no listing.
@@ -63,8 +72,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   // ?following=1: only papers the signed-in viewer follows.
   const onlyFollowed = viewer !== null && one(sp.following) === '1';
   const rows = await browseListings({ kind, status, sort, q, limit: LIMIT, followedBy: onlyFollowed ? viewer.account.id : null });
-  const sparks = await sparklines(rows);
-  const followed = viewer ? await followedListingIds(viewer.account.id) : new Set<string>();
+  // The part of this list the viewer follows, pinned above it: same venue,
+  // status and sort, paged on its own. Not while searching, nor when the list
+  // is already only followed papers.
+  const followedAll =
+    viewer && !q && !onlyFollowed
+      ? await browseListings({ kind, status, sort, limit: LIMIT, followedBy: viewer.account.id })
+      : [];
+  const fpages = Math.max(1, Math.ceil(followedAll.length / FOLLOWING_PAGE));
+  const fpage = Math.min(fpages, Math.max(1, Number.parseInt(one(sp.fpage) ?? '1', 10) || 1));
+  const followed = followedAll.slice((fpage - 1) * FOLLOWING_PAGE, fpage * FOLLOWING_PAGE);
+  const followingOpen = (await cookies()).get(FOLLOWING_COOKIE)?.value !== '0';
+  const sparks = await sparklines([...rows, ...followed]);
   events.log('market.list', { accountId: viewer?.account.id ?? null });
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
@@ -85,15 +104,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
     return `/?${params}`;
   };
   const filtered = kind !== null || status !== 'all';
-
-  // Grouped by closing day only when sorted by it; otherwise one flat list.
-  const groups: [string, BrowseRow[]][] = [];
-  for (const r of rows) {
-    const key = sort === 'closing' ? heading(r) : '';
-    const g = groups.find(([k]) => k === key);
-    if (g) g[1].push(r);
-    else groups.push([key, [r]]);
-  }
 
   return (
     <main className={ui.page}>
@@ -146,26 +156,39 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           </Link>
         </span>
         <span className="flex-1" />
-        {viewer && (
-          <Link href={href({ following: onlyFollowed ? '0' : '1' })} className={onlyFollowed ? ON : ''}>
-            ★ following
-          </Link>
-        )}
-        <span className="flex gap-3">
-          {STATUSES.map((s) => (
-            <Link key={s} href={href({ status: s })} className={s === status ? ON : ''}>
-              {s}
-            </Link>
-          ))}
-        </span>
         <span className="flex gap-3">
           sort:
           {sorts.map((s) => (
             <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
-              {s}
+              {SORT_LABEL[s] ?? s}
             </Link>
           ))}
         </span>
+        {/* Status and following, out of the way. A <details>, so it works without JavaScript. */}
+        <details className="relative">
+          <summary
+            title="More filters: status, following"
+            className="cursor-pointer list-none px-1 text-ink hover:text-accent [&::-webkit-details-marker]:hidden"
+          >
+            {[status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ')}
+            {(status !== 'open' || onlyFollowed) && ' '}⋯
+          </summary>
+          <div className="absolute right-0 z-10 mt-1 flex min-w-32 flex-col gap-1 border border-frame bg-card px-3 py-2">
+            {STATUSES.map((s) => (
+              <Link key={s} href={href({ status: s })} className={s === status ? ON : ''}>
+                {s}
+              </Link>
+            ))}
+            {viewer && (
+              <Link
+                href={href({ following: onlyFollowed ? '0' : '1' })}
+                className={`mt-1 border-t border-rule pt-1.5 ${onlyFollowed ? ON : ''}`}
+              >
+                ★ following
+              </Link>
+            )}
+          </div>
+        </details>
       </div>
 
       {rows.length === 0 &&
@@ -175,73 +198,86 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           </div>
         ) : onlyFollowed ? (
           <div className={ui.empty}>
-            No {status === 'all' ? '' : status + ' '}papers you follow here. Star one with ☆ to follow it.
+            No {status === 'all' ? '' : status + ' '}papers you follow here. Follow one with ☆ on its page.
           </div>
         ) : (
           <div className={ui.empty}>Nothing {status === 'all' ? '' : status + ' '}here yet.</div>
         ))}
 
-      {groups.map(([key, list]) => (
-        <section key={key || 'all'}>
-          {key && (
-            <h2 className={ui.groupHeading}>
-              {key} <span className="font-normal">({list.length})</span>
-            </h2>
+      {followedAll.length > 0 && (
+        <Collapsible
+          id="following"
+          cookie={FOLLOWING_COOKIE}
+          open={followingOpen}
+          className="group mt-3.5"
+          summary={
+            <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+              <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
+                ›
+              </span>
+              Following <span className="font-normal">({followedAll.length})</span>
+            </summary>
+          }
+        >
+          {followed.map((r) => (
+            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+          ))}
+          {fpages > 1 && (
+            <div className="mt-1.5 flex justify-end gap-3 font-sans text-[13px] text-muted">
+              {fpage > 1 && <Link href={`${href({ fpage: String(fpage - 1) })}#following`}>← prev</Link>}
+              <span>
+                page {fpage} of {fpages}
+              </span>
+              {fpage < fpages && <Link href={`${href({ fpage: String(fpage + 1) })}#following`}>next →</Link>}
+            </div>
           )}
-          {!key && <div className="h-3.5" />}
-          {list.map((r) => {
-            const look = likelihoodClass(marketLikelihood({ ...r.market, outcomes: r.outcomes }));
-            const row = (
-              <Link
-                key={r.market.id}
-                href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
-                className="grid min-w-0 flex-1 grid-cols-[3px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight hover:no-underline narrow:grid-cols-[3px_1fr_64px]"
-              >
-                <span className={`self-stretch ${look.bar}`} aria-hidden />
-                <span className="leading-[1.35]">
-                  {r.listing ? r.listing.title : r.market.question}
-                  {r.listing && r.listing.authors.length > 0 && (
-                    <span className="block font-sans text-xs text-muted">{authors(r.listing.authors)}</span>
-                  )}
-                </span>
-                <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
-                  {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} rep` : ''}
-                </span>
-                <span className="narrow:hidden" title={r.listing ? r.market.question : undefined}>
-                  <Sparkline values={sparks.get(r.market.id) ?? []} />
-                </span>
-                <span className={`text-right font-mono text-sm ${look.text}`} title={r.listing ? r.market.question : undefined}>
-                  {headline(r)}
-                </span>
-              </Link>
-            );
-            // A signed-in viewer gets a star beside each paper, outside the
-            // row's link (a button may not sit inside an <a>).
-            if (!viewer) return row;
-            return (
-              <div key={r.market.id} className="flex items-stretch">
-                <span className="flex w-5 shrink-0 items-center border-b border-dotted border-rule-strong">
-                  {r.listing && <FollowStar listingId={r.listing.id} following={followed.has(r.listing.id)} />}
-                </span>
-                {row}
-              </div>
-            );
-          })}
-        </section>
-      ))}
+        </Collapsible>
+      )}
+
+      <section>
+        {followedAll.length > 0 ? <h2 className={ui.groupHeading}>All papers</h2> : <div className="h-3.5" />}
+        {rows.map((r) => (
+          <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+        ))}
+      </section>
     </main>
+  );
+}
+
+/** One paper (or unlisted market) in a list. */
+function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
+  const look = likelihoodClass(marketLikelihood({ ...r.market, outcomes: r.outcomes }));
+  return (
+    <Link
+      href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
+      className="grid grid-cols-[3px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight hover:no-underline narrow:grid-cols-[3px_1fr_64px]"
+    >
+      <span className={`self-stretch ${look.bar}`} aria-hidden />
+      <span className="min-w-0 leading-[1.35]">
+        {/* At most two lines; the whole title on hover. */}
+        <span className="line-clamp-2" title={r.listing ? r.listing.title : r.market.question}>
+          <MathText text={r.listing ? r.listing.title : r.market.question} />
+        </span>
+        {r.listing && r.listing.authors.length > 0 && (
+          <span className="block font-sans text-xs text-muted">{authors(r.listing.authors)}</span>
+        )}
+      </span>
+      <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
+        {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} rep` : ''}
+      </span>
+      <span className="narrow:hidden" title={r.listing ? r.market.question : undefined}>
+        <Sparkline values={spark} />
+      </span>
+      <span className={`text-right font-mono text-sm ${look.text}`} title={r.listing ? r.market.question : undefined}>
+        {headline(r)}
+      </span>
+    </Link>
   );
 }
 
 /** "A, B, C et al." — enough to recognise a paper by. */
 function authors(names: string[]): string {
   return names.length > 3 ? `${names.slice(0, 3).join(', ')} et al.` : names.join(', ');
-}
-
-function heading(r: BrowseRow): string {
-  if (r.market.status === 'settled') return 'Settled';
-  if (r.market.status === 'closed') return 'Closed — awaiting resolution';
-  return `Closing ${day(r.market.closesAt)}`;
 }
 
 /** Binary: the first outcome's price. More outcomes: the favourite, named. Settled: the winner. */

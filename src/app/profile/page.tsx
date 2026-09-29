@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { FollowStar } from '@/components/FollowStar';
+import { MathText } from '@/components/MathText';
 import { SignOut } from '@/components/SignOut';
 import { Stat } from '@/components/Stat';
 import { ui } from '@/components/ui';
@@ -86,8 +87,12 @@ export default async function ProfilePage() {
               className="grid grid-cols-[18px_1fr_auto] items-baseline gap-x-2.5 border-b border-dotted border-rule-strong py-1.5"
             >
               <FollowStar listingId={f.view.listing.id} following />
-              <Link href={`/papers/${encodeURIComponent(f.view.listing.slug)}`} className="leading-[1.35]">
-                {f.view.listing.title}
+              <Link
+                href={`/papers/${encodeURIComponent(f.view.listing.slug)}`}
+                className="line-clamp-2 leading-[1.35]"
+                title={f.view.listing.title}
+              >
+                <MathText text={f.view.listing.title} />
               </Link>
               <span className="text-right font-mono text-[13px] whitespace-nowrap" title="price now; change over 24 hours">
                 {f.move && f.main ? (

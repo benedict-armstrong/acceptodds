@@ -394,8 +394,16 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **"Venue" is the market's `kind`.** The home page filters on it and opens
   on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
   The platform still knows nothing about venues: it is a string the creating
-  client chose. Sorts: closing (grouped by day), volume, activity (last
-  fill), newest.
+  client chose. Sorts: acceptance (the default; the `likelihood` sort: the
+  main market's first-outcome price, highest first, 1/0 once settled,
+  non-binary and void last), volume, activity (last fill), newest. The
+  venue's `closing` sort is not offered. Status and "following" filters sit
+  in a `⋯` `<details>` menu, which shows the active one when not the default.
+  A signed-in viewer sees a **Following** section above the list: the
+  followed subset of that same list (venue, status, sort), 10 a page on its
+  own `?fpage=`, collapsible, the open state in the `home_following_open`
+  cookie so the server renders it as left. Hidden while searching or with
+  `?following=1`. Followed papers still appear in the list below.
 - **Comments are anonymous but for the author's stake.** Each shows the
   author's *current* position in that market and a bot badge — no handle, no
   id (`server/comments.ts`). Posting needs the `trade` scope and a

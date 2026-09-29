@@ -774,7 +774,7 @@ export async function publicAccount(handle: string, database: Database = getDb()
 // browsing (the UI's home page)
 // ---------------------------------------------------------------------------
 
-export const MARKET_SORTS = ['closing', 'volume', 'activity', 'newest'] as const;
+export const MARKET_SORTS = ['closing', 'likelihood', 'volume', 'activity', 'newest'] as const;
 export type MarketSort = (typeof MARKET_SORTS)[number];
 /** Search rank: only meaningful with a query, and the UI's default when there is one. */
 export type BrowseSort = MarketSort | 'relevance';
@@ -817,9 +817,9 @@ const rowMarketIds = sql`(
  * that belongs to no listing. Filtered by `kind` (the opaque grouping string,
  * which the creating client sets to a venue like "ICLR 2027") and status, both
  * read from the row's main market, and sorted by the main market's closing
- * date, volume summed over the row, the latest fill in the row, or the main
- * market's creation. Not paginated: a venue has at most a few hundred rows,
- * and the page shows them all.
+ * date, its likelihood (first-outcome price, highest first), volume summed over
+ * the row, the latest fill in the row, or the main market's creation. Not
+ * paginated: a venue has at most a few hundred rows, and the page shows them all.
  *
  * With a non-blank `q`, only rows whose listing text or any visible market's
  * text in the row matches (see "free-text search"); the filters still apply,
@@ -853,8 +853,23 @@ export async function browseListings(
   const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id in ${rowMarketIds})`;
   const count = sql`(select count(*) from orders o where o.market_id in ${rowMarketIds})`;
   const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id in ${rowMarketIds})`;
+  // The main market's first-outcome price (as `lib/likelihood.ts` reads it):
+  // the LMSR binary price ½(1 + tanh((q₀ − q₁) / 2b)) — tanh, not exp, so it
+  // cannot overflow — or 1/0 by the result once settled. Null (sorted last)
+  // for a void market or one without exactly two outcomes.
+  const yesPrice = sql`(
+    select case
+      when ${markets.status} = 'void' then null
+      when ${markets.status} = 'settled' then (${markets.resolvedOutcomeId} = y.id)::int::float8
+      else 0.5 * (1 + tanh((y.shares_micro - n.shares_micro)::float8 / (2 * ${markets.b})))
+    end
+      from outcomes y join outcomes n on n.market_id = y.market_id and n.ordinal = 1
+     where y.market_id = ${markets.id} and y.ordinal = 0
+       and (select count(*) from outcomes c where c.market_id = ${markets.id}) = 2
+  )`;
   const order = {
     closing: [sql`${markets.closesAt} asc`],
+    likelihood: [sql`${yesPrice} desc nulls last`, sql`${markets.closesAt} asc`],
     volume: [sql`${volume} desc`],
     activity: [sql`${lastTrade} desc nulls last`],
     newest: [sql`${markets.createdAt} desc`],

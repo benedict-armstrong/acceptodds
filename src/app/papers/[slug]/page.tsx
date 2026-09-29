@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { FollowStar } from '@/components/FollowStar';
+import { MathText } from '@/components/MathText';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
@@ -51,7 +52,9 @@ export default async function PaperPage({
   return (
     <main className={ui.page}>
       {listing.kind && <div className="mt-4.5 text-center font-mono text-[13px] text-muted">{listing.kind}</div>}
-      <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">{listing.title}</h1>
+      <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">
+        <MathText text={listing.title} />
+      </h1>
       {listing.authors.length > 0 && (
         <div className="mx-auto max-w-[680px] text-center text-[15px] text-subtle">{listing.authors.join(', ')}</div>
       )}
