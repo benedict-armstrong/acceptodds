@@ -500,7 +500,7 @@ export function openApiDocument() {
   cached ??= new OpenApiGeneratorV31(buildRegistry().definitions).generateDocument({
     openapi: '3.1.0',
     info: {
-      title: 'papermarket API',
+      title: 'acceptodds API',
       version: '1.0.0',
       description:
         'A prediction-market venue priced by LMSR, trading a non-convertible play currency called reputation. ' +

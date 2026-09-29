@@ -65,7 +65,7 @@ describe('renderDigest', () => {
 
   it('lists old → new, biggest move first, with links and a way out', () => {
     const { subject, text } = renderDigest([item('a', 0.5, 0.56), item('b', 0.7, 0.4)], 'https://x.test/');
-    expect(subject).toBe('papermarket: 2 followed papers moved in the last 24 hours');
+    expect(subject).toBe('acceptodds: 2 followed papers moved in the last 24 hours');
     expect(text).toContain('Q a?: 50% → 56% (+6 pp)');
     expect(text).toContain('Q b?: 70% → 40% (−30 pp)');
     expect(text.indexOf('Title b')).toBeLessThan(text.indexOf('Title a'));

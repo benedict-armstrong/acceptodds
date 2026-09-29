@@ -10,7 +10,7 @@ import 'katex/dist/katex.min.css';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'papermarket',
+  title: 'acceptodds',
   description: 'A prediction market on the fate of research papers, traded in reputation.',
 };
 
@@ -25,7 +25,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <Link href="/" className="text-[22px]">
             <LogoMark />
             <span>
-              paper<i className="text-accent not-italic">market</i>
+              accept<i className="text-accent not-italic">odds</i>
             </span>
           </Link>
           <span className="flex-1" />

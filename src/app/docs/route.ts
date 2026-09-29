@@ -10,7 +10,7 @@ const HTML = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>papermarket API</title>
+    <title>acceptodds API</title>
   </head>
   <body>
     <script id="api-reference" data-url="/api/v1/openapi.json"></script>
