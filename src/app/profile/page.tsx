@@ -1,13 +1,17 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FollowStar } from '@/components/FollowStar';
 import { SignOut } from '@/components/SignOut';
 import { Stat } from '@/components/Stat';
 import { ui } from '@/components/ui';
-import { day, rep, signedRep } from '@/lib/format';
+import { minMovePp, movePp } from '@/lib/digest';
+import { day, pct, rep, signedRep } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
+import { followedListings } from '@/server/follows';
 import { valuation } from '@/server/valuation';
+import { DigestToggle } from './DigestToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +21,7 @@ export default async function ProfilePage() {
   if (!viewer) redirect('/signin');
   const a = viewer.account;
   const v = await valuation(a.id);
+  const follows = await followedListings(a.id);
   events.log('me.read', { accountId: a.id });
 
   return (
@@ -65,6 +70,55 @@ export default async function ProfilePage() {
         <Link href="/portfolio">portfolio →</Link>
         <Link href="/leaderboard">leaderboard →</Link>
       </div>
+
+      <section className="mt-7">
+        <h3 className={ui.sectionHeading}>Following</h3>
+        {follows.length === 0 && (
+          <div className="py-2 text-[15px] text-muted italic">
+            Star a paper to follow it: <span className="not-italic">☆</span> on its page or in the list.
+          </div>
+        )}
+        {follows.map((f) => {
+          const pp = f.move ? Math.round(movePp(f.move)) : 0;
+          return (
+            <div
+              key={f.view.listing.id}
+              className="grid grid-cols-[18px_1fr_auto] items-baseline gap-x-2.5 border-b border-dotted border-rule-strong py-1.5"
+            >
+              <FollowStar listingId={f.view.listing.id} following />
+              <Link href={`/papers/${encodeURIComponent(f.view.listing.slug)}`} className="leading-[1.35]">
+                {f.view.listing.title}
+              </Link>
+              <span className="text-right font-mono text-[13px] whitespace-nowrap" title="price now; change over 24 hours">
+                {f.move && f.main ? (
+                  <>
+                    {f.main.outcomes.length > 2 && (
+                      <span className="font-serif text-sm">{f.main.outcomes[f.move.ordinal].label} </span>
+                    )}
+                    {pct(f.move.now)}{' '}
+                    <span className={pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'}>
+                      {pp > 0 ? '+' : pp < 0 ? '−' : '±'}
+                      {Math.abs(pp)} pp
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+        {follows.length > 0 && (
+          <div className="mt-2 font-sans text-sm">
+            <Link href="/?following=1&kind=all&status=all">followed papers on the home page →</Link>
+          </div>
+        )}
+      </section>
+
+      <section id="email" className="mt-7">
+        <h3 className={ui.sectionHeading}>Email</h3>
+        <DigestToggle optIn={a.digestOptIn} minMovePp={minMovePp()} />
+      </section>
 
       <hr className="my-6 border-rule-soft" />
       <SignOut className={ui.btn({ ghost: true })} />

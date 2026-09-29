@@ -5,6 +5,7 @@ import * as engine from '../engine';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
 import { getComment, listComments, postComment } from '../comments';
+import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
 import { upsertListing } from '../listings';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import {
@@ -24,6 +25,7 @@ import { ApiError } from './errors';
 import { parseBody, parseParam, parseQuery, respond, route, toIso, toIsoOrNull } from './http';
 import {
   presentFill,
+  presentFollowed,
   presentListing,
   presentMarket,
   presentMe,
@@ -279,6 +281,44 @@ export const getMe = route(async (req) => {
   events.log('me.read', { accountId: principal.account.id });
   return respond(S.Me, presentMe(principal), { principal });
 });
+
+/**
+ * Your settings. Only `digestOptIn` for now. `read` scope, like the rest of
+ * `/me`: it moves no money and places no order.
+ */
+export const patchMe = route(async (req) => {
+  const principal = await requireAuth(req, 'read');
+  const body = await parseBody(req, S.UpdateMeRequest);
+  let account = principal.account;
+  if (body.digestOptIn !== undefined) account = await setDigestOptIn(account.id, body.digestOptIn);
+  events.log('me.updated', { accountId: account.id });
+  return respond(S.Me, presentMe({ ...principal, account }), { principal });
+});
+
+/** Listings you follow, each with its main market's headline price now and 24h ago. */
+export const getMyFollows = route(async (req) => {
+  const principal = await requireAuth(req, 'read');
+  const follows = await followedListings(principal.account.id);
+  events.log('follows.read', { accountId: principal.account.id });
+  return respond(S.FollowList, { follows: follows.map(presentFollowed) }, { principal });
+});
+
+/**
+ * Follow or unfollow a listing. Idempotent both ways. `read` scope: a follow is
+ * a preference, not a trade, and needs no verified account. Only listings can
+ * be followed; a market without one cannot.
+ */
+async function setFollow(req: Request, id: unknown, on: boolean) {
+  const principal = await requireAuth(req, 'read');
+  const ref = await resolveListing(parseParam(id, S.ListingRef, 'id'));
+  const changed = on ? await follow(principal.account.id, ref.id) : await unfollow(principal.account.id, ref.id);
+  if (changed) events.log(on ? 'listing.followed' : 'listing.unfollowed', { accountId: principal.account.id });
+  const view = await listingView(ref);
+  return respond(S.FollowState, { listingId: ref.id, following: on, followers: view.followers }, { principal });
+}
+
+export const putListingFollow = route((req, params) => setFollow(req, params.id, true));
+export const deleteListingFollow = route((req, params) => setFollow(req, params.id, false));
 
 export const getMyPortfolio = route(async (req) => {
   const principal = await requireAuth(req, 'read');

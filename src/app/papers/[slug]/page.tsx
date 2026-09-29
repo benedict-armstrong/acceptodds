@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { FollowStar } from '@/components/FollowStar';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { ApiError } from '@/server/api/errors';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
+import { followedListingIds } from '@/server/follows';
 import { listingView, resolveListing, type MarketView } from '@/server/views';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
@@ -37,12 +39,13 @@ export default async function PaperPage({
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
-  const { markets } = await listingView(listing);
+  const { markets, followers } = await listingView(listing);
   const wanted = Array.isArray(sp.market) ? sp.market[0] : sp.market;
   const selected = markets.find((m) => m.market.slug === wanted) ?? markets[0];
 
   const viewer = await viewerFromHeaders(await headers());
   const initial = selected ? await loadMarketLive(selected.market, viewer) : null;
+  const following = viewer ? (await followedListingIds(viewer.account.id)).has(listing.id) : false;
   events.log('listing.read', { accountId: viewer?.account.id ?? null });
 
   return (
@@ -59,6 +62,11 @@ export default async function PaperPage({
               [{l.label}]
             </a>
           ))}
+        </div>
+      )}
+      {viewer && (
+        <div className="mt-2 flex justify-center">
+          <FollowStar listingId={listing.id} following={following} followers={followers} showCount className="text-[17px]" />
         </div>
       )}
       {listing.summary && <Abstract text={listing.summary} />}

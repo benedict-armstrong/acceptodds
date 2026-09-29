@@ -4,6 +4,7 @@ import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
 import type { CommentView, ViewerStake } from '../comments';
+import type { FollowedListing } from '../follows';
 import type { TokenRecord } from '../tokens';
 import type { ListingView, MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
@@ -57,7 +58,26 @@ export function presentListing(v: ListingView): z.input<typeof S.Listing> {
     links: l.links.map((k) => ({ label: k.label, url: k.url })),
     kind: l.kind,
     createdAt: toIso(l.createdAt),
+    followers: v.followers,
     markets: v.markets.map(presentMarket),
+  };
+}
+
+export function presentFollowed(f: FollowedListing): z.input<typeof S.FollowedListing> {
+  const outcome = f.main && f.move ? f.main.outcomes[f.move.ordinal] : null;
+  return {
+    listing: presentListing(f.view),
+    followedAt: toIso(f.followedAt),
+    headline:
+      f.main && f.move && outcome
+        ? {
+            marketId: f.main.market.id,
+            outcomeId: outcome.id,
+            outcomeLabel: outcome.label,
+            price: f.move.now,
+            price24hAgo: f.move.then,
+          }
+        : null,
   };
 }
 
@@ -118,6 +138,7 @@ export function presentMe(p: Principal): z.input<typeof S.Me> {
     canTrade: a.isBot || a.verifiedAt !== null,
     balanceMicro: a.balanceMicro.toString(),
     createdAt: toIso(a.createdAt),
+    digestOptIn: a.digestOptIn,
     auth: { method: p.method, scopes: [...p.scopes] },
   };
 }

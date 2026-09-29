@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { FollowStar } from '@/components/FollowStar';
 import { Sparkline } from '@/components/Sparkline';
 import { ui } from '@/components/ui';
 import { day, pct, rep } from '@/lib/format';
@@ -7,6 +8,7 @@ import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
+import { followedListingIds } from '@/server/follows';
 import {
   browseListings,
   MARKET_SORTS,
@@ -57,18 +59,29 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
   // One row per listing (a paper), read from its main market; plus one per
   // market that belongs to no listing.
-  const rows = await browseListings({ kind, status, sort, q, limit: LIMIT });
-  const sparks = await sparklines(rows);
   const viewer = await viewerFromHeaders(await headers());
+  // ?following=1: only papers the signed-in viewer follows.
+  const onlyFollowed = viewer !== null && one(sp.following) === '1';
+  const rows = await browseListings({ kind, status, sort, q, limit: LIMIT, followedBy: onlyFollowed ? viewer.account.id : null });
+  const sparks = await sparklines(rows);
+  const followed = viewer ? await followedListingIds(viewer.account.id) : new Set<string>();
   events.log('market.list', { accountId: viewer?.account.id ?? null });
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
   const href = (patch: Record<string, string>) => {
-    const params = new URLSearchParams({ kind: kind ?? 'all', status, sort, ...(q ? { q } : {}), ...patch });
+    const params = new URLSearchParams({
+      kind: kind ?? 'all',
+      status,
+      sort,
+      ...(q ? { q } : {}),
+      ...(onlyFollowed ? { following: '1' } : {}),
+      ...patch,
+    });
     if (!params.get('q')) {
       params.delete('q');
       if (params.get('sort') === 'relevance') params.delete('sort');
     }
+    if (params.get('following') === '0') params.delete('following');
     return `/?${params}`;
   };
   const filtered = kind !== null || status !== 'all';
@@ -88,6 +101,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       <form action="/" method="get" role="search" className="mt-3.5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />
         <input type="hidden" name="status" value={status} />
+        {onlyFollowed && <input type="hidden" name="following" value="1" />}
         <input
           type="search"
           name="q"
@@ -132,6 +146,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           </Link>
         </span>
         <span className="flex-1" />
+        {viewer && (
+          <Link href={href({ following: onlyFollowed ? '0' : '1' })} className={onlyFollowed ? ON : ''}>
+            ★ following
+          </Link>
+        )}
         <span className="flex gap-3">
           {STATUSES.map((s) => (
             <Link key={s} href={href({ status: s })} className={s === status ? ON : ''}>
@@ -151,7 +170,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
       {rows.length === 0 &&
         (q ? (
-          <div className={ui.empty}>No papers match “{q}”.</div>
+          <div className={ui.empty}>
+            No {onlyFollowed ? 'papers you follow' : 'papers'} match “{q}”.
+          </div>
+        ) : onlyFollowed ? (
+          <div className={ui.empty}>
+            No {status === 'all' ? '' : status + ' '}papers you follow here. Star one with ☆ to follow it.
+          </div>
         ) : (
           <div className={ui.empty}>Nothing {status === 'all' ? '' : status + ' '}here yet.</div>
         ))}
@@ -166,11 +191,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           {!key && <div className="h-3.5" />}
           {list.map((r) => {
             const look = likelihoodClass(marketLikelihood({ ...r.market, outcomes: r.outcomes }));
-            return (
+            const row = (
               <Link
                 key={r.market.id}
                 href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
-                className="grid grid-cols-[3px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight hover:no-underline narrow:grid-cols-[3px_1fr_64px]"
+                className="grid min-w-0 flex-1 grid-cols-[3px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight hover:no-underline narrow:grid-cols-[3px_1fr_64px]"
               >
                 <span className={`self-stretch ${look.bar}`} aria-hidden />
                 <span className="leading-[1.35]">
@@ -189,6 +214,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
                   {headline(r)}
                 </span>
               </Link>
+            );
+            // A signed-in viewer gets a star beside each paper, outside the
+            // row's link (a button may not sit inside an <a>).
+            if (!viewer) return row;
+            return (
+              <div key={r.market.id} className="flex items-stretch">
+                <span className="flex w-5 shrink-0 items-center border-b border-dotted border-rule-strong">
+                  {r.listing && <FollowStar listingId={r.listing.id} following={followed.has(r.listing.id)} />}
+                </span>
+                {row}
+              </div>
             );
           })}
         </section>

@@ -15,6 +15,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "token:mint": "tsx scripts/mint-token.ts",
     "api:smoke": "tsx scripts/api-smoke.ts",
+    "digest:send": "tsx scripts/send-digest.ts",
     "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts"
   },
   "dependencies": {

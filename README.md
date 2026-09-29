@@ -67,8 +67,9 @@ src/
   app/               the UI: / (markets), /markets/[slug], /portfolio, /leaderboard, /signin, /signup
   components/        PriceChart, Sparkline (plain SVG)
   server/comments.ts market discussion, anonymous but for each author's stake
+  server/follows.ts  following (starring) listings; server/digest.ts the morning email
 config/              institution-domains.json, the sign-up allowlist
-scripts/             token:mint, api:smoke
+scripts/             token:mint, api:smoke, digest:send
 drizzle/             generated migrations, checked in
 tests/unit/          no database, fast, property-based
 tests/integration/   real Postgres
@@ -134,6 +135,24 @@ PM_TOKEN=pm_live_… PM_BASE_URL=http://localhost:3000 npm run api:smoke
 
 lists markets, quotes, trades (and retries with the same `Idempotency-Key`),
 reads the portfolio and sells back, using nothing but the token and HTTP.
+
+### The morning digest
+
+Signed-in users can star (follow) papers. Once a day, `npm run digest:send`
+mails each follower whose followed papers' main markets moved by at least
+`DIGEST_MIN_MOVE_PP` percentage points (default 5) over the previous 24 hours;
+nothing moved, nothing sent. The app has no scheduler: run it from the host's
+cron, for example at 07:00 in Zurich:
+
+```cron
+CRON_TZ=Europe/Zurich
+0 7 * * *  cd /srv/papermarket && npm run digest:send
+```
+
+It sends at most one mail per account per day (`DIGEST_TIMEZONE`, default
+`Europe/Zurich`), so a second run is harmless, and exits non-zero if a mail
+failed (re-running the same day retries those). Links in the mail use
+`APP_URL`, else `BETTER_AUTH_URL`. People turn it off on `/profile`.
 
 ### Who can sign up: `config/institution-domains.json`
 

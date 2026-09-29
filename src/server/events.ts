@@ -46,7 +46,12 @@ export type EventKind =
   | 'listing.list'
   | 'listing.read'
   | 'listing.created'
-  | 'listing.updated';
+  | 'listing.updated'
+  | 'listing.followed'
+  | 'listing.unfollowed'
+  | 'follows.read'
+  | 'me.updated'
+  | 'digest.sent';
 
 export function log(
   kind: EventKind,

@@ -4,6 +4,7 @@ import {
   boolean,
   bigserial,
   check,
+  date,
   doublePrecision,
   index,
   integer,
@@ -77,6 +78,8 @@ export const accounts = pgTable(
     balanceMicro: money('balance_micro').notNull().default(sql`0`),
     isBot: boolean('is_bot').notNull().default(false),
     isHouse: boolean('is_house').notNull().default(false),
+    /** Whether the daily digest of followed papers may be mailed (`server/digest.ts`). On by default. */
+    digestOptIn: boolean('digest_opt_in').notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [
@@ -447,6 +450,45 @@ export const commentBackings = pgTable(
     index('comment_backings_account_outcome_created_idx').on(t.accountId, t.outcomeId, t.createdAt),
     index('comment_backings_comment_idx').on(t.commentId),
   ],
+);
+
+/**
+ * Who follows (stars) which listing. Listings only: a market with no listing
+ * cannot be followed. A preference, not market state and not money: written
+ * by `server/follows.ts` in its own statement, never by the engine.
+ */
+export const listingFollows = pgTable(
+  'listing_follows',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.listingId] }),
+    index('listing_follows_listing_idx').on(t.listingId),
+  ],
+);
+
+/**
+ * One row per digest mail, keyed by the account and the digest's calendar
+ * day (in `DIGEST_TIMEZONE`). Inserted **before** the mail is sent, so a
+ * second run on the same day sends nothing: at most once (`server/digest.ts`).
+ */
+export const digestSends = pgTable(
+  'digest_sends',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    day: date('day', { mode: 'string' }).notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.day] })],
 );
 
 export type Account = typeof accounts.$inferSelect;

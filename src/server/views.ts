@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { accounts, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
+import { accounts, listingFollows, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
 import { normalizeSearch, prefixTsquery } from '@/lib/search';
@@ -347,6 +347,8 @@ export interface ListingView {
   listing: Listing;
   /** Visible (non-draft) markets, main market (lowest rank) first. */
   markets: MarketView[];
+  /** How many accounts follow it. Never who. */
+  followers: number;
 }
 
 export async function listingViews(rows: Listing[], database: Database = getDb()): Promise<ListingView[]> {
@@ -365,7 +367,21 @@ export async function listingViews(rows: Listing[], database: Database = getDb()
     )
     .orderBy(asc(markets.listingRank), asc(markets.createdAt), asc(markets.id));
   const views = await marketViews(marketRows, database);
-  return rows.map((listing) => ({ listing, markets: views.filter((v) => v.market.listingId === listing.id) }));
+  const follows = await database
+    .select({ listingId: listingFollows.listingId, n: sql<number>`count(*)::int` })
+    .from(listingFollows)
+    .where(
+      inArray(
+        listingFollows.listingId,
+        rows.map((l) => l.id),
+      ),
+    )
+    .groupBy(listingFollows.listingId);
+  return rows.map((listing) => ({
+    listing,
+    markets: views.filter((v) => v.market.listingId === listing.id),
+    followers: follows.find((f) => f.listingId === listing.id)?.n ?? 0,
+  }));
 }
 
 export async function listingView(listing: Listing, database: Database = getDb()): Promise<ListingView> {
@@ -811,7 +827,15 @@ const rowMarketIds = sql`(
  * query falls back to `closing`.
  */
 export async function browseListings(
-  q: { kind?: string | null; status?: Market['status'] | 'all'; sort: BrowseSort; q?: string | null; limit?: number },
+  q: {
+    kind?: string | null;
+    status?: Market['status'] | 'all';
+    sort: BrowseSort;
+    q?: string | null;
+    limit?: number;
+    /** Only listings this account follows (so no unlisted markets). */
+    followedBy?: string | null;
+  },
   database: Database = getDb(),
 ): Promise<BrowseRow[]> {
   const text = normalizeSearch(q.q);
@@ -854,6 +878,9 @@ export async function browseListings(
       and(
         status === 'all' ? ne(markets.status, 'draft') : eq(markets.status, status),
         q.kind ? eq(markets.kind, q.kind) : undefined,
+        q.followedBy
+          ? sql`${markets.listingId} in (select lf.listing_id from listing_follows lf where lf.account_id = ${q.followedBy})`
+          : undefined,
         isRowMarket,
         match,
       ),

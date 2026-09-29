@@ -183,6 +183,7 @@ const ListingFields = {
 export const Listing = z
   .object({
     ...ListingFields,
+    followers: z.number().int().min(0).meta({ description: 'How many accounts follow this listing. Never who.' }),
     markets: z.array(Market).meta({
       description: 'Its markets, drafts excluded, by `listingRank` ascending: the first is the main market.',
     }),
@@ -201,6 +202,42 @@ export const ListingListQuery = PaginationQuery.extend({
 export const ListingList = z
   .object({ listings: z.array(Listing), nextCursor: Cursor })
   .meta({ id: 'ListingList' });
+
+export const FollowState = z
+  .object({
+    listingId: Id,
+    following: z.boolean().meta({ description: 'Whether the caller now follows the listing.' }),
+    followers: z.number().int().min(0),
+  })
+  .meta({ id: 'FollowState' });
+
+export const HeadlineMove = z
+  .object({
+    marketId: Id,
+    outcomeId: Id,
+    outcomeLabel: z.string(),
+    price: Price.meta({ description: 'The headline outcome’s price now.' }),
+    price24hAgo: Price.meta({
+      description: 'Its price 24 hours ago, replayed exactly from the fills (the opening price for a newer market).',
+    }),
+  })
+  .meta({
+    id: 'HeadlineMove',
+    description:
+      'The main market’s headline price: the first outcome of a binary market, else the current favourite. A probability, not a value.',
+  });
+
+export const FollowedListing = z
+  .object({
+    listing: Listing,
+    followedAt: Timestamp,
+    headline: HeadlineMove.nullable().meta({ description: '`null` when the listing has no visible market.' }),
+  })
+  .meta({ id: 'FollowedListing' });
+
+export const FollowList = z
+  .object({ follows: z.array(FollowedListing).meta({ description: 'Most recently followed first.' }) })
+  .meta({ id: 'FollowList' });
 
 export const HistoryPoint = z.object({
   at: Timestamp,
@@ -375,6 +412,9 @@ export const Me = z
     }),
     balanceMicro: Micro,
     createdAt: Timestamp,
+    digestOptIn: z.boolean().meta({
+      description: 'Whether the daily email about followed papers whose price moved may be sent to you. On by default.',
+    }),
     auth: z.object({
       method: z.enum(['token', 'session']),
       scopes: z.array(z.enum(TOKEN_SCOPES)),
@@ -451,6 +491,13 @@ export const MyOrder = TapeEntry.extend({
 export const MyOrders = z
   .object({ orders: z.array(MyOrder).meta({ description: 'Newest first.' }), nextCursor: Cursor })
   .meta({ id: 'MyOrders' });
+
+export const UpdateMeRequest = z
+  .object({
+    digestOptIn: z.boolean().optional().meta({ description: 'Turn the daily followed-papers email on or off.' }),
+  })
+  .strict()
+  .meta({ id: 'UpdateMeRequest' });
 
 export const CreateTokenRequest = z
   .object({

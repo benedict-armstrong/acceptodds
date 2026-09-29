@@ -464,3 +464,29 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   them — the result line says where and links "search everything" — and
   sorts by `relevance` (listed only while searching) unless another sort is
   picked; every filter link keeps `q`, "clear" drops it.
+
+### Following and the morning digest (#9)
+
+- **Only listings can be followed** (`listing_follows`, pk account + listing,
+  written by `server/follows.ts`, one statement, never the engine). A market
+  with no listing has no star. No money, no market state; following needs a
+  signed-in or token principal with `read` and no verification. `PUT`/`DELETE
+  /listings/{id}/follow` are idempotent and return `{ following, followers }`;
+  `GET /me/follows` gives each followed listing's main-market **headline**
+  (first outcome if binary, else today's favourite) now and 24h ago. Listing
+  responses carry a `followers` count, never who; `following` is not on the
+  public listing shape, since public reads are anonymous.
+- **A move is a price, not a value** (§1.1): the price 24h ago is replayed
+  exactly from the fills (share vector = Σ order shares up to the cutoff,
+  `follows.moves()`), never sampled or estimated.
+- **`PATCH /me { digestOptIn }`** (`read` scope, like the rest of `/me`) is the
+  only setting; `accounts.digest_opt_in` defaults to true.
+- **The digest is a script, not a scheduler**: `npm run digest:send` from the
+  host cron at 07:00 Europe/Zurich (README). Recipients: non-bot, non-house,
+  confirmed email, opted in, with a followed main market (`open` or `closed`)
+  that moved ≥ `DIGEST_MIN_MOVE_PP` (default 5). **At most once per account
+  per `DIGEST_TIMEZONE` day**: the `digest_sends` row is inserted *before*
+  the mail, so re-runs and concurrent runs send once; a visible send failure
+  deletes the row for a retry, a crash between insert and send loses that
+  day's mail rather than doubling it. The unsubscribe link is `/profile`, not
+  a signed token. `digest.sent` is logged after the send, no payload.

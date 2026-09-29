@@ -336,6 +336,50 @@ export function buildRegistry(): OpenAPIRegistry {
     }),
   );
 
+  r.registerPath(
+    op({
+      method: 'patch',
+      path: '/me',
+      tags: ['me'],
+      summary: 'Update your settings',
+      description: 'Currently only `digestOptIn`: the daily email about followed papers whose price moved.',
+      scope: 'read',
+      request: { body: { content: { 'application/json': { schema: S.UpdateMeRequest } } } },
+      ok: { status: 200, schema: S.Me, description: 'The account, updated.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/me/follows',
+      tags: ['me'],
+      summary: 'Listings you follow',
+      description:
+        'Each with its main market’s headline price now and 24 hours ago (replayed from the fills). Prices, not values.',
+      scope: 'read',
+      ok: { status: 200, schema: S.FollowList, description: 'Your follows, most recent first.' },
+    }),
+  );
+
+  const listingIdParam = z.object({ id: S.ListingRef });
+  for (const method of ['put', 'delete'] as const) {
+    r.registerPath(
+      op({
+        method,
+        path: '/listings/{id}/follow',
+        tags: ['listings'],
+        summary: method === 'put' ? 'Follow a listing' : 'Unfollow a listing',
+        description:
+          'Idempotent. A follow moves no money and needs only the `read` scope; followers may get a daily email when the listing’s main market moves (opt out with `PATCH /me`). Only listings can be followed.',
+        scope: 'read',
+        request: { params: listingIdParam },
+        ok: { status: 200, schema: S.FollowState, description: 'Whether you now follow it, and its follower count.' },
+        errors: { 404: 'not_found' },
+      }),
+    );
+  }
+
   const sessionOnly = (config: Parameters<typeof op>[0]): RouteConfig => ({
     ...op({
       ...config,
