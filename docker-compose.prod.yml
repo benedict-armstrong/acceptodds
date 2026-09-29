@@ -1,0 +1,106 @@
+# Production: https://acceptodds.com
+#
+# Runs behind the host's shared Traefik (~/proxy/docker-compose.yml), which owns
+# :80/:443, admits only Cloudflare (cfonly@file) and serves the Cloudflare
+# Origin CA certificate from its file provider. This file publishes no ports:
+# `app` joins the external `web` network and is routed by its labels alone.
+#
+# One-time: scripts/init-env-production.sh https://acceptodds.com
+#
+# Deploy:
+#   docker compose -f docker-compose.prod.yml --env-file .env.production build
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d postgres
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm tools
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d app
+#
+# Migrations are their own step, never run at app start (src/db/migrate.ts).
+# `tools` runs them by default; other scripts:
+#   ... run --rm tools npm run token:mint -- --handle research-bot --scopes admin --name ops
+#   ... run --rm tools npm run digest:send
+
+name: acceptodds
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # No published port: reachable only from app/tools on the default network.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      target: app
+    image: acceptodds-app
+    restart: unless-stopped
+    logging: *logging
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - web
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.acceptodds.rule=Host(`acceptodds.com`) || Host(`www.acceptodds.com`)
+      - traefik.http.routers.acceptodds.entrypoints=websecure
+      - traefik.http.routers.acceptodds.tls=true
+      - traefik.http.routers.acceptodds.middlewares=acceptodds-www,acceptodds-headers,acceptodds-ratelimit
+      - traefik.http.services.acceptodds.loadbalancer.server.port=3000
+      # www -> apex, so Better Auth's single origin is the only one in use.
+      - traefik.http.middlewares.acceptodds-www.redirectregex.regex=^https://www\.acceptodds\.com/(.*)
+      - traefik.http.middlewares.acceptodds-www.redirectregex.replacement=https://acceptodds.com/$${1}
+      - traefik.http.middlewares.acceptodds-www.redirectregex.permanent=true
+      - traefik.http.middlewares.acceptodds-headers.headers.contenttypenosniff=true
+      - traefik.http.middlewares.acceptodds-headers.headers.framedeny=true
+      - traefik.http.middlewares.acceptodds-headers.headers.referrerpolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.acceptodds-headers.headers.stsseconds=31536000
+      # Anonymous traffic is the edge's job (AGENTS.md); keyed on the real client
+      # IP, which is trustworthy because only Cloudflare can reach this origin.
+      - traefik.http.middlewares.acceptodds-ratelimit.ratelimit.average=${RATE_LIMIT_AVERAGE:-30}
+      - traefik.http.middlewares.acceptodds-ratelimit.ratelimit.burst=${RATE_LIMIT_BURST:-60}
+      - traefik.http.middlewares.acceptodds-ratelimit.ratelimit.period=1s
+      - traefik.http.middlewares.acceptodds-ratelimit.ratelimit.sourcecriterion.requestheadername=Cf-Connecting-Ip
+
+  tools:
+    build:
+      context: .
+      target: tools
+    image: acceptodds-tools
+    profiles: [tools]
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+
+networks:
+  web:
+    external: true

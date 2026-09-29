@@ -61,7 +61,7 @@ export async function previewImage(subject: ShareSubject | null): Promise<ImageR
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 30, color: MUTED }}>
           <div style={{ display: 'flex', fontFamily: 'Serif', fontSize: 36, color: INK }}>
-            paper<span style={{ color: ACCENT }}>market</span>
+            accept<span style={{ color: ACCENT }}>odds</span>
           </div>
           <div style={{ display: 'flex' }}>{subject?.kind ?? ''}</div>
         </div>

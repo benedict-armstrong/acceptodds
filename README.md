@@ -37,9 +37,11 @@ to it. That is deliberate, and it is what keeps this a game.
 | 5 — auth and institutional signup | done (email domain allowlist; ORCID and ROR deferred) |
 | 6 — UI | in progress: markets, market page (trade, chart, comments), sign-in/up, portfolio, leaderboard. Token management and admin pages still to do |
 | 7 — jobs and backups | not started |
-| deployment | not started (blocked on a domain and credentials) |
+| deployment | live at https://acceptodds.com (Docker, behind the host's shared Traefik and Cloudflare) |
 
-There is no Dockerfile and no production compose file yet, on purpose.
+The public brand is **acceptodds**; the code, package and database keep the
+name papermarket. Production is `Dockerfile` + `docker-compose.prod.yml`;
+the deploy steps are in the compose file's header.
 
 ## Layout
 

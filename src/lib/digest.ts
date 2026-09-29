@@ -76,7 +76,7 @@ export function renderDigest(items: readonly DigestItem[], baseUrl: string): { s
   const base = baseUrl.replace(/\/+$/, '');
   const sorted = [...items].sort((a, b) => Math.abs(movePp(b)) - Math.abs(movePp(a)));
   const n = sorted.length;
-  const subject = `papermarket: ${n} followed paper${n === 1 ? '' : 's'} moved in the last 24 hours`;
+  const subject = `acceptodds: ${n} followed paper${n === 1 ? '' : 's'} moved in the last 24 hours`;
   const lines = sorted.map((i) => {
     const what = i.binary ? '' : i.negated ? ` (not ${i.outcomeLabel})` : ` (${i.outcomeLabel})`;
     return [

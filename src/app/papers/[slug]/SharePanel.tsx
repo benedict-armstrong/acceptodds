@@ -63,8 +63,8 @@ export function SharePanel({
     prices: byOrdinal.map((o) => o.price),
     heldOrdinal: mine ? heldOrdinal : null,
   });
-  const markdown = `[![${kind ?? 'papermarket'} odds](${badgeUrl})](${shareUrl})`;
-  const html = `<a href="${shareUrl}"><img src="${badgeUrl}" alt="${kind ?? 'papermarket'} odds"></a>`;
+  const markdown = `[![${kind ?? 'acceptodds'} odds](${badgeUrl})](${shareUrl})`;
+  const html = `<a href="${shareUrl}"><img src="${badgeUrl}" alt="${kind ?? 'acceptodds'} odds"></a>`;
 
   return (
     <details className="group relative">
@@ -93,7 +93,7 @@ export function SharePanel({
         <h3 className={`${ui.sectionHeading} mt-4`}>Badge</h3>
         <div className="mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element -- an SVG badge, shown as embedders will see it */}
-          <img src={badgeUrl} alt={`${kind ?? 'papermarket'} odds`} />
+          <img src={badgeUrl} alt={`${kind ?? 'acceptodds'} odds`} />
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           <Copy value={markdown} label="Copy Markdown" />

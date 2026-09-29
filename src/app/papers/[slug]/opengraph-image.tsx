@@ -1,7 +1,7 @@
 import { OG_SIZE, previewImage } from '@/server/og';
 import { shareSubject } from '@/server/share';
 
-export const alt = 'A paper on papermarket: which way the market leans';
+export const alt = 'A paper on acceptodds: which way the market leans';
 export const size = OG_SIZE;
 export const contentType = 'image/png';
 export const dynamic = 'force-dynamic';

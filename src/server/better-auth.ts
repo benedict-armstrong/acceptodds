@@ -44,7 +44,7 @@ export const EMAIL_DOMAIN_NOT_ALLOWED = 'EMAIL_DOMAIN_NOT_ALLOWED';
 
 export function createAuth(database: Database) {
   return betterAuth({
-    appName: 'papermarket',
+    appName: 'acceptodds',
     baseURL: baseURL(),
     secret: process.env.BETTER_AUTH_SECRET,
     trustedOrigins: [new URL(baseURL()).origin],
@@ -57,7 +57,7 @@ export function createAuth(database: Database) {
       sendResetPassword: async ({ user, url }) => {
         await sendMail({
           to: user.email,
-          subject: 'Reset your papermarket password',
+          subject: 'Reset your acceptodds password',
           text: `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
         });
       },
@@ -68,7 +68,7 @@ export function createAuth(database: Database) {
       sendVerificationEmail: async ({ user, url }) => {
         await sendMail({
           to: user.email,
-          subject: 'Confirm your papermarket email',
+          subject: 'Confirm your acceptodds email',
           text: `Confirm this address to finish signing up:\n\n${url}`,
         });
       },

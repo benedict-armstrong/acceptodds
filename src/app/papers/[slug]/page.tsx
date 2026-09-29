@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     ? `Where do traders think this paper lands at ${subject.kind}? See the odds, and trade on them.`
     : 'See the odds, and trade on them.';
   return {
-    title: `${subject.title.replace(/\$/g, '')} · papermarket`,
+    title: `${subject.title.replace(/\$/g, '')} · ${siteName()}`,
     description,
     alternates: { canonical: subject.path },
     openGraph: { title: question, description, url: subject.path, type: 'article', siteName: siteName() },

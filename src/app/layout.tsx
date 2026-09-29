@@ -14,7 +14,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     // Absolute URLs for the link previews (issue #11).
     metadataBase: new URL(siteUrl()),
-    title: 'papermarket',
+    title: 'acceptodds',
     description: 'A prediction market on the fate of research papers, traded in reputation.',
   };
 }
@@ -30,7 +30,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <Link href="/" className="text-[22px]">
             <LogoMark />
             <span>
-              paper<i className="text-accent not-italic">market</i>
+              accept<i className="text-accent not-italic">odds</i>
             </span>
           </Link>
           <span className="flex-1" />
