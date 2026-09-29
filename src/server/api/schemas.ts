@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SEARCH_MAX_LENGTH } from '@/lib/search';
 import { TOKEN_SCOPES } from '../tokens';
 import { API_ERROR_CODES } from './errors';
 
@@ -127,11 +128,23 @@ export const Market = z
   })
   .meta({ id: 'Market' });
 
+/** Free-text search, shared by the list endpoints. Blank is the same as absent. */
+export const SearchQuery = z
+  .string()
+  .max(SEARCH_MAX_LENGTH)
+  .optional()
+  .meta({
+    description:
+      'Free-text search (Postgres full text, English stemming). Web-search syntax: `"a phrase"`, `a OR b`, `-word`; without those, the last word also matches as a prefix. With `q`, results are ordered by relevance, best first, and `nextCursor` pages in that order (a cursor from an unsearched page is refused). Blank is ignored.',
+    example: 'transformer attention',
+  });
+
 export const MarketListQuery = PaginationQuery.extend({
   status: MarketStatus.optional().meta({
     description: 'Filter by status. Without it, every market except drafts.',
   }),
   kind: z.string().max(100).optional().meta({ description: 'Filter by the opaque `kind` string.' }),
+  q: SearchQuery,
 });
 
 export const MarketList = z
@@ -182,6 +195,7 @@ export const Listing = z
 
 export const ListingListQuery = PaginationQuery.extend({
   kind: z.string().max(100).optional().meta({ description: 'Filter by the opaque `kind` string.' }),
+  q: SearchQuery,
 });
 
 export const ListingList = z

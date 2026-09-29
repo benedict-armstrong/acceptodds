@@ -3,6 +3,7 @@ import { getDb, type Database } from '@/db';
 import { accounts, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
+import { normalizeSearch, prefixTsquery } from '@/lib/search';
 import { ApiError } from './api/errors';
 import { valuations } from './valuation';
 
@@ -21,7 +22,7 @@ import { valuations } from './valuation';
 // cursors
 // ---------------------------------------------------------------------------
 
-type CursorKey = { t: string; id: string } | { p: string; id: string; k?: 'net_worth' };
+type CursorKey = { t: string; id: string } | { p: string; id: string; k?: 'net_worth' } | { r: string; id: string };
 
 export function encodeCursor(key: CursorKey): string {
   return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
@@ -71,9 +72,164 @@ function decodePnlCursor(
   throw badCursor();
 }
 
+/** A search-rank cursor: `r` is a `real` as Postgres prints it, which round-trips exactly. */
+function decodeRankCursor(cursor: string | undefined): { r: string; id: string } | null {
+  if (cursor === undefined) return null;
+  try {
+    const key = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (
+      typeof key?.r === 'string' &&
+      /^\d{1,20}(\.\d{1,20})?(e[+-]?\d{1,3})?$/.test(key.r) &&
+      typeof key?.id === 'string' &&
+      UUID.test(key.id)
+    ) {
+      return { r: key.r, id: key.id };
+    }
+  } catch {
+    /* fall through */
+  }
+  throw badCursor();
+}
+
 /** A timestamptz column as UTC text with microseconds, for a cursor. */
 function tsText(column: unknown): SQL<string> {
   return sql<string>`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+}
+
+// ---------------------------------------------------------------------------
+// free-text search
+// ---------------------------------------------------------------------------
+
+/**
+ * Postgres full-text search over listings and markets.
+ *
+ * Each is its own weighted document — listing: title A, authors B, summary C;
+ * market: question A, description C — built by the immutable SQL functions
+ * `listing_search_vector` / `market_search_vector` (drizzle/0003) and indexed
+ * by GIN expression indexes on exactly those calls (`schema.ts`). Call them
+ * only through `listingVector` / `marketVector`, or the index goes unused.
+ *
+ * The query is `websearch_to_tsquery('english', q)` — stemmed, with quotes,
+ * `OR` and `-word` — OR-ed with a prefix query on the last word
+ * (`lib/search.ts`) unless operators are used, so partial words match while
+ * typing. Rank is `ts_rank_cd`. The query text is always a bound parameter.
+ */
+function tsquery(q: string): SQL {
+  const prefix = prefixTsquery(q);
+  return prefix
+    ? sql`(websearch_to_tsquery('english', ${q}) || to_tsquery('english', ${prefix}))`
+    : sql`websearch_to_tsquery('english', ${q})`;
+}
+
+function listingVector(alias?: string): SQL {
+  return alias
+    ? sql`listing_search_vector(${sql.raw(alias)}.title, ${sql.raw(alias)}.authors, ${sql.raw(alias)}.summary)`
+    : sql`listing_search_vector(${listings.title}, ${listings.authors}, ${listings.summary})`;
+}
+
+function marketVector(alias?: string): SQL {
+  return alias
+    ? sql`market_search_vector(${sql.raw(alias)}.question, ${sql.raw(alias)}.description)`
+    : sql`market_search_vector(${markets.question}, ${markets.description})`;
+}
+
+/** Ids of listings whose own text matches. */
+function matchingListingIds(tq: SQL): SQL {
+  return sql`(select ls.id from listings ls where ${listingVector('ls')} @@ ${tq})`;
+}
+
+/** Listing ids of visible markets whose text matches. */
+function listingIdsOfMatchingMarkets(tq: SQL): SQL {
+  return sql`(select ms.listing_id from markets ms
+               where ms.listing_id is not null and ms.status <> 'draft' and ${marketVector('ms')} @@ ${tq})`;
+}
+
+/** Ids of markets whose own text matches. */
+function matchingMarketIds(tq: SQL): SQL {
+  return sql`(select ms.id from markets ms where ${marketVector('ms')} @@ ${tq})`;
+}
+
+/** 0 for a document that does not match; `real`, never read into money. */
+function rankOf(vector: SQL, tq: SQL): SQL {
+  return sql`coalesce(ts_rank_cd(${vector}, ${tq}), 0)`;
+}
+
+/**
+ * `listMarkets` with a query: a market matches on its own text or on its
+ * listing's (so an author finds their paper's markets), and ranks by the
+ * better of the two. Best first, ties by id, paged with a rank cursor.
+ */
+async function searchMarkets(
+  text: string,
+  q: { status?: Market['status']; kind?: string; cursor?: string; limit: number },
+  database: Database,
+): Promise<{ views: MarketView[]; nextCursor: string | null }> {
+  const tq = tsquery(text);
+  const rank = sql`greatest(${rankOf(marketVector(), tq)}, coalesce((
+    select ${rankOf(listingVector('lr'), tq)} from listings lr where lr.id = ${markets.listingId}
+  ), 0))`;
+  const after = decodeRankCursor(q.cursor);
+  const rows = await database
+    .select({ market: markets, rank: sql<string>`(${rank})::text` })
+    .from(markets)
+    .where(
+      and(
+        q.status ? eq(markets.status, q.status) : ne(markets.status, 'draft'),
+        q.kind ? eq(markets.kind, q.kind) : undefined,
+        sql`(${markets.id} in ${matchingMarketIds(tq)} or ${markets.listingId} in ${matchingListingIds(tq)})`,
+        after ? sql`(${rank}, ${markets.id}) < (${after.r}::real, ${after.id}::uuid)` : undefined,
+      ),
+    )
+    .orderBy(sql`${rank} desc`, desc(markets.id))
+    .limit(q.limit + 1);
+  const page = rows.slice(0, q.limit);
+  const last = page[page.length - 1];
+  return {
+    views: await marketViews(
+      page.map((r) => r.market),
+      database,
+    ),
+    nextCursor: rows.length > q.limit && last ? encodeCursor({ r: last.rank, id: last.market.id }) : null,
+  };
+}
+
+/**
+ * `listListings` with a query: a listing matches on its own text or on any of
+ * its visible markets', and ranks by the best of them. Best first, ties by
+ * id, paged with a rank cursor.
+ */
+async function searchListings(
+  text: string,
+  q: { kind?: string; cursor?: string; limit: number },
+  database: Database,
+): Promise<{ views: ListingView[]; nextCursor: string | null }> {
+  const tq = tsquery(text);
+  const rank = sql`greatest(${rankOf(listingVector(), tq)}, coalesce((
+    select max(${rankOf(marketVector('mr'), tq)}) from markets mr
+     where mr.listing_id = ${listings.id} and mr.status <> 'draft'
+  ), 0))`;
+  const after = decodeRankCursor(q.cursor);
+  const rows = await database
+    .select({ listing: listings, rank: sql<string>`(${rank})::text` })
+    .from(listings)
+    .where(
+      and(
+        q.kind ? eq(listings.kind, q.kind) : undefined,
+        sql`(${listings.id} in ${matchingListingIds(tq)} or ${listings.id} in ${listingIdsOfMatchingMarkets(tq)})`,
+        after ? sql`(${rank}, ${listings.id}) < (${after.r}::real, ${after.id}::uuid)` : undefined,
+      ),
+    )
+    .orderBy(sql`${rank} desc`, desc(listings.id))
+    .limit(q.limit + 1);
+  const page = rows.slice(0, q.limit);
+  const last = page[page.length - 1];
+  return {
+    views: await listingViews(
+      page.map((r) => r.listing),
+      database,
+    ),
+    nextCursor: rows.length > q.limit && last ? encodeCursor({ r: last.rank, id: last.listing.id }) : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,10 +295,13 @@ export async function marketView(market: Market, database: Database = getDb()): 
   return view;
 }
 
+/** Markets, newest first; or, with a non-blank `q`, by search rank (`searchMarkets`). */
 export async function listMarkets(
-  q: { status?: Market['status']; kind?: string; cursor?: string; limit: number },
+  q: { status?: Market['status']; kind?: string; q?: string; cursor?: string; limit: number },
   database: Database = getDb(),
 ): Promise<{ views: MarketView[]; nextCursor: string | null }> {
+  const text = normalizeSearch(q.q);
+  if (text !== null) return searchMarkets(text, q, database);
   const after = decodeTimeCursor(q.cursor);
   const where = [
     q.status ? eq(markets.status, q.status) : ne(markets.status, 'draft'),
@@ -214,10 +373,13 @@ export async function listingView(listing: Listing, database: Database = getDb()
   return view;
 }
 
+/** Listings, newest first; or, with a non-blank `q`, by search rank (`searchListings`). */
 export async function listListings(
-  q: { kind?: string; cursor?: string; limit: number },
+  q: { kind?: string; q?: string; cursor?: string; limit: number },
   database: Database = getDb(),
 ): Promise<{ views: ListingView[]; nextCursor: string | null }> {
+  const text = normalizeSearch(q.q);
+  if (text !== null) return searchListings(text, q, database);
   const after = decodeTimeCursor(q.cursor);
   const rows = await database
     .select({ listing: listings, ts: tsText(listings.createdAt) })
@@ -598,6 +760,8 @@ export async function publicAccount(handle: string, database: Database = getDb()
 
 export const MARKET_SORTS = ['closing', 'volume', 'activity', 'newest'] as const;
 export type MarketSort = (typeof MARKET_SORTS)[number];
+/** Search rank: only meaningful with a query, and the UI's default when there is one. */
+export type BrowseSort = MarketSort | 'relevance';
 
 export interface BrowseRow extends MarketView {
   /** The listing this row stands for, or null for a market that has none. */
@@ -640,11 +804,28 @@ const rowMarketIds = sql`(
  * date, volume summed over the row, the latest fill in the row, or the main
  * market's creation. Not paginated: a venue has at most a few hundred rows,
  * and the page shows them all.
+ *
+ * With a non-blank `q`, only rows whose listing text or any visible market's
+ * text in the row matches (see "free-text search"); the filters still apply,
+ * and `relevance` orders by the best rank in the row. `relevance` without a
+ * query falls back to `closing`.
  */
 export async function browseListings(
-  q: { kind?: string | null; status?: Market['status'] | 'all'; sort: MarketSort; limit?: number },
+  q: { kind?: string | null; status?: Market['status'] | 'all'; sort: BrowseSort; q?: string | null; limit?: number },
   database: Database = getDb(),
 ): Promise<BrowseRow[]> {
+  const text = normalizeSearch(q.q);
+  const tq = text === null ? null : tsquery(text);
+  const match = tq
+    ? sql`(${markets.id} in ${matchingMarketIds(tq)}
+         or ${markets.listingId} in ${matchingListingIds(tq)}
+         or ${markets.listingId} in ${listingIdsOfMatchingMarkets(tq)})`
+    : undefined;
+  const rank = tq
+    ? sql`greatest(${rankOf(listingVector(), tq)}, (
+        select max(${rankOf(marketVector('m3'), tq)}) from markets m3 where m3.id in ${rowMarketIds}
+      ))`
+    : null;
   const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id in ${rowMarketIds})`;
   const count = sql`(select count(*) from orders o where o.market_id in ${rowMarketIds})`;
   const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id in ${rowMarketIds})`;
@@ -653,6 +834,7 @@ export async function browseListings(
     volume: [sql`${volume} desc`],
     activity: [sql`${lastTrade} desc nulls last`],
     newest: [sql`${markets.createdAt} desc`],
+    relevance: rank ? [sql`${rank} desc`, sql`${markets.closesAt} asc`] : [sql`${markets.closesAt} asc`],
   }[q.sort];
 
   const status = q.status ?? 'open';
@@ -673,6 +855,7 @@ export async function browseListings(
         status === 'all' ? ne(markets.status, 'draft') : eq(markets.status, status),
         q.kind ? eq(markets.kind, q.kind) : undefined,
         isRowMarket,
+        match,
       ),
     )
     .orderBy(...order, desc(markets.id))

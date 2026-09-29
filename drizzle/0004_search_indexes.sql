@@ -1,0 +1,2 @@
+CREATE INDEX "listings_search_idx" ON "listings" USING gin (listing_search_vector("title", "authors", "summary"));--> statement-breakpoint
+CREATE INDEX "markets_search_idx" ON "markets" USING gin (market_search_vector("question", "description"));

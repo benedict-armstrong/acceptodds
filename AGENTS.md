@@ -264,6 +264,20 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Market list filter is `kind`, not `venue`.** There is no venue column and
   adding one would start to answer §12 Q1; `kind` is already the opaque
   grouping string. Drafts are hidden from the list unless asked for.
+- **Search is Postgres full text, `?q=` on `/listings` and `/markets`.**
+  Each listing and market is its own weighted document (listing: title A,
+  authors B, summary C; market: question A, description C), built by the
+  immutable SQL functions in `drizzle/0003_search_functions.sql` and indexed
+  by GIN *expression* indexes on those exact calls — no tsvector column, so
+  no row carries it. Query them only through `views.ts`'s
+  `listingVector`/`marketVector`, or the index goes unused; changing a
+  document is a new migration replacing the function. The query is
+  `websearch_to_tsquery('english', q)`, OR-ed with a last-word prefix query
+  (`lib/search.ts`) unless quotes, `OR` or `-word` are used, and is always a
+  bound parameter. A listing matches on its text or any visible market's; a
+  market on its text or its listing's. Ranked by `ts_rank_cd` (best of the
+  documents), ties by id, paged with a `(rank, id)` cursor that time cursors
+  can't be swapped for. Blank `q` is ignored; over 200 chars is a 400.
 
 ### Auth (M5)
 
@@ -445,3 +459,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   binary markets (the other price is the complement) and needs no replay;
   they start at the opening price (1/2). Multi-outcome markets show their
   favourite's price instead of a line.
+- **The home page search box is a plain GET form** (`?q=`, works without
+  JS). It carries the current venue and status, so a search stays inside
+  them — the result line says where and links "search everything" — and
+  sorts by `relevance` (listed only while searching) unless another sort is
+  picked; every filter link keeps `q`, "clear" drops it.

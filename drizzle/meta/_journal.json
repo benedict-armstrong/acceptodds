@@ -22,6 +22,20 @@
       "when": 1790675948374,
       "tag": "0002_comment_backings",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790677561569,
+      "tag": "0003_search_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790677575560,
+      "tag": "0004_search_indexes",
+      "breakpoints": true
     }
   ]
 }

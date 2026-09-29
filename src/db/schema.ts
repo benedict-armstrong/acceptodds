@@ -115,7 +115,13 @@ export const listings = pgTable(
     kind: text('kind'),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('listings_slug_key').on(t.slug)],
+  (t) => [
+    uniqueIndex('listings_slug_key').on(t.slug),
+    // Full-text search (`views.ts` `searchQuery`). The function is defined in
+    // drizzle/0003_search_functions.sql; a query must call it with the same
+    // arguments for the planner to use this index.
+    index('listings_search_idx').using('gin', sql`listing_search_vector(${t.title}, ${t.authors}, ${t.summary})`),
+  ],
 );
 
 export interface ListingLink {
@@ -173,6 +179,8 @@ export const markets = pgTable(
     uniqueIndex('markets_slug_key').on(t.slug),
     index('markets_status_idx').on(t.status),
     index('markets_listing_id_idx').on(t.listingId),
+    // Full-text search; see `listings_search_idx`.
+    index('markets_search_idx').using('gin', sql`market_search_vector(${t.question}, ${t.description})`),
   ],
 );
 

@@ -93,7 +93,8 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/markets',
       tags: ['markets'],
       summary: 'List markets',
-      description: 'Newest first. Drafts are hidden unless `status=draft`.',
+      description:
+        'Newest first. Drafts are hidden unless `status=draft`. With `q`, only markets whose question or description — or whose listing’s title, authors or summary — match, best match first.',
       request: { query: S.MarketListQuery },
       ok: { status: 200, schema: S.MarketList, description: 'A page of markets.' },
     }),
@@ -159,7 +160,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'List listings',
       description:
-        'Newest first. A listing is an opaque subject that markets are grouped under; each comes with its markets, main market first.',
+        'Newest first. A listing is an opaque subject that markets are grouped under; each comes with its markets, main market first. With `q`, only listings whose title, authors or summary — or any of whose visible markets’ question or description — match, best match first.',
       request: { query: S.ListingListQuery },
       ok: { status: 200, schema: S.ListingList, description: 'A page of listings.' },
     }),

@@ -4,9 +4,17 @@ import { Sparkline } from '@/components/Sparkline';
 import { ui } from '@/components/ui';
 import { day, pct, rep } from '@/lib/format';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
+import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
-import { browseListings, MARKET_SORTS, marketKinds, sparklines, type BrowseRow, type MarketSort } from '@/server/views';
+import {
+  browseListings,
+  MARKET_SORTS,
+  marketKinds,
+  sparklines,
+  type BrowseRow,
+  type BrowseSort,
+} from '@/server/views';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +23,9 @@ const ON = ui.on;
 
 const STATUSES = ['open', 'closed', 'settled', 'all'] as const;
 type Status = (typeof STATUSES)[number];
+
+/** The home page shows at most this many rows; a search says "N+" when it hits it. */
+const LIMIT = 200;
 
 /** The venue shown first. Opaque to the platform: it is a `kind` string. */
 function defaultKind(): string {
@@ -34,19 +45,33 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const kind =
     wanted === 'all' ? null : wanted ?? (kinds.some((k) => k.kind === defaultKind()) ? defaultKind() : null);
   const status: Status = (STATUSES as readonly string[]).includes(one(sp.status) ?? '') ? (one(sp.status) as Status) : 'open';
-  const sort: MarketSort = (MARKET_SORTS as readonly string[]).includes(one(sp.sort) ?? '') ? (one(sp.sort) as MarketSort) : 'closing';
+  // A search keeps the venue and status filters (the form carries them) and
+  // sorts by relevance unless another sort is asked for.
+  const q = normalizeSearch(one(sp.q));
+  const sorts: readonly BrowseSort[] = q ? ['relevance', ...MARKET_SORTS] : MARKET_SORTS;
+  const sort: BrowseSort = (sorts as readonly string[]).includes(one(sp.sort) ?? '')
+    ? (one(sp.sort) as BrowseSort)
+    : q
+      ? 'relevance'
+      : 'closing';
 
   // One row per listing (a paper), read from its main market; plus one per
   // market that belongs to no listing.
-  const rows = await browseListings({ kind, status, sort });
+  const rows = await browseListings({ kind, status, sort, q, limit: LIMIT });
   const sparks = await sparklines(rows);
   const viewer = await viewerFromHeaders(await headers());
   events.log('market.list', { accountId: viewer?.account.id ?? null });
 
+  // Filter links keep the search; `q: ''` drops it (and its relevance sort).
   const href = (patch: Record<string, string>) => {
-    const q = new URLSearchParams({ kind: kind ?? 'all', status, sort, ...patch });
-    return `/?${q}`;
+    const params = new URLSearchParams({ kind: kind ?? 'all', status, sort, ...(q ? { q } : {}), ...patch });
+    if (!params.get('q')) {
+      params.delete('q');
+      if (params.get('sort') === 'relevance') params.delete('sort');
+    }
+    return `/?${params}`;
   };
+  const filtered = kind !== null || status !== 'all';
 
   // Grouped by closing day only when sorted by it; otherwise one flat list.
   const groups: [string, BrowseRow[]][] = [];
@@ -59,7 +84,43 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <main className={ui.page}>
-      <div className="mt-3.5 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted">
+      {/* A plain GET form, so search works without JavaScript. */}
+      <form action="/" method="get" role="search" className="mt-3.5 flex gap-2">
+        <input type="hidden" name="kind" value={kind ?? 'all'} />
+        <input type="hidden" name="status" value={status} />
+        <input
+          type="search"
+          name="q"
+          defaultValue={q ?? ''}
+          maxLength={SEARCH_MAX_LENGTH}
+          aria-label="Search papers"
+          placeholder='Search titles, authors, abstracts — "a phrase", -without'
+          className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint focus:border-frame focus:outline-none"
+        />
+        <button
+          type="submit"
+          className="cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink"
+        >
+          Search
+        </button>
+      </form>
+
+      {q && (
+        <div className="mt-2 font-sans text-[13px] text-muted">
+          {rows.length === LIMIT ? `${LIMIT}+` : rows.length} {rows.length === 1 ? 'result' : 'results'} for “{q}”
+          {filtered && (
+            <>
+              {' '}
+              in {kind ?? 'all venues'}
+              {status !== 'all' && `, ${status}`} ·{' '}
+              <Link href={href({ kind: 'all', status: 'all' })}>search everything</Link>
+            </>
+          )}{' '}
+          · <Link href={href({ q: '' })}>clear</Link>
+        </div>
+      )}
+
+      <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted">
         <span className="flex gap-3">
           {kinds.map((k) => (
             <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
@@ -80,7 +141,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </span>
         <span className="flex gap-3">
           sort:
-          {MARKET_SORTS.map((s) => (
+          {sorts.map((s) => (
             <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
               {s}
             </Link>
@@ -88,7 +149,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </span>
       </div>
 
-      {rows.length === 0 && <div className={ui.empty}>Nothing {status === 'all' ? '' : status + ' '}here yet.</div>}
+      {rows.length === 0 &&
+        (q ? (
+          <div className={ui.empty}>No papers match “{q}”.</div>
+        ) : (
+          <div className={ui.empty}>Nothing {status === 'all' ? '' : status + ' '}here yet.</div>
+        ))}
 
       {groups.map(([key, list]) => (
         <section key={key || 'all'}>
