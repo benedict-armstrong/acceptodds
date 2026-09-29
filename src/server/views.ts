@@ -467,7 +467,8 @@ export async function marketKinds(database: Database = getDb()): Promise<{ kind:
     .from(markets)
     .where(ne(markets.status, 'draft'))
     .groupBy(markets.kind)
-    .orderBy(sql`count(*) desc`, markets.kind);
+    // Byte order, so ties sort the same whatever locale the database was created with.
+    .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`);
 }
 
 /**
