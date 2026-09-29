@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import * as events from '@/server/events';
-import { shareSubject } from '@/server/share';
+import { shareSubject, siteUrl } from '@/server/share';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,11 +11,15 @@ export const dynamic = 'force-dynamic';
  * Crawlers follow it and read the page's own preview metadata. Each open is
  * logged (no payload, no account: the visitor is usually anonymous), which is
  * how the share loop is measured.
+ *
+ * The target is built on `siteUrl()`, never `req.url`: behind the proxy the
+ * standalone server sees its own bind address (`HOSTNAME=0.0.0.0`), and a
+ * redirect built from that sends the visitor to http://0.0.0.0:3000.
  */
-export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const subject = await shareSubject(decodeURIComponent(slug));
   if (!subject) return new NextResponse('Not found', { status: 404 });
   events.log('share.opened', { marketId: subject.main?.market.id ?? null });
-  return NextResponse.redirect(new URL(subject.path, req.url), 307);
+  return NextResponse.redirect(new URL(subject.path, siteUrl()), 307);
 }

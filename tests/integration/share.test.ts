@@ -49,16 +49,26 @@ const get = (url: string, headers: Record<string, string> = {}) => new Request(`
 describe('/s/<slug>', () => {
   it('redirects a paper, a listed market and an unlisted market, and logs the open', async () => {
     const p = await paper('p');
-    const go = async (slug: string) => shortRoute.GET(get(`/s/${slug}`), { params: Promise.resolve({ slug }) });
+    // The request arrives on the server's bind address, as it does behind the
+    // proxy; the redirect must still point at the public origin.
+    const saved = process.env.APP_URL;
+    process.env.APP_URL = 'https://share.example/';
+    const go = async (slug: string) =>
+      shortRoute.GET(new Request(`http://0.0.0.0:3000/s/${slug}`), { params: Promise.resolve({ slug }) });
 
-    let res = await go('p');
-    expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toBe('http://test.local/papers/p');
-    res = await go('p-decision');
-    expect(res.headers.get('location')).toBe('http://test.local/papers/p');
-    res = await go('concurrency');
-    expect(res.headers.get('location')).toBe('http://test.local/markets/concurrency');
-    expect((await go('nope')).status).toBe(404);
+    try {
+      let res = await go('p');
+      expect(res.status).toBe(307);
+      expect(res.headers.get('location')).toBe('https://share.example/papers/p');
+      res = await go('p-decision');
+      expect(res.headers.get('location')).toBe('https://share.example/papers/p');
+      res = await go('concurrency');
+      expect(res.headers.get('location')).toBe('https://share.example/markets/concurrency');
+      expect((await go('nope')).status).toBe(404);
+    } finally {
+      if (saved === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = saved;
+    }
 
     await new Promise((r) => setTimeout(r, 200)); // the log writes after the response
     const logged = await db
