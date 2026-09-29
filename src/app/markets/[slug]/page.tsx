@@ -1,13 +1,29 @@
+import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { ui } from '@/components/ui';
 import { ApiError } from '@/server/api/errors';
 import { viewerFromHeaders } from '@/server/auth';
+import { shareSubject } from '@/server/share';
 import { resolveListing, resolveMarket } from '@/server/views';
 import { loadMarketLive } from './load';
 import { MarketLive } from './MarketLive';
 
 export const dynamic = 'force-dynamic';
+
+/** The link preview's text for a market with no listing (a listed one redirects to its paper). */
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const subject = await shareSubject(decodeURIComponent((await params).slug));
+  if (!subject || subject.listing) return {};
+  const description = 'See the odds, and trade on them.';
+  return {
+    title: `${subject.title} · papermarket`,
+    description,
+    alternates: { canonical: subject.path },
+    openGraph: { title: subject.title, description, url: subject.path, siteName: 'papermarket' },
+    twitter: { card: 'summary_large_image', title: subject.title, description },
+  };
+}
 
 export default async function MarketPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

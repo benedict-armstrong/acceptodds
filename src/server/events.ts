@@ -51,7 +51,9 @@ export type EventKind =
   | 'listing.unfollowed'
   | 'follows.read'
   | 'me.updated'
-  | 'digest.sent';
+  | 'digest.sent'
+  | 'share.opened'
+  | 'badge.read';
 
 export function log(
   kind: EventKind,

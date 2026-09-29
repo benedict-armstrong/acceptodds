@@ -5,14 +5,19 @@ import { LogoMark } from '@/components/Logo';
 import { ui } from '@/components/ui';
 import { rep } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
+import { siteUrl } from '@/server/share';
 import { valuation } from '@/server/valuation';
 import 'katex/dist/katex.min.css';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'papermarket',
-  description: 'A prediction market on the fate of research papers, traded in reputation.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    // Absolute URLs for the link previews (issue #11).
+    metadataBase: new URL(siteUrl()),
+    title: 'papermarket',
+    description: 'A prediction market on the fate of research papers, traded in reputation.',
+  };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const viewer = await viewerFromHeaders(await headers());

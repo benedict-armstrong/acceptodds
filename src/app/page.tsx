@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
 import { MathText } from '@/components/MathText';
+import { OutcomeBar } from '@/components/OutcomeBar';
 import { Sparkline } from '@/components/Sparkline';
 import { ui } from '@/components/ui';
 import { pct, rep } from '@/lib/format';
+import { marketHeadline } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
@@ -35,7 +37,7 @@ const FOLLOWING_COOKIE = 'home_following_open';
 
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
 const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
-/** Sort keys shown under another name. The venue's `likelihood` is the first outcome's price. */
+/** Sort keys shown under another name. The venue's `likelihood` is the headline (`lib/headline.ts`). */
 const SORT_LABEL: Partial<Record<BrowseSort, string>> = { likelihood: 'acceptance' };
 
 /** The venue shown first. Opaque to the platform: it is a `kind` string. */
@@ -268,7 +270,7 @@ function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
       <span className="narrow:hidden" title={r.listing ? r.market.question : undefined}>
         <Sparkline values={spark} />
       </span>
-      <span className={`text-right font-mono text-sm ${look.text}`} title={r.listing ? r.market.question : undefined}>
+      <span className={`text-right font-mono text-sm ${look.text}`} title={r.listing ? `${r.market.question} · chance of acceptance` : undefined}>
         {headline(r)}
       </span>
     </Link>
@@ -280,16 +282,22 @@ function authors(names: string[]): string {
   return names.length > 3 ? `${names.slice(0, 3).join(', ')} et al.` : names.join(', ');
 }
 
-/** Binary: the first outcome's price. More outcomes: the favourite, named. Settled: the winner. */
+/**
+ * The headline (`lib/headline.ts`: for a paper, accepted in any form), with
+ * the outcome bar under it when there are more than two outcomes. Settled: the
+ * winner. Void: nothing.
+ */
 function headline(r: BrowseRow): React.ReactNode {
   if (r.market.status === 'settled') {
     return r.outcomes.find((o) => o.id === r.market.resolvedOutcomeId)?.label ?? 'settled';
   }
-  if (r.outcomes.length === 2) return pct(r.outcomes[0].price);
-  const top = [...r.outcomes].sort((a, b) => b.price - a.price)[0];
+  const h = marketHeadline({ ...r.market, outcomes: r.outcomes });
+  if (h === null) return '—';
+  const n = r.outcomes.length;
   return (
-    <>
-      <span className="font-serif text-sm">{top.label}</span> {pct(top.price)}
-    </>
+    <span className="inline-flex flex-col items-end gap-1">
+      {pct(h)}
+      {n > 2 && <OutcomeBar prices={r.outcomes.map((o) => o.price)} labels={r.outcomes.map((o) => o.label)} className="h-1 w-14" />}
+    </span>
   );
 }

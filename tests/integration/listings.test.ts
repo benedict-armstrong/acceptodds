@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { markets } from '@/db/schema';
+import { marketHeadline } from '@/lib/headline';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { browseListings, marketKinds, sparklines } from '@/server/views';
@@ -208,13 +209,15 @@ describe('browsing listings', () => {
     expect(await marketKinds()).toEqual([{ kind: 'binary', count: 2 }]);
   });
 
-  it('sorts by likelihood: first-outcome price, highest first, others last', async () => {
+  it('sorts by likelihood: the headline, highest first, void last', async () => {
     const opts = { startingBalanceMicro: STARTING_MICRO, expectedTraders: 10, kind: 'lk', closesAt: new Date(Date.now() + 86_400_000) };
     const make = (slug: string, outcomes = ['YES', 'NO']) => createMarket({ ...opts, slug, question: `${slug}?`, outcomes });
     const low = await make('low');
     const high = await make('high');
     await make('mid');
+    // Three outcomes open at a headline of 1 − 1/3.
     const multi = await make('multi', ['A', 'B', 'C']);
+    const gone = await make('gone', ['A', 'B', 'C']);
 
     const t = await trader('t');
     const buy = (marketId: string, outcomeId: string, units: number) =>
@@ -226,8 +229,15 @@ describe('browsing listings', () => {
     await buy(high.marketId, high.outcomeIds[0], 30);
     await buy(multi.marketId, multi.outcomeIds[0], 50);
 
-    const rows = await browseListings({ kind: 'lk', sort: 'likelihood' });
-    expect(rows.map((r) => r.market.slug)).toEqual(['high', 'mid', 'low', 'multi']);
-    expect(rows[1].outcomes[0].price).toBeCloseTo(0.5);
+    // There is no void path in the engine yet; the status is all the sort reads.
+    await db.update(markets).set({ status: 'void' }).where(eq(markets.id, gone.marketId));
+
+    const rows = await browseListings({ kind: 'lk', sort: 'likelihood', status: 'all' });
+    expect(rows.map((r) => r.market.slug)).toEqual(['multi', 'high', 'mid', 'low', 'gone']);
+    expect(rows[2].outcomes[0].price).toBeCloseTo(0.5);
+    // The SQL headline is the same number `lib/headline.ts` computes.
+    const m = rows[0];
+    expect(1 - m.outcomes[2].price).toBeGreaterThan(2 / 3);
+    expect(marketHeadline({ ...m.market, outcomes: m.outcomes })).toBeCloseTo(1 - m.outcomes[2].price, 12);
   });
 });

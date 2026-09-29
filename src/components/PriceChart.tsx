@@ -1,5 +1,6 @@
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
+import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, TIER_HEX } from '@/lib/headline';
 
 export interface ChartPoint {
   at: string;
@@ -7,6 +8,11 @@ export interface ChartPoint {
 }
 
 const COLORS = ['#1d1d1d', '#b31b1b', '#2f6db3', '#8a6d1f', '#5b8a3a', '#7a4b9a'];
+
+/** Three or four outcomes are ordered best first and drawn in the tier colours of the outcome bar. */
+function colorOf(i: number, n: number): string {
+  return n > 2 && n <= MAX_BAR_OUTCOMES ? TIER_HEX[paletteSlot(i, n)] : COLORS[i % COLORS.length];
+}
 
 /**
  * The price timeline: every outcome's price after every fill, against time.
@@ -24,7 +30,9 @@ export function PriceChart({
   width?: number;
   height?: number;
 }) {
-  const lines = labels.length === 2 ? [0] : labels.map((_, i) => i);
+  const n = labels.length;
+  // Binary: the first outcome only. Ordered outcomes: worst first, like the bar.
+  const lines = n === 2 ? [0] : n <= MAX_BAR_OUTCOMES ? barOrder(n) : labels.map((_, i) => i);
   const t0 = new Date(points[0].at).getTime();
   const t1 = Math.max(new Date(points[points.length - 1].at).getTime(), t0 + 1);
   const all = points.flatMap((p) => lines.map((i) => p.prices[i]));
@@ -61,7 +69,7 @@ export function PriceChart({
           </g>
         ))}
         {lines.map((i) => (
-          <path key={i} d={path(i)} fill="none" stroke={COLORS[i % COLORS.length]} strokeWidth="1.8" />
+          <path key={i} d={path(i)} fill="none" stroke={colorOf(i, n)} strokeWidth="1.8" />
         ))}
         <text x={pad.l} y={height - 4} fontSize="11" fill="#999" fontFamily="ui-monospace, monospace">
           {date(t0)}
@@ -74,7 +82,7 @@ export function PriceChart({
         <div className={ui.caption}>
           {lines.map((i) => (
             <span key={i} className="mr-3.5">
-              <span style={{ color: COLORS[i % COLORS.length] }}>━</span> {labels[i]}
+              <span style={{ color: colorOf(i, n) }}>━</span> {labels[i]}
             </span>
           ))}
         </div>

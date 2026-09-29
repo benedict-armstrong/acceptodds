@@ -1,3 +1,5 @@
+import { headlineOf, headlinePrice, type HeadlineOf } from './headline';
+
 /**
  * Pure helpers for followed papers' price moves and the daily digest mail.
  * No database, no I/O: `server/follows.ts` and `server/digest.ts` feed them.
@@ -6,30 +8,16 @@
  * marks a position (§1.1).
  */
 
-export interface Move {
-  /** Ordinal of the outcome the headline follows. */
-  ordinal: number;
-  /** Its price at the start of the window, replayed from the fills. */
+export interface Move extends HeadlineOf {
+  /** The headline at the start of the window, replayed from the fills. */
   then: number;
-  /** Its price now. */
+  /** The headline now. */
   now: number;
 }
 
-/**
- * The outcome a headline follows: the first for a binary market (its
- * complement is implied), today's favourite for more outcomes (ties go to the
- * lowest ordinal).
- */
-export function headlineOrdinal(pricesNow: readonly number[]): number {
-  if (pricesNow.length <= 2) return 0;
-  let best = 0;
-  for (let i = 1; i < pricesNow.length; i += 1) if (pricesNow[i] > pricesNow[best]) best = i;
-  return best;
-}
-
+/** The headline's move (`lib/headline.ts`): the first outcome of a binary market, else `1 − P(last)`. */
 export function moveOf(pricesThen: readonly number[], pricesNow: readonly number[]): Move {
-  const ordinal = headlineOrdinal(pricesNow);
-  return { ordinal, then: pricesThen[ordinal], now: pricesNow[ordinal] };
+  return { ...headlineOf(pricesNow.length), then: headlinePrice(pricesThen), now: headlinePrice(pricesNow) };
 }
 
 /** The move in percentage points, signed. */
@@ -78,7 +66,7 @@ export interface DigestItem extends Move {
   title: string;
   slug: string;
   question: string;
-  /** The headline outcome's label, shown for multi-outcome markets. */
+  /** The headline outcome's label: for a multi-outcome market the one it is the complement of. */
   outcomeLabel: string;
   binary: boolean;
 }
@@ -90,7 +78,7 @@ export function renderDigest(items: readonly DigestItem[], baseUrl: string): { s
   const n = sorted.length;
   const subject = `papermarket: ${n} followed paper${n === 1 ? '' : 's'} moved in the last 24 hours`;
   const lines = sorted.map((i) => {
-    const what = i.binary ? '' : ` (${i.outcomeLabel})`;
+    const what = i.binary ? '' : i.negated ? ` (not ${i.outcomeLabel})` : ` (${i.outcomeLabel})`;
     return [
       `${i.title}`,
       `  ${i.question}${what}: ${pct(i.then)} → ${pct(i.now)} (${pp(i)})`,

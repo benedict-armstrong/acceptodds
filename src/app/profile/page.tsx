@@ -97,9 +97,7 @@ export default async function ProfilePage() {
               <span className="text-right font-mono text-[13px] whitespace-nowrap" title="price now; change over 24 hours">
                 {f.move && f.main ? (
                   <>
-                    {f.main.outcomes.length > 2 && (
-                      <span className="font-serif text-sm">{f.main.outcomes[f.move.ordinal].label} </span>
-                    )}
+                    <span className="font-serif text-sm">accept </span>
                     {pct(f.move.now)}{' '}
                     <span className={pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'}>
                       {pp > 0 ? '+' : pp < 0 ? '−' : '±'}

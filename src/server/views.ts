@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { accounts, listingFollows, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
+import { headlinePrice, openingHeadline } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
 import { normalizeSearch, prefixTsquery } from '@/lib/search';
@@ -817,7 +818,7 @@ const rowMarketIds = sql`(
  * that belongs to no listing. Filtered by `kind` (the opaque grouping string,
  * which the creating client sets to a venue like "ICLR 2027") and status, both
  * read from the row's main market, and sorted by the main market's closing
- * date, its likelihood (first-outcome price, highest first), volume summed over
+ * date, its likelihood (the headline, `lib/headline.ts`, highest first), volume summed over
  * the row, the latest fill in the row, or the main market's creation. Not
  * paginated: a venue has at most a few hundred rows, and the page shows them all.
  *
@@ -853,23 +854,29 @@ export async function browseListings(
   const volume = sql`(select coalesce(sum(abs(o.cost_micro)), 0) from orders o where o.market_id in ${rowMarketIds})`;
   const count = sql`(select count(*) from orders o where o.market_id in ${rowMarketIds})`;
   const lastTrade = sql`(select max(o.created_at) from orders o where o.market_id in ${rowMarketIds})`;
-  // The main market's first-outcome price (as `lib/likelihood.ts` reads it):
-  // the LMSR binary price ½(1 + tanh((q₀ − q₁) / 2b)) — tanh, not exp, so it
-  // cannot overflow — or 1/0 by the result once settled. Null (sorted last)
-  // for a void market or one without exactly two outcomes.
-  const yesPrice = sql`(
+  // The main market's headline (as `lib/headline.ts` reads it): 1 − P(last
+  // outcome), which for a binary market is its first outcome's price. P(last)
+  // is 1 / Σᵢ exp((qᵢ − q_last) / b); each exponent is clamped to ±700 because
+  // Postgres raises on float overflow *and* underflow, and a clamped term is
+  // either negligible or dominant, so the result is unchanged. 1/0 by the
+  // result once settled. Null (sorted last) for a void market.
+  const headline = sql`(
     select case
       when ${markets.status} = 'void' then null
-      when ${markets.status} = 'settled' then (${markets.resolvedOutcomeId} = y.id)::int::float8
-      else 0.5 * (1 + tanh((y.shares_micro - n.shares_micro)::float8 / (2 * ${markets.b})))
+      when ${markets.status} = 'settled' then (${markets.resolvedOutcomeId} <> l.id)::int::float8
+      else 1 - 1 / (
+        select sum(exp(least(greatest((o.shares_micro - l.shares_micro)::float8 / ${markets.b}, -700), 700)))
+          from outcomes o where o.market_id = ${markets.id}
+      )
     end
-      from outcomes y join outcomes n on n.market_id = y.market_id and n.ordinal = 1
-     where y.market_id = ${markets.id} and y.ordinal = 0
-       and (select count(*) from outcomes c where c.market_id = ${markets.id}) = 2
+      from outcomes l
+     where l.market_id = ${markets.id}
+       and l.ordinal = (select max(x.ordinal) from outcomes x where x.market_id = ${markets.id})
+       and l.ordinal > 0
   )`;
   const order = {
     closing: [sql`${markets.closesAt} asc`],
-    likelihood: [sql`${yesPrice} desc nulls last`, sql`${markets.closesAt} asc`],
+    likelihood: [sql`${headline} desc nulls last`, sql`${markets.closesAt} asc`],
     volume: [sql`${volume} desc`],
     activity: [sql`${lastTrade} desc nulls last`],
     newest: [sql`${markets.createdAt} desc`],
@@ -929,38 +936,53 @@ export async function marketKinds(database: Database = getDb()): Promise<{ kind:
 }
 
 /**
- * The first outcome's price after each of a market's last `points` fills, for
- * list sparklines. Exact for binary markets without a replay, because the
- * other outcome's price is its complement; multi-outcome markets get none.
+ * Each market's headline (`lib/headline.ts`) after each of its last `points`
+ * fills, for list sparklines. Replayed from the fills: the share vector is the
+ * running sum of order shares, and the headline of a market with more than two
+ * outcomes depends on all of it, so `orders.price_after` (the traded outcome's
+ * price only) is not enough. One query for all markets; fine for a venue's few
+ * hundred markets — keep a per-fill headline if the tape grows past that.
  */
 export async function sparklines(
   views: MarketView[],
   points = 40,
   database: Database = getDb(),
 ): Promise<Map<string, number[]>> {
-  const binary = views.filter((v) => v.outcomes.length === 2);
-  if (binary.length === 0) return new Map();
-  const result = await database.execute<{ market_id: string; ordinal: number; price_after: number }>(sql`
-    select market_id, ordinal, price_after from (
-      select o.market_id, oc.ordinal, o.price_after, o.created_at, o.id,
-             row_number() over (partition by o.market_id order by o.created_at desc, o.id desc) as rn
-        from orders o join outcomes oc on oc.id = o.outcome_id
-       where o.market_id in (${sql.join(
-         binary.map((v) => sql`${v.market.id}::uuid`),
-         sql`, `,
-       )})
-    ) x where rn <= ${points}
-    order by market_id, created_at, id
-  `);
   const out = new Map<string, number[]>();
+  const wanted = views.filter((v) => v.outcomes.length >= 2 && v.orderCount > 0);
+  if (wanted.length === 0) return out;
+  const result = await database.execute<{ market_id: string; ordinal: number; shares_micro: string }>(sql`
+    select o.market_id, oc.ordinal, o.shares_micro::text as shares_micro
+      from orders o join outcomes oc on oc.id = o.outcome_id
+     where o.market_id in (${sql.join(
+       wanted.map((v) => sql`${v.market.id}::uuid`),
+       sql`, `,
+     )})
+     order by o.market_id, o.created_at, o.id
+  `);
+  const byMarket = new Map(wanted.map((v) => [v.market.id, v]));
+  const shares = new Map(wanted.map((v) => [v.market.id, v.outcomes.map(() => 0n)]));
   for (const r of result.rows) {
-    const p = r.ordinal === 0 ? r.price_after : 1 - r.price_after;
+    const v = byMarket.get(r.market_id)!;
+    const q = shares.get(r.market_id)!;
+    q[r.ordinal] += BigInt(r.shares_micro);
     const list = out.get(r.market_id) ?? [];
-    list.push(p);
+    list.push(headlinePrice(prices(q.map(microToFloat), v.market.b)));
     out.set(r.market_id, list);
   }
-  // A market with fewer fills than asked for is shown from its opening price,
-  // which for two outcomes is always 1/2.
-  for (const list of out.values()) if (list.length < points) list.unshift(0.5);
+  for (const [id, list] of out) {
+    // A market with fewer fills than asked for is shown from its opening price.
+    if (list.length < points) list.unshift(openingHeadline(byMarket.get(id)!.outcomes.length));
+    else out.set(id, list.slice(-points));
+  }
   return out;
+}
+
+/** How many distinct accounts have traded in a market. A count, never who. */
+export async function traderCount(marketId: string, database: Database = getDb()): Promise<number> {
+  const [row] = await database
+    .select({ n: sql<number>`count(distinct ${orders.accountId})::int` })
+    .from(orders)
+    .where(eq(orders.marketId, marketId));
+  return row?.n ?? 0;
 }

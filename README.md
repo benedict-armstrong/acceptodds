@@ -50,7 +50,7 @@ src/
   db/schema.ts       drizzle tables
   db/index.ts        Pool + db handle
   db/migrate.ts      migration runner
-  db/seed.ts         house account, one market, two traders
+  db/seed.ts         dev data: house, traders, invented papers with four-outcome markets
   server/engine.ts   quote / trade / settle — the only writer of market state
   server/accounts.ts accounts, balances, portfolio
   server/events.ts   append-only log of things that leave no other trace
@@ -96,7 +96,7 @@ Then:
 
 ```sh
 npm run db:migrate          # apply migrations to $DATABASE_URL
-npm run db:seed             # house account, one market, two traders
+npm run db:seed             # dev data: invented ICLR papers, traded by seed bots
 npm run dev                 # http://localhost:3000, /healthz checks the database
 ```
 

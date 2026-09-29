@@ -1,10 +1,13 @@
+import { marketHeadline, type MarketLike } from './headline';
+
 /**
- * The likelihood colour of a binary market, for the UI. Client-safe.
+ * The likelihood colour of a market, for the UI. Client-safe.
  *
- * Read from the first outcome (ordinal 0) — by convention the "yes" side,
- * which for a paper's acceptance market is "accepted". The venue attaches no
- * meaning to it; this is display only, and it colours text, edge bars and chips with
- * the `accept` / `reject` / `toss-up` tokens in `app/globals.css`.
+ * Read from the market's headline (`lib/headline.ts`): the first outcome of a
+ * binary market, `1 − P(last)` of a larger one — for a paper, the chance it is
+ * accepted in any form. The venue attaches no meaning to it; this is display
+ * only, and it colours text, edge bars and chips with the `accept` / `reject`
+ * / `toss-up` tokens in `app/globals.css`.
  */
 
 export type Likelihood = 'accept' | 'reject' | 'toss-up';
@@ -19,25 +22,21 @@ export function likelihood(p: number): Likelihood {
   return 'toss-up';
 }
 
-interface MarketLike {
-  status: string;
-  resolvedOutcomeId: string | null;
-  outcomes: { id: string; ordinal: number; price: number }[];
-}
-
 /**
- * A binary market's likelihood: its first outcome's price, or its result once
- * settled. `null` for anything else (more than two outcomes, a void market),
- * which is then shown uncoloured.
+ * A market's likelihood: its headline price, or its result once settled.
+ * `null` for a void market, which is then shown uncoloured.
  */
 export function marketLikelihood(m: MarketLike): Likelihood | null {
-  if (m.outcomes.length !== 2) return null;
-  const yes = m.outcomes.find((o) => o.ordinal === 0);
-  if (!yes) return null;
-  if (m.status === 'void') return null;
-  if (m.status === 'settled') return m.resolvedOutcomeId === yes.id ? 'accept' : 'reject';
-  return likelihood(yes.price);
+  const h = marketHeadline(m);
+  return h === null ? null : likelihood(h);
 }
+
+/** The words for a likelihood, for a preview that shows direction without a number. */
+export const LIKELIHOOD_BAND: Record<Likelihood, string> = {
+  accept: 'Leaning accept',
+  reject: 'Leaning reject',
+  'toss-up': 'Toss-up',
+};
 
 /**
  * Class lists per likelihood. Written out whole so Tailwind finds them.

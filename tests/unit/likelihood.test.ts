@@ -30,17 +30,26 @@ describe('likelihood', () => {
     expect(marketLikelihood(m)).toBe('accept');
   });
 
-  it('uses the result once settled, and nothing for void or multi-outcome markets', () => {
+  it('reads 1 − P(last) of a multi-outcome market, and its result once settled', () => {
+    const paper = (ps: number[], extra: Partial<{ status: string; resolvedOutcomeId: string | null }> = {}) => ({
+      status: 'open',
+      resolvedOutcomeId: null,
+      ...extra,
+      outcomes: ps.map((price, ordinal) => ({ id: `o${ordinal}`, ordinal, price })),
+    });
+    // oral, spotlight, poster, reject
+    expect(marketLikelihood(paper([0.1, 0.2, 0.4, 0.3]))).toBe('accept');
+    expect(marketLikelihood(paper([0.05, 0.05, 0.2, 0.7]))).toBe('reject');
+    expect(marketLikelihood(paper([0.1, 0.1, 0.3, 0.5]))).toBe('toss-up');
+    expect(marketLikelihood(paper([0.1, 0.1, 0.1, 0.7], { status: 'settled', resolvedOutcomeId: 'o2' }))).toBe('accept');
+    expect(marketLikelihood(paper([0.7, 0.1, 0.1, 0.1], { status: 'settled', resolvedOutcomeId: 'o3' }))).toBe('reject');
+    expect(marketLikelihood(paper([0.1, 0.1, 0.1, 0.7], { status: 'void' }))).toBeNull();
+  });
+
+  it('uses the result once settled, and nothing for void markets', () => {
     expect(marketLikelihood(binary(0.2, { status: 'settled', resolvedOutcomeId: 'yes' }))).toBe('accept');
     expect(marketLikelihood(binary(0.9, { status: 'settled', resolvedOutcomeId: 'no' }))).toBe('reject');
     expect(marketLikelihood(binary(0.9, { status: 'void' }))).toBeNull();
-    expect(
-      marketLikelihood({
-        status: 'open',
-        resolvedOutcomeId: null,
-        outcomes: [0.8, 0.1, 0.1].map((price, ordinal) => ({ id: `o${ordinal}`, ordinal, price })),
-      }),
-    ).toBeNull();
   });
 
   it('maps to token classes, and to a neutral look for no likelihood', () => {

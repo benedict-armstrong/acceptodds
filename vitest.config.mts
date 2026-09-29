@@ -7,6 +7,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // tsconfig says `jsx: preserve` for Next; tests that import a .tsx module
+  // (the link-preview image) need it compiled.
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     setupFiles: ['./tests/setup-env.ts'],

@@ -395,8 +395,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
   The platform still knows nothing about venues: it is a string the creating
   client chose. Sorts: acceptance (the default; the `likelihood` sort: the
-  main market's first-outcome price, highest first, 1/0 once settled,
-  non-binary and void last), volume, activity (last fill), newest. The
+  main market's **headline** (#11, below), highest first, 1/0 once settled,
+  void last), volume, activity (last fill), newest. The
   venue's `closing` sort is not offered. Status and "following" filters sit
   in a `⋯` `<details>` menu, which shows the active one when not the default.
   A signed-in viewer sees a **Following** section above the list: the
@@ -460,13 +460,13 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   market redirects there.
 - **Likelihood colours** are the `accept`, `accept-soft`, `reject`,
   `reject-soft` and `toss-up` tokens, chosen by `lib/likelihood.ts` from a
-  binary market's first outcome (≥ 65% accept, ≤ 35% reject; the result once
-  settled; none for more outcomes). Muted on purpose: the maroon accent stays
+  market's headline (≥ 65% accept, ≤ 35% reject; the result once settled;
+  none when void). Muted on purpose: the maroon accent stays
   the loud colour. Use the helper's class lists, not the tokens ad hoc.
-- **List sparklines come from `orders.price_after`**, which is exact for
-  binary markets (the other price is the complement) and needs no replay;
-  they start at the opening price (1/2). Multi-outcome markets show their
-  favourite's price instead of a line.
+- **List sparklines are the headline, replayed from the fills**
+  (`views.sparklines`): `orders.price_after` is only the traded outcome's
+  price, which is not enough once the headline depends on the whole vector.
+  One query per page; they start at the opening headline (`1 − 1/n`).
 - **The home page search box is a plain GET form** (`?q=`, works without
   JS). It carries the current venue and status, so a search stays inside
   them — the result line says where and links "search everything" — and
@@ -481,7 +481,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   signed-in or token principal with `read` and no verification. `PUT`/`DELETE
   /listings/{id}/follow` are idempotent and return `{ following, followers }`;
   `GET /me/follows` gives each followed listing's main-market **headline**
-  (first outcome if binary, else today's favourite) now and 24h ago. Listing
+  (#11, below; `negated` says it is `1 − P(outcome)`) now and 24h ago. Listing
   responses carry a `followers` count, never who; `following` is not on the
   public listing shape, since public reads are anonymous.
 - **A move is a price, not a value** (§1.1): the price 24h ago is replayed
@@ -498,3 +498,50 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   deletes the row for a retry, a crash between insert and send loses that
   day's mail rather than doubling it. The unsubscribe link is `/profile`, not
   a signed token. `digest.sent` is logged after the send, no payload.
+
+### Four-outcome papers and sharing (#11)
+
+- **A paper has one market by default: `Oral, Spotlight, Poster, Reject`**,
+  as its main market (rank 0), created by `../research`. The platform still
+  attaches no meaning to the labels, and a listing may still carry more
+  markets (the paper page lists them only when there is more than one).
+- **Outcomes are ordered best first, worst last, and the headline is
+  `1 − P(last)`** (`lib/headline.ts`) — for a paper, accepted in any form.
+  For a binary `[YES, NO]` market that is exactly P(YES), so binary markets
+  mean what they always did. Everything that summarises a market in one
+  number reads it: likelihood colours, the acceptance sort (the same formula
+  in SQL, `views.browseListings`, with exponents clamped because Postgres
+  raises on `exp` over- *and* underflow), sparklines, follows, the digest,
+  badges and previews. The UI calls it "accept" on a paper; elsewhere it is
+  the first label, or "not <last label>". A market with more outcomes that
+  are not ordered will get a meaningless headline: that is the convention's
+  price.
+- **The outcome bar** draws prices worst on the left in the `tier-1..4`
+  tokens (red, amber, green, blue; `TIER_HEX` mirrors them for SVG and
+  images — keep the two in step). Two outcomes are red/green. More than four
+  get no bar.
+- **Share surfaces are reads** (`server/share.ts`), never writes, and show
+  prices, never values (§1.1):
+  - `/s/<slug>` — a paper's slug or an unlisted market's — 307s to its page
+    and logs `share.opened` (no payload, no account).
+  - `opengraph-image.tsx` on `/papers/[slug]` and `/markets/[slug]`
+    (`server/og.tsx`): the title, the outcome bar **without numbers**, a band
+    ("Leaning accept"), and a teaser (the week's move if ≥ 5 pp, else how many
+    traders). Settled: "Decided: <label>". Five-minute `Cache-Control`. Its
+    font is `assets/fonts/LiberationSerif-Regular.ttf` (OFL), read from disk
+    and named in `outputFileTracingIncludes` so standalone output carries it.
+    Latin only: no emoji or arrows in the image.
+  - `/badge/<slug>.svg` (`lib/badge.ts`): site name, headline, a small bar;
+    `?style=compact`, `?bar=0`. Public, five-minute cache, an ETag that
+    changes with each fill. An image, not `/api/v1`, so not in OpenAPI.
+  - The paper page's **share** panel: the Wordle-style text (a title line of
+    ≤ 50 characters that always keeps `@ <kind>?`, ten squares, the bare
+    link), with "I'm 🟩. You?" while the viewer holds shares — the outcome
+    they hold most of, never a size. Plus the badge's Markdown/HTML and the
+    link. It reads the same SWR keys as `MarketLive`, so it adds no polling.
+- **`SITE_NAME`** (default `papermarket`) is the badge's label;
+  `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
+- **`npm run db:seed`** gives a dev venue of invented papers with four-outcome
+  markets traded by seed bots, and three settled ones. It back-dates their
+  fills so charts have a history — the only place anything but the engine
+  touches `orders`, and only timestamps. Never outside a seed.

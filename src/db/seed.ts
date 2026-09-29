@@ -1,21 +1,30 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { createAccount, createHouse, getAccountByHandle, startingBalanceMicro } from '@/server/accounts';
-import { createMarket, trade } from '@/server/engine';
+import { closeMarket, createMarket, settle, trade } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
+import { prices as lmsrPrices } from '@/lib/lmsr';
 import { createDb, createPool, type Database } from './index';
-import { accounts, markets } from './schema';
+import { accounts, markets, orders } from './schema';
 
 /**
- * The house account, one standalone market with two outcomes, one example
- * listing with three markets, and two traders — on an empty database only.
- * Then, on any database with a house, the anonymous example listings
- * (`seedAnonymous`), adding whichever are missing, so it can be rerun.
+ * A dev database with something to look at (`npm run db:seed`):
  *
- * Deliberately knows nothing about papers: the questions below are questions,
- * the listing is example text, and `../research` is what decides what the
- * venue actually lists and trades on. (The UI calls a listing a paper.)
+ * - on an empty database, the house, two traders, an unlisted binary market
+ *   and an example listing with two markets (a paper can still have more
+ *   than one);
+ * - then, on any database with a house, a venue of made-up papers under
+ *   `ICLR 2027`, each with the default single market — the four outcomes
+ *   `Oral, Spotlight, Poster, Reject`, best first (issue #11 §4) — traded by
+ *   a handful of seed bots along a noisy path to a plausible end price; and
+ *   a few `ICLR 2026` papers already settled. Papers whose market exists are
+ *   left alone, so it can be rerun.
+ *
+ * The titles are invented. The platform still knows nothing about papers:
+ * everything here goes in through the same engine and listing calls a client
+ * would make. The one exception is `spreadOverTime`, a dev-only rewrite of
+ * fill timestamps so charts have a history — see there.
  */
 async function main() {
   const url = process.argv[2] ?? process.env.DATABASE_URL;
@@ -29,32 +38,31 @@ async function main() {
   } else {
     await seedBase(db);
   }
-  await seedAnonymous(db);
+  await seedPapers(db);
   await pool.end();
 }
+
+/** The four outcomes of a paper's market, best first; the headline is 1 − P(Reject). */
+const DECISIONS = ['Oral', 'Spotlight', 'Poster', 'Reject'];
+const DAY = 24 * 60 * 60 * 1000;
 
 async function seedBase(db: Database) {
   const starting = startingBalanceMicro();
 
-  // The house has to be able to cover every market's b*ln(n). Give it enough
-  // to subsidise a few hundred two-outcome markets at this field size.
+  // The house covers every market's b·ln(n).
   const house = await createHouse(starting * 1000n, db);
-
-  const alice = await createAccount(
-    { handle: 'alice', displayName: 'Alice', grantMicro: starting },
-    db,
-  );
+  const alice = await createAccount({ handle: 'alice', displayName: 'Alice', grantMicro: starting }, db);
   const bot = await createAccount(
     { handle: 'bot-zero', displayName: 'Bot Zero', isBot: true, grantMicro: starting },
     db,
   );
 
-  const closesAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  const closesAt = new Date(Date.now() + 90 * DAY);
   const market = await createMarket(
     {
       slug: 'example-binary',
       question: 'Will the example resolve YES?',
-      description: 'A seed market. The platform does not know or care what this is about.',
+      description: 'A seed market with no listing. The platform does not know or care what this is about.',
       kind: 'binary',
       outcomes: ['YES', 'NO'],
       closesAt,
@@ -65,17 +73,14 @@ async function seedBase(db: Database) {
     db,
   );
 
-  // An example listing: opaque text and links, as a creating client would
-  // send them. Rank 0 is its main market.
+  // A listing with more than the default one market: rank 0 is its main one.
   const { listing } = await upsertListing(
     {
       slug: 'example-listing',
       title: 'An Example Listing: Grouping Several Markets Under One Subject',
       summary:
-        'This is placeholder text standing in for whatever summary the creating client supplies. ' +
-        'The venue stores it for display and never reads it. It is long enough to show the collapsed ' +
-        'view on the listing page: a few lines, then a toggle to read the rest. Nothing here refers to ' +
-        'a real document, and every link below points at example.org.',
+        'Placeholder text standing in for whatever summary the creating client supplies. The venue stores it ' +
+        'for display and never reads it. Every link below points at example.org.',
       authors: ['Example Author', 'Second Author', 'Third Author', 'Fourth Author'],
       links: [
         { label: 'PDF', url: 'https://example.org/example-listing.pdf' },
@@ -85,127 +90,396 @@ async function seedBase(db: Database) {
     },
     db,
   );
-  const listed = [];
-  for (const [rank, [suffix, question]] of [
-    ['accept', 'Will the example subject be accepted?'],
-    ['oral', 'Will the example subject get an oral?'],
-    ['award', 'Will the example subject win an award?'],
-  ].entries()) {
-    listed.push(
-      await createMarket(
-        {
-          slug: `example-listing-${suffix}`,
-          question,
-          kind: 'example',
-          outcomes: ['YES', 'NO'],
-          closesAt,
-          startingBalanceMicro: starting,
-          expectedTraders: 50,
-          status: 'open',
-          listingId: listing.id,
-          listingRank: rank,
-        },
-        db,
-      ),
-    );
-  }
+  await createMarket(
+    {
+      slug: 'example-listing-decision',
+      question: 'How will the example venue decide?',
+      kind: 'example',
+      outcomes: DECISIONS,
+      closesAt,
+      startingBalanceMicro: starting,
+      expectedTraders: 50,
+      status: 'open',
+      listingId: listing.id,
+      listingRank: 0,
+    },
+    db,
+  );
+  await createMarket(
+    {
+      slug: 'example-listing-award',
+      question: 'Will the example subject win an award?',
+      kind: 'example',
+      outcomes: ['YES', 'NO'],
+      closesAt,
+      startingBalanceMicro: starting,
+      expectedTraders: 50,
+      status: 'open',
+      listingId: listing.id,
+      listingRank: 1,
+    },
+    db,
+  );
 
   console.log(
     [
-      `house       ${house.id}  balance ${house.balanceMicro}`,
-      `alice       ${alice.id}  balance ${alice.balanceMicro}`,
-      `bot-zero    ${bot.id}  balance ${bot.balanceMicro}`,
-      `market      ${market.marketId}  b=${market.b}  subsidy=${market.subsidyMicro}`,
-      `outcomes    ${market.outcomeIds.join(', ')}`,
-      `listing     ${listing.id}  markets ${listed.map((m) => m.marketId).join(', ')}`,
+      `house       ${house.id}`,
+      `alice       ${alice.id}`,
+      `bot-zero    ${bot.id}`,
+      `market      ${market.marketId}  b=${market.b}`,
+      `listing     ${listing.id}`,
     ].join('\n'),
   );
 }
 
-/**
- * Example listings with no authors, as a double-blind venue would list them,
- * in `ICLR 2027` so they show on the home page's default venue. Each gets one
- * two-outcome market (rank 0), traded by a seed bot to a target first-outcome
- * price in a few fills, so lists have a spread of prices and sparklines.
- * Idempotent: a listing is upserted by slug, and a market that already exists
- * is left alone, trades included.
- */
-const ANONYMOUS: [slug: string, title: string, target: number][] = [
-  ['anon-curriculum-free-rl', 'Curriculum-Free Reinforcement Learning via Self-Generated Goals', 0.82],
-  ['anon-linear-probes-lie', 'Linear Probes Overstate What Representations Encode', 0.71],
-  ['anon-state-space-recall', 'State Space Models Fail at Associative Recall, and How to Fix It', 0.64],
-  ['anon-data-pruning-scaling', 'Beyond Power Laws: Data Pruning Changes the Scaling Exponent', 0.57],
-  ['anon-muon-at-scale', 'An Empirical Study of Orthogonalised Optimisers at Scale', 0.52],
-  ['anon-synthetic-data-collapse', 'Synthetic Data Does Not Always Collapse: A Mixing Analysis', 0.48],
-  ['anon-agent-benchmarks-leak', 'Agent Benchmarks Leak Their Answers Through Tool Outputs', 0.43],
-  ['anon-lora-rank-myth', 'The Low-Rank Myth: Fine-Tuning Updates Are Not Low Rank', 0.37],
-  ['anon-mixture-routing-noise', 'Routing Noise, Not Capacity, Limits Mixture-of-Experts', 0.3],
-  ['anon-vision-tokens-redundant', 'Most Vision Tokens Are Redundant After Layer Four', 0.24],
-  ['anon-reasoning-length-prior', 'Longer Chains of Thought Are a Prior, Not a Skill', 0.16],
-  ['anon-grokking-optimiser', 'Grokking Is an Artefact of the Optimiser', 0.09],
-  // A title with inline TeX, and one long enough to be cut to two lines in lists.
-  ['anon-sqrt-regret', 'An $O(\\sqrt{T \\log |\\mathcal{A}|})$ Regret Bound for $\\epsilon$-Greedy Exploration', 0.61],
-  [
-    'anon-long-title',
-    'On the Surprising Effectiveness of Very Long Titles: A Large-Scale Empirical Study of How Paper Titles ' +
+// ---------------------------------------------------------------------------
+// papers
+// ---------------------------------------------------------------------------
+
+interface Paper {
+  slug: string;
+  title: string;
+  /** End prices, best first: oral, spotlight, poster, reject. Normalised on use. */
+  target: [number, number, number, number];
+  summary: string;
+  /** Only once deanonymised, i.e. after the decision. */
+  authors?: string[];
+  /** Settled papers: the decision (index into DECISIONS). */
+  decided?: number;
+}
+
+const ICLR_2027: Paper[] = [
+  {
+    slug: 'sparse-moe-sublinear',
+    title: 'Sparse Mixtures of Experts Scale Sublinearly in Active Parameters',
+    target: [0.07, 0.18, 0.42, 0.33],
+    summary:
+      'We train 212 mixture-of-experts language models from 150M to 30B active parameters and find that loss scales ' +
+      'with a smaller exponent in active parameters than dense models do, once routing entropy is held fixed. We give ' +
+      'a simple correction to compute-optimal allocation and release all checkpoints.',
+  },
+  {
+    slug: 'curriculum-free-rl',
+    title: 'Curriculum-Free Reinforcement Learning via Self-Generated Goals',
+    target: [0.12, 0.21, 0.45, 0.22],
+    summary:
+      'An agent that proposes its own goals from a learned model of what it can almost do matches hand-designed ' +
+      'curricula on eleven sparse-reward benchmarks without any task-specific tuning.',
+  },
+  {
+    slug: 'linear-probes-overstate',
+    title: 'Linear Probes Overstate What Representations Encode',
+    target: [0.02, 0.1, 0.5, 0.38],
+    summary:
+      'Probing accuracy is routinely read as evidence that a concept is encoded. We show that probes trained on ' +
+      'random directions of equal norm reach comparable accuracy on 14 of 20 published probing tasks, and propose a ' +
+      'control that separates the two.',
+  },
+  {
+    slug: 'ssm-associative-recall',
+    title: 'State Space Models Fail at Associative Recall, and How to Fix It',
+    target: [0.04, 0.12, 0.43, 0.41],
+    summary:
+      'We isolate associative recall as the capability gap between state space models and attention, prove a lower ' +
+      'bound on the state size needed for it, and close most of the gap with a two-layer hybrid.',
+  },
+  {
+    slug: 'data-pruning-exponent',
+    title: 'Beyond Power Laws: Data Pruning Changes the Scaling Exponent',
+    target: [0.05, 0.14, 0.34, 0.47],
+    summary:
+      'Pruning pretraining data with a self-supervised difficulty metric improves the data scaling exponent, not ' +
+      'just the constant, across three modalities.',
+  },
+  {
+    slug: 'orthogonal-optimisers-scale',
+    title: 'An Empirical Study of Orthogonalised Optimisers at Scale',
+    target: [0.01, 0.06, 0.4, 0.53],
+    summary:
+      'We compare orthogonalised-update optimisers against AdamW at up to 7B parameters with tuned baselines and ' +
+      'find the advantage shrinks, but does not vanish, as batch size grows.',
+  },
+  {
+    slug: 'synthetic-data-mixing',
+    title: 'Synthetic Data Does Not Always Collapse: A Mixing Analysis',
+    target: [0.03, 0.08, 0.36, 0.53],
+    summary:
+      'Model collapse under recursive training is avoided whenever a constant fraction of real data is kept. We ' +
+      'give the fraction in closed form for linear models and check it empirically for transformers.',
+  },
+  {
+    slug: 'agent-benchmark-leaks',
+    title: 'Agent Benchmarks Leak Their Answers Through Tool Outputs',
+    target: [0.06, 0.16, 0.31, 0.47],
+    summary:
+      'In six popular agent benchmarks, tool outputs contain the gold answer verbatim for between 3% and 41% of ' +
+      'tasks. We release patched versions and re-rank twelve published agents.',
+  },
+  {
+    slug: 'lora-rank-myth',
+    title: 'The Low-Rank Myth: Fine-Tuning Updates Are Not Low Rank',
+    target: [0.01, 0.04, 0.26, 0.69],
+    summary:
+      'Full fine-tuning updates of large language models have slowly decaying spectra; LoRA works despite this, ' +
+      'not because of it.',
+  },
+  {
+    slug: 'moe-routing-noise',
+    title: 'Routing Noise, Not Capacity, Limits Mixture-of-Experts',
+    target: [0.01, 0.03, 0.24, 0.72],
+    summary: 'Replacing learned routing with a fixed hash loses surprisingly little. We argue the router mostly adds noise.',
+  },
+  {
+    slug: 'vision-tokens-redundant',
+    title: 'Most Vision Tokens Are Redundant After Layer Four',
+    target: [0.02, 0.07, 0.3, 0.61],
+    summary:
+      'Dropping 80% of image tokens after the fourth layer of a vision-language model costs under one point on ' +
+      'eight benchmarks and halves inference cost.',
+  },
+  {
+    slug: 'cot-length-prior',
+    title: 'Longer Chains of Thought Are a Prior, Not a Skill',
+    target: [0.01, 0.02, 0.15, 0.82],
+    summary: 'Reasoning length transfers across unrelated tasks after fine-tuning on length alone, correct or not.',
+  },
+  {
+    slug: 'grokking-optimiser',
+    title: 'Grokking Is an Artefact of the Optimiser',
+    target: [0.01, 0.02, 0.09, 0.88],
+    summary: 'With a second-order optimiser, delayed generalisation disappears on every task we could reproduce it on.',
+  },
+  {
+    // A title with inline TeX.
+    slug: 'epsilon-greedy-regret',
+    title: 'An $O(\\sqrt{T \\log |\\mathcal{A}|})$ Regret Bound for $\\epsilon$-Greedy Exploration',
+    target: [0.09, 0.2, 0.38, 0.33],
+    summary: 'A tight regret bound for epsilon-greedy with a decaying schedule, closing a gap open since 2002.',
+  },
+  {
+    // A title long enough to be cut to two lines in lists and in the share text.
+    slug: 'very-long-titles',
+    title:
+      'On the Surprising Effectiveness of Very Long Titles: A Large-Scale Empirical Study of How Paper Titles ' +
       'Grow Across Venues, Years and Subfields, With Implications for Reviewers, Readers and Layout Engines',
-    0.34,
-  ],
+    target: [0.02, 0.05, 0.28, 0.65],
+    summary: 'Titles have grown by 1.4 words per decade. We find no evidence this helps anyone.',
+  },
 ];
 
-async function seedAnonymous(db: Database) {
-  const closesAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+const ICLR_2026: Paper[] = [
+  {
+    slug: 'diffusion-forcing-lm',
+    title: 'Diffusion Forcing for Language Models',
+    target: [0.2, 0.3, 0.35, 0.15],
+    decided: 1,
+    authors: ['Mara Ilves', 'Tomás Reyes', 'Anjali Kapoor'],
+    summary: 'Per-token noise levels let one model interpolate between autoregressive and diffusion decoding.',
+  },
+  {
+    slug: 'reward-hacking-taxonomy',
+    title: 'A Taxonomy of Reward Hacking in Reasoning Models',
+    target: [0.03, 0.1, 0.42, 0.45],
+    decided: 2,
+    authors: ['Jonas Weber', 'Lin Qiao'],
+    summary: 'We catalogue 31 distinct reward hacks found in RL-trained reasoning models and how often each recurs.',
+  },
+  {
+    slug: 'attention-sinks-free',
+    title: 'Attention Sinks Are Free Registers',
+    target: [0.02, 0.08, 0.35, 0.55],
+    decided: 3,
+    authors: ['Priya Natarajan', 'Olle Berg'],
+    summary: 'Attention sinks behave like learned register tokens; adding registers removes them.',
+  },
+];
+
+/** A small deterministic PRNG, so a reseed looks the same. */
+function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function gauss(rand: () => number): number {
+  return Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand());
+}
+
+const SEED_BOTS = ['bot-area-chair', 'bot-reviewer-2', 'bot-citation-count', 'bot-twitter-hype', 'bot-base-rate', 'bot-contrarian'];
+
+async function seedBots(db: Database) {
   const starting = startingBalanceMicro();
-  // A bot of its own, so seeding does not spend the other traders' balances.
-  const seeder =
-    (await getAccountByHandle('bot-seed', db)) ??
-    (await createAccount({ handle: 'bot-seed', displayName: 'Seed Bot', isBot: true, grantMicro: starting * 100n }, db));
-
-  let added = 0;
-  for (const [slug, title, target] of ANONYMOUS) {
-    const { listing } = await upsertListing(
-      {
-        slug,
-        title,
-        summary:
-          'Placeholder text for an anonymous submission. The venue stores it for display and never ' +
-          'reads it; no authors are listed, as under double-blind review.',
-        authors: [],
-        links: [{ label: 'OpenReview', url: `https://example.org/forum?id=${slug}` }],
-        kind: 'ICLR 2027',
-      },
-      db,
+  const bots = [];
+  for (const handle of SEED_BOTS) {
+    bots.push(
+      (await getAccountByHandle(handle, db)) ??
+        (await createAccount(
+          { handle, displayName: handle.replace(/^bot-/, '').replace(/-/g, ' '), isBot: true, grantMicro: starting * 100n },
+          db,
+        )),
     );
-    const marketSlug = `${slug}-accept`;
-    const [found] = await db.select({ id: markets.id }).from(markets).where(eq(markets.slug, marketSlug));
-    if (found) continue;
-
-    const market = await createMarket(
-      {
-        slug: marketSlug,
-        question: `Will "${title}" be accepted?`,
-        kind: 'ICLR 2027',
-        outcomes: ['YES', 'NO'],
-        closesAt,
-        startingBalanceMicro: starting,
-        expectedTraders: 50,
-        status: 'open',
-        listingId: listing.id,
-        listingRank: 0,
-      },
-      db,
-    );
-    // From 1/2 to `target`: q_yes − q_no = b·logit(target), bought in four
-    // fills of the side it favours (b is in micro-units).
-    const side = target >= 0.5 ? 0 : 1;
-    const total = Math.abs(market.b * Math.log(target / (1 - target)));
-    for (let i = 0; i < 4; i++) {
-      const shares = BigInt(Math.round(total / 4));
-      await trade(seeder.id, market.marketId, market.outcomeIds[side], shares, shares, randomUUID(), db);
-    }
-    added++;
   }
-  console.log(`anonymous listings: ${ANONYMOUS.length} upserted, ${added} markets created`);
+  return bots;
+}
+
+async function seedPapers(db: Database) {
+  const bots = await seedBots(db);
+  let added = 0;
+  for (const [kind, papers, closesInDays] of [
+    ['ICLR 2027', ICLR_2027, 110],
+    ['ICLR 2026', ICLR_2026, 30],
+  ] as const) {
+    for (const [i, p] of papers.entries()) {
+      if (await seedPaper(db, p, kind, closesInDays, bots, 1000 + i + (kind === 'ICLR 2026' ? 500 : 0))) added++;
+    }
+  }
+  console.log(`papers: ${ICLR_2027.length + ICLR_2026.length} upserted, ${added} markets created`);
+}
+
+async function seedPaper(
+  db: Database,
+  p: Paper,
+  kind: string,
+  closesInDays: number,
+  bots: { id: string }[],
+  seed: number,
+): Promise<boolean> {
+  const { listing } = await upsertListing(
+    {
+      slug: p.slug,
+      title: p.title,
+      summary: p.summary,
+      authors: p.authors ?? [],
+      links: [{ label: 'OpenReview', url: `https://example.org/forum?id=${p.slug}` }],
+      kind,
+    },
+    db,
+  );
+  const slug = `${p.slug}-decision`;
+  const [found] = await db.select({ id: markets.id }).from(markets).where(eq(markets.slug, slug));
+  if (found) return false;
+
+  const market = await createMarket(
+    {
+      slug,
+      question: `How will ${kind} decide this paper?`,
+      kind,
+      outcomes: DECISIONS,
+      closesAt: new Date(Date.now() + closesInDays * DAY),
+      startingBalanceMicro: startingBalanceMicro(),
+      expectedTraders: 20,
+      status: 'open',
+      listingId: listing.id,
+      listingRank: 0,
+    },
+    db,
+  );
+  await walkTo(db, market, p.target, bots, rng(seed));
+  if (p.decided !== undefined) {
+    await closeMarket(market.marketId, db);
+    await settle(market.marketId, market.outcomeIds[p.decided], {}, db);
+  }
+  await spreadOverTime(db, market.marketId, rng(seed + 7), p.decided !== undefined);
+  return true;
+}
+
+/**
+ * Trade a market from its opening prices to `target` along a noisy path:
+ * 8–18 steps, each aiming at a point between the opening and the target (plus
+ * noise that shrinks as it goes) and buying whatever outcomes fall short of it,
+ * each fill by a random bot; now and then a bot sells back part of what it
+ * bought. Everything goes through `engine.trade`.
+ */
+async function walkTo(
+  db: Database,
+  market: { marketId: string; outcomeIds: string[]; b: number },
+  target: readonly number[],
+  bots: { id: string }[],
+  rand: () => number,
+) {
+  const n = target.length;
+  const sum = target.reduce((a, b) => a + b, 0);
+  const goal = target.map((x) => x / sum);
+  const q = new Array<number>(n).fill(0);
+  const held = new Map<string, bigint>(); // `${bot}:${outcome}` → shares
+  const steps = 8 + Math.floor(rand() * 11);
+
+  const buy = async (bot: string, i: number, shares: bigint) => {
+    await trade(bot, market.marketId, market.outcomeIds[i], shares, shares * 2n + 1_000_000n, randomUUID(), db);
+    held.set(`${bot}:${i}`, (held.get(`${bot}:${i}`) ?? 0n) + shares);
+    q[i] += Number(shares);
+  };
+
+  for (let k = 1; k <= steps; k++) {
+    const t = k / steps;
+    const noise = k === steps ? 0 : 0.3 * (1 - t);
+    const want = goal.map((g) => Math.exp((1 - t) * Math.log(1 / n) + t * Math.log(g) + noise * gauss(rand)));
+    // q for `want`, lifted so nothing needs selling: q_i = b·ln(want_i) + c ≥ q_i now.
+    const base = want.map((w) => market.b * Math.log(w));
+    const c = Math.max(...q.map((qi, i) => qi - base[i]));
+    for (let i = 0; i < n; i++) {
+      const short = Math.round(base[i] + c - q[i]);
+      if (short < 1_000_000) continue;
+      // Split a big move between two bots, as a crowd would.
+      const parts = short > 40_000_000 && rand() < 0.5 ? 2 : 1;
+      for (let j = 0; j < parts; j++) {
+        await buy(bots[Math.floor(rand() * bots.length)].id, i, BigInt(Math.floor(short / parts)));
+      }
+    }
+    // Sometimes someone takes a profit or cuts a loss: a sell, the same trade with negative shares.
+    if (k < steps && rand() < 0.3) {
+      const [key, shares] = [...held.entries()][Math.floor(rand() * held.size)] ?? [];
+      if (key && shares && shares > 2_000_000n) {
+        const [bot, i] = key.split(':');
+        const sell = shares / 3n;
+        await trade(bot, market.marketId, market.outcomeIds[Number(i)], -sell, 0n, randomUUID(), db);
+        held.set(key, shares - sell);
+        q[Number(i)] -= Number(sell);
+      }
+    }
+  }
+  const end = lmsrPrices(q, market.b).map((x) => Math.round(x * 100));
+  console.log(`  ${market.marketId}  ${DECISIONS.map((d, i) => `${d} ${end[i]}%`).join(' · ')}`);
+}
+
+/**
+ * **Dev data only.** Every seed fill happens within a second, which gives a
+ * chart with no history. This moves the market's creation back 2–4 weeks and
+ * spreads its fills, in their original order, between then and now, the last
+ * few inside the past day (so "moved this week" and the digest have something
+ * to say). Only timestamps change; shares, costs, positions and the ledger are
+ * exactly what the engine wrote. Never do this outside a seed.
+ */
+async function spreadOverTime(db: Database, marketId: string, rand: () => number, settled: boolean) {
+  const now = Date.now();
+  const start = now - (14 + Math.floor(rand() * 14)) * DAY;
+  const end = settled ? now - 3 * DAY : now - 10 * 60 * 1000;
+  const fills = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.marketId, marketId))
+    .orderBy(asc(orders.createdAt), asc(orders.id));
+  // Increasing gaps that bunch up towards the end, as attention does near a deadline.
+  const times = fills.map((_, i) => {
+    const u = (i + 0.5 + (rand() - 0.5) * 0.8) / fills.length;
+    return start + Math.sqrt(Math.min(Math.max(u, 0), 1)) * (end - start);
+  });
+  times.sort((a, b) => a - b);
+  for (const [i, f] of fills.entries()) {
+    await db.update(orders).set({ createdAt: new Date(times[i]) }).where(eq(orders.id, f.id));
+  }
+  await db
+    .update(markets)
+    .set({
+      createdAt: new Date(start - DAY),
+      ...(settled ? { settledAt: new Date(now - 2 * DAY), closesAt: new Date(now - 3 * DAY) } : {}),
+    })
+    .where(eq(markets.id, marketId));
 }
 
 main().catch((err) => {

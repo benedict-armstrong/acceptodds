@@ -266,7 +266,7 @@ describe('sendDailyDigest', () => {
     expect(devOutbox()).toHaveLength(0);
   });
 
-  it('uses the multi-outcome favourite as the headline', async () => {
+  it('uses 1 − P(last outcome) as the headline of a multi-outcome market', async () => {
     const { listing } = await upsertListing({ slug: 'multi', title: 'Multi' });
     const m = await createMarket({
       slug: 'multi-decision',
@@ -284,9 +284,11 @@ describe('sendDailyDigest', () => {
     await follow(alice.id, listing.id);
     const r = await sendDailyDigest({ baseUrl: BASE });
     expect(r.sent).toBe(1);
-    expect(devOutbox()[0].text).toMatch(/Which decision\? \(Poster\): 33% → \d+%/);
+    expect(devOutbox()[0].text).toMatch(/Which decision\? \(not Reject\): 67% → \d+%/);
     const f = await api('GET', '/me/follows', { token: alice.token });
-    expect(f.body.follows[0].headline.outcomeLabel).toBe('Poster');
+    expect(f.body.follows[0].headline).toMatchObject({ outcomeLabel: 'Reject', negated: true });
+    expect(f.body.follows[0].headline.price24hAgo).toBeCloseTo(2 / 3, 12);
+    expect(f.body.follows[0].headline.price).toBeGreaterThan(0.72);
   });
 
   it('un-records a failed send so a re-run retries it', async () => {

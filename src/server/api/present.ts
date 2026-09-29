@@ -74,6 +74,7 @@ export function presentFollowed(f: FollowedListing): z.input<typeof S.FollowedLi
             marketId: f.main.market.id,
             outcomeId: outcome.id,
             outcomeLabel: outcome.label,
+            negated: f.move.negated,
             price: f.move.now,
             price24hAgo: f.move.then,
           }

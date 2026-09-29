@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
+import { OutcomeBar } from '@/components/OutcomeBar';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
 import { ago, day, pct, rep, shares } from '@/lib/format';
+import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES, paletteSlot, TIER_BG } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
@@ -71,6 +73,11 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
   const tradable = market.status === 'open' && new Date(market.closesAt).getTime() > Date.now();
   const sorted = market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
   const lead = likelihoodClass(marketLikelihood(market)).text;
+  // Three or four ordered outcomes (a paper: oral, spotlight, poster, reject)
+  // while trading: the headline and the outcome bar, worst on the left.
+  const n = market.outcomes.length;
+  const barred = n > 2 && n <= MAX_BAR_OUTCOMES && (market.status === 'open' || market.status === 'closed');
+  const headline = marketHeadline(market);
 
   // A fill can trim the viewer's comment backings (a sell), so comments refresh too.
   const [commentsVersion, setCommentsVersion] = useState(0);
@@ -93,14 +100,33 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
       )}
       {market.description && <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>}
 
-      <div className="my-4.5 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">
-        {sorted.map((o, i) => (
-          <span key={o.id} className={i === 0 ? lead : 'text-muted'}>
-            <b>{pct(o.price)}</b> {o.label}
-            {market.resolvedOutcomeId === o.id && ' ✓'}
-          </span>
-        ))}
-      </div>
+      {barred && headline !== null ? (
+        <div className="mx-auto my-4.5 max-w-[560px]">
+          <div className="text-center text-[22px]">
+            <span className={lead}>
+              <b>{pct(headline)}</b> {headlineLabel(labels, embedded)}
+            </span>
+          </div>
+          <OutcomeBar prices={market.outcomes.map((o) => o.price)} labels={labels} className="mt-2 h-2.5 w-full" />
+          <div className="mt-1.5 flex flex-wrap justify-between gap-x-4 font-sans text-[13px] text-subtle">
+            {barOrder(n).map((i) => (
+              <span key={i} className="whitespace-nowrap">
+                <span className={`mr-1 inline-block size-2.5 rounded-[2px] align-[-1px] ${TIER_BG[paletteSlot(i, n)]}`} aria-hidden />
+                {labels[i]} <b className="font-mono text-ink">{pct(market.outcomes[i].price)}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="my-4.5 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">
+          {sorted.map((o, i) => (
+            <span key={o.id} className={i === 0 ? lead : 'text-muted'}>
+              <b>{pct(o.price)}</b> {o.label}
+              {market.resolvedOutcomeId === o.id && ' ✓'}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="border-y border-rule py-2.5">
         {points.length > 1 ? (

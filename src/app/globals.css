@@ -23,14 +23,22 @@
   --color-down: #b31b1b;
   --color-card: #fff;
 
-  /* Likelihood of a binary market's first ("yes"/accept) outcome: ≥65% accept,
-     ≤35% reject, else toss-up (lib/likelihood.ts). Muted, so the maroon
+  /* Likelihood of a market's headline (lib/headline.ts; for a paper, accepted
+     in any form): ≥65% accept, ≤35% reject, else toss-up (lib/likelihood.ts). Muted, so the maroon
      accent stays the only loud colour on the page. */
   --color-accept: #3d7a4f;
   --color-accept-soft: #eaf2e8;
   --color-reject: #a24a3f;
   --color-reject-soft: #f6e9e5;
   --color-toss-up: #b8ab8c;
+
+  /* The outcome bar, worst to best (lib/headline.ts TIER_HEX, which the
+     badge and preview images use; keep the two in step): for a paper,
+     reject, poster, spotlight, oral. */
+  --color-tier-1: #a24a3f;
+  --color-tier-2: #c49a2c;
+  --color-tier-3: #3d7a4f;
+  --color-tier-4: #3f6a9a;
 
   --font-serif: Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

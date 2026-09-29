@@ -216,15 +216,18 @@ export const HeadlineMove = z
     marketId: Id,
     outcomeId: Id,
     outcomeLabel: z.string(),
-    price: Price.meta({ description: 'The headline outcome’s price now.' }),
+    negated: z.boolean().meta({
+      description: 'True when the headline is `1 − P(outcome)` (a market with more than two outcomes), false when it is `P(outcome)`.',
+    }),
+    price: Price.meta({ description: 'The headline now.' }),
     price24hAgo: Price.meta({
-      description: 'Its price 24 hours ago, replayed exactly from the fills (the opening price for a newer market).',
+      description: 'The headline 24 hours ago, replayed exactly from the fills (the opening price for a newer market).',
     }),
   })
   .meta({
     id: 'HeadlineMove',
     description:
-      'The main market’s headline price: the first outcome of a binary market, else the current favourite. A probability, not a value.',
+      'The main market’s headline: the first outcome’s price of a binary market; for more outcomes, which are ordered best first and worst last, `1 − P(last outcome)` (for a paper, accepted in any form). A probability, not a value.',
   });
 
 export const FollowedListing = z

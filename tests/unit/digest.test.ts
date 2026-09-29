@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { digestDay, headlineOrdinal, minMovePp, moveOf, movedEnough, renderDigest } from '@/lib/digest';
+import { digestDay, minMovePp, moveOf, movedEnough, renderDigest } from '@/lib/digest';
 
-describe('headlineOrdinal', () => {
-  it('is the first outcome of a binary market, whatever its price', () => {
-    expect(headlineOrdinal([0.2, 0.8])).toBe(0);
+describe('moveOf', () => {
+  it('follows the first outcome of a binary market, whatever its price', () => {
+    expect(moveOf([0.5, 0.5], [0.2, 0.8])).toEqual({ ordinal: 0, negated: false, then: 0.5, now: 0.2 });
   });
-  it('is the favourite of a multi-outcome market, lowest ordinal on a tie', () => {
-    expect(headlineOrdinal([0.2, 0.5, 0.3])).toBe(1);
-    expect(headlineOrdinal([0.4, 0.4, 0.2])).toBe(0);
-  });
-  it('follows the same outcome then and now', () => {
-    expect(moveOf([0.5, 0.25, 0.25], [0.2, 0.3, 0.5])).toEqual({ ordinal: 2, then: 0.25, now: 0.5 });
+  it('follows 1 − P(last) of a multi-outcome market, then and now', () => {
+    const m = moveOf([0.25, 0.25, 0.25, 0.25], [0.1, 0.2, 0.3, 0.4]);
+    expect(m).toMatchObject({ ordinal: 3, negated: true });
+    expect(m.then).toBeCloseTo(0.75);
+    expect(m.now).toBeCloseTo(0.6);
   });
 });
 
@@ -53,6 +52,7 @@ describe('digestDay', () => {
 describe('renderDigest', () => {
   const item = (slug: string, then: number, now: number, extra = {}) => ({
     ordinal: 0,
+    negated: false,
     then,
     now,
     title: `Title ${slug}`,
@@ -73,8 +73,11 @@ describe('renderDigest', () => {
     expect(text).toContain('https://x.test/profile');
   });
 
-  it('names the outcome for a multi-outcome market', () => {
-    const { text } = renderDigest([item('m', 0.3, 0.5, { binary: false, outcomeLabel: 'Poster' })], 'https://x.test');
-    expect(text).toContain('Q m? (Poster): 30% → 50%');
+  it('names the complemented outcome for a multi-outcome market', () => {
+    const { text } = renderDigest(
+      [item('m', 0.3, 0.5, { binary: false, ordinal: 3, negated: true, outcomeLabel: 'Reject' })],
+      'https://x.test',
+    );
+    expect(text).toContain('Q m? (not Reject): 30% → 50%');
   });
 });
