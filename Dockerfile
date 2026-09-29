@@ -18,7 +18,9 @@ CMD ["npm", "run", "db:migrate"]
 FROM deps AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# The cache mount keeps Next's compiler cache between builds: with one shared core
+# the compile is nearly all of a deploy's time, and most modules do not change.
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 FROM node:24-bookworm-slim AS app
 WORKDIR /app
