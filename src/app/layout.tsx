@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { AuthLinks } from '@/components/AuthLinks';
+import { ConfirmBanner } from '@/components/ConfirmBanner';
 import { LogoMark } from '@/components/Logo';
 import { ui } from '@/components/ui';
 import { rep } from '@/lib/format';
@@ -48,13 +50,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <Link href="/profile">profile</Link>
               </>
             ) : (
-              <>
-                <Link href="/signin">sign in</Link>
-                <Link href="/signup">sign up</Link>
-              </>
+              <AuthLinks />
             )}
           </nav>
         </header>
+        <ConfirmBanner signedIn={viewer !== null} />
         {children}
       </body>
     </html>

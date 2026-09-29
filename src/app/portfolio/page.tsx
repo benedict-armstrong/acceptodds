@@ -21,7 +21,7 @@ function holdingHref(h: Pick<Holding, 'marketSlug' | 'listingSlug'>): string {
  */
 export default async function PortfolioPage() {
   const viewer = await viewerFromHeaders(await headers());
-  if (!viewer) redirect('/signin');
+  if (!viewer) redirect('/signin?next=/portfolio');
   const p = await getPortfolio(viewer.account.id);
   events.log('portfolio.read', { accountId: viewer.account.id });
   const s = p.summary;

@@ -42,6 +42,15 @@ async function accountsFor(email: string) {
     .where(eq(user.email, email));
 }
 
+/** The 6-digit code in a confirmation mail. */
+function codeFrom(text: string): string {
+  return /code is (\d{6})/.exec(text)![1];
+}
+
+async function confirmWithCode(email: string, otp: string): Promise<Response> {
+  return authCall('POST', '/email-otp/verify-email', { body: { email, otp } });
+}
+
 const order = (outcomeId: string) => ({ outcomeId, sharesMicro: '1000000', maxCostMicro: '10000000' });
 
 // ---------------------------------------------------------------------------
@@ -112,6 +121,20 @@ describe('sign-up with email and password', () => {
     expect(cookieFrom(inRes)).not.toContain('session_token=');
   });
 
+  it('signing in unconfirmed with the right password sends a fresh code and link; a wrong one sends nothing', async () => {
+    await signUpUnconfirmed('again@example.org');
+    clearDevOutbox();
+    const wrong = await authCall('POST', '/sign-in/email', { body: { email: 'again@example.org', password: 'not the password' } });
+    expect(wrong.status).toBe(401);
+    expect(devOutbox()).toHaveLength(0);
+
+    const right = await authCall('POST', '/sign-in/email', { body: { email: 'again@example.org', password: 'correct horse battery' } });
+    expect(right.status).toBe(403);
+    const mail = devOutbox().find((m) => m.to === 'again@example.org')!;
+    expect(codeFrom(mail.text)).toMatch(/^\d{6}$/);
+    expect(mail.text).toMatch(/https?:\/\/\S+verify-email/);
+  });
+
   it('gives two users with the same name different handles', async () => {
     const a = await api('GET', '/me', { cookie: await signUp('one@example.org', 'Sam Smith') });
     const b = await api('GET', '/me', { cookie: await signUp('two@example.org', 'Sam Smith') });
@@ -137,6 +160,69 @@ describe('sign-up with email and password', () => {
     const out = await authCall('POST', '/sign-out', { cookie, body: {} });
     expect(out.status).toBe(200);
     expect((await api('GET', '/me', { cookie })).status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// confirming with the code (issue #15)
+// ---------------------------------------------------------------------------
+
+describe('confirming with the code from the mail', () => {
+  it('the code confirms the address, creates the trader with one grant, and signs in', async () => {
+    await signUpUnconfirmed('code@example.org', 'Code Person');
+    const code = codeFrom(devOutbox().find((m) => m.to === 'code@example.org')!.text);
+
+    const res = await confirmWithCode('code@example.org', code);
+    expect(res.status).toBe(200);
+    const cookie = cookieFrom(res);
+    expect(cookie).toContain('session_token=');
+
+    const me = await api('GET', '/me', { cookie });
+    expect(me.body).toMatchObject({ canTrade: true, balanceMicro: STARTING_MICRO.toString() });
+    const grants = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, me.body.id));
+    expect(grants).toHaveLength(1);
+
+    // The code is spent; the link still confirms, and grants nothing more.
+    expect((await confirmWithCode('code@example.org', code)).status).toBe(400);
+  });
+
+  it('refuses a wrong code, and grants nothing', async () => {
+    await signUpUnconfirmed('guess@example.org');
+    const code = codeFrom(devOutbox().find((m) => m.to === 'guess@example.org')!.text);
+    const wrong = code === '000000' ? '111111' : '000000';
+    const res = await confirmWithCode('guess@example.org', wrong);
+    expect(res.status).toBe(400);
+    expect(cookieFrom(res)).not.toContain('session_token=');
+    expect(await accountsFor('guess@example.org')).toEqual([]);
+  });
+
+  it('a resend replaces the code: only the newest one works', async () => {
+    await signUpUnconfirmed('resend@example.org');
+    const first = codeFrom(devOutbox().find((m) => m.to === 'resend@example.org')!.text);
+    clearDevOutbox();
+    const resent = await authCall('POST', '/send-verification-email', { body: { email: 'resend@example.org' } });
+    expect(resent.status).toBe(200);
+    const second = codeFrom(devOutbox().find((m) => m.to === 'resend@example.org')!.text);
+
+    if (first !== second) expect((await confirmWithCode('resend@example.org', first)).status).toBe(400);
+    expect((await confirmWithCode('resend@example.org', second)).status).toBe(200);
+  });
+
+  it('keeps every other email-OTP route off', async () => {
+    await signUpUnconfirmed('off@example.org');
+    for (const path of [
+      '/email-otp/send-verification-otp',
+      '/email-otp/check-verification-otp',
+      '/sign-in/email-otp',
+      '/email-otp/request-password-reset',
+      '/forget-password/email-otp',
+      '/email-otp/reset-password',
+      '/email-otp/request-email-change',
+      '/email-otp/change-email',
+    ]) {
+      const res = await authCall('POST', path, { body: { email: 'off@example.org', type: 'sign-in', otp: '123456' } });
+      expect(res.status, path).toBe(404);
+    }
   });
 });
 
