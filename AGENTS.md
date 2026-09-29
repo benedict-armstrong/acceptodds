@@ -414,18 +414,24 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   displayed cost or better, or the order is refused — checked end to end.
   The Buy/Sell toggle and sell buttons show only while the viewer holds
   shares in that market; at zero the widget falls back to buy.
-- **The navbar shows net worth at liquidation value**, not cash (cash is in
-  its title), and a `profile` link. Clicking the figure flips it to where
-  the viewer stands on the net-worth leaderboard and back (#17,
-  `components/NavWorth`): a tiny bell curve of the field with a line at the
-  viewer (`MiniCurve`), the rank and percentile in its title and
-  aria-label, never as a bare "ahead of 0%". The choice is the `nav_worth`
-  cookie the layout reads. The curve is the shared field snapshot (#10
-  section), never a per-viewer valuation of the field; the viewer is placed
-  on it by their own live net worth (`placeIn`), hence "about #N".
+- **The navbar shows where the viewer stands** (#17, `components/NavWorth`):
+  a tiny bell curve of the net-worth field with a line at the viewer
+  (`MiniCurve`). Hovering it (tapping, on touch) opens a `Popover` below
+  with net worth at liquidation value, cash, and the rank and percentile
+  to one decimal, rounded down like the board's, never a bare "ahead of
+  0%". No field yet: the net worth figure instead. The curve is the shared
+  field snapshot (#10 section), never a per-viewer valuation of the field;
+  the viewer is placed on it by their own live net worth (`placeIn`),
+  hence "about #N". Beside it, a `profile` link.
   `/profile` has the account details, the
   same cash / net worth / unrealized / realized row as `/portfolio`, and
   sign-out at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
+- **`/portfolio` lists closed positions** (#22, `accounts.closedPositions`):
+  every outcome the viewer traded and now holds none of, one row over all
+  its fills, newest first, 50 a page. Read from `orders` alone — positions
+  move only by fills, so the shares held into settlement are the fills'
+  net, and settlement paid exactly that on the winner. P&L is sells +
+  payout − buys, the ledger's own integers; it is not a mark (§1.1).
 - **"Venue" is the market's `kind`.** The home page filters on it and opens
   on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
   The platform still knows nothing about venues: it is a string the creating
@@ -600,9 +606,9 @@ unpaginated, and 5 s for that search.
   - `/s/<slug>` — a paper's slug or an unlisted market's — 307s to its page
     and logs `share.opened` (no payload, no account).
   - `opengraph-image.tsx` on `/papers/[slug]` and `/markets/[slug]`
-    (`server/og.tsx`): the title, the outcome bar **without numbers**, a band
-    ("Leaning accept"), and a teaser (the week's move if ≥ 5 pp, else how many
-    traders). Settled: "Decided: <label>". Five-minute `Cache-Control`. Its
+    (`server/og.tsx`): the title and the outcome bar **without numbers**;
+    no band, trader count or link (the card already shows the link).
+    Settled: "Decided: <label>" in place of the bar. Five-minute `Cache-Control`. Its
     font is `assets/fonts/LiberationSerif-Regular.ttf` (OFL), read from disk
     and named in `outputFileTracingIncludes` so standalone output carries it.
     Latin only: no emoji or arrows in the image.

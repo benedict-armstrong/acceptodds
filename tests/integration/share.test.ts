@@ -6,7 +6,7 @@ import { headlinePrice } from '@/lib/headline';
 import { createMarket, trade } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { previewImage } from '@/server/og';
-import { shareSubject, teaser } from '@/server/share';
+import { shareSubject } from '@/server/share';
 import { browseListings, sparklines } from '@/server/views';
 import * as badgeRoute from '@/app/badge/[file]/route';
 import * as shortRoute from '@/app/s/[slug]/route';
@@ -122,13 +122,9 @@ describe('/badge/<slug>.svg', () => {
 });
 
 describe('previews', () => {
-  it('renders a PNG for a paper, and teases with traders or the week’s move', async () => {
-    const p = await paper('p');
+  it('renders a PNG for a paper', async () => {
+    await paper('p');
     const subject = (await shareSubject('p'))!;
-    expect(await teaser(subject.main!)).toBe('No trades yet');
-    await trade(fx.traderIds[0], p.marketId, p.outcomeIds[0], 100n * UNIT, 1_000n * UNIT);
-    // b is ~72 units here, so 100 Oral shares move the headline about 11 pp.
-    expect(await teaser((await shareSubject('p'))!.main!)).toMatch(/^\+\d+ pp this week$/);
 
     const res = await previewImage(subject);
     expect(res.headers.get('content-type')).toBe('image/png');

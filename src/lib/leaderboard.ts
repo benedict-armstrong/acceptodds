@@ -36,6 +36,7 @@ export function leaderboardSegments(total: number, focus: number | null, top = 1
 export function placeIn(
   sortedWorths: readonly bigint[],
   mine: bigint,
+  digits = 0,
 ): { rank: number; fieldSize: number; percentAhead: number | null } {
   let below = 0;
   let above = 0;
@@ -46,16 +47,17 @@ export function placeIn(
   const rank = above + 1;
   // Below everyone in an older snapshot is still a place on the board, not "#6 of 5".
   const fieldSize = Math.max(sortedWorths.length, rank);
-  return { rank, fieldSize, percentAhead: percentAhead(below, fieldSize) };
+  return { rank, fieldSize, percentAhead: percentAhead(below, fieldSize, digits) };
 }
 
 /**
  * The share of the rest of the field a trader is strictly ahead of, as a
- * whole percentage rounded down, so it never flatters. `below` is how many
+ * percentage rounded down (to `digits` decimals, whole by default), so it never flatters. `below` is how many
  * traders score strictly lower; ties are not beaten. `null` for a field of
  * one, where there is nobody to be ahead of.
  */
-export function percentAhead(below: number, fieldSize: number): number | null {
+export function percentAhead(below: number, fieldSize: number, digits = 0): number | null {
   if (fieldSize <= 1) return null;
-  return Math.floor((100 * below) / (fieldSize - 1));
+  const scale = 10 ** digits;
+  return Math.floor((100 * scale * below) / (fieldSize - 1)) / scale;
 }

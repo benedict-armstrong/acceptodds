@@ -95,9 +95,9 @@ export default async function PaperPage({
           ))}
         </div>
       )}
-      <div className="mt-2 flex items-baseline justify-center gap-4">
+      <div className="mt-2 flex items-center justify-center gap-4">
         {viewer && (
-          <FollowStar listingId={listing.id} following={following} followers={followers} showCount className="text-[17px]" />
+          <FollowStar listingId={listing.id} following={following} followers={followers} showCount className="text-[15px]" />
         )}
         {markets[0] && (
           <SharePanel

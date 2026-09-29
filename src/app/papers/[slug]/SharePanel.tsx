@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import type { z } from 'zod';
 import { CopyButton } from '@/components/CopyButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/Popover';
+import { MoreIcon, ShareIcon } from '@/components/icons';
 import { ui } from '@/components/ui';
 import { shareText } from '@/lib/headline';
 import type * as S from '@/server/api/schemas';
@@ -15,7 +16,7 @@ type Portfolio = z.output<typeof S.Portfolio>;
 
 /**
  * "Share" on a paper's page (issues #11 §2–3, #18). Clicking "share" copies
- * the Wordle-style text, without the viewer's stake; the "⋯" menu beside it
+ * the Wordle-style text, without the viewer's stake; the "more" menu beside it
  * has a short-name field, the embeddable badge and the short link, each with
  * a copy button. The text is built from the main market's live prices — the
  * same SWR keys and fetchers as `MarketLive`, so no extra polling — and,
@@ -77,21 +78,26 @@ export function SharePanel({
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-      <span className="inline-flex items-baseline gap-1 font-sans text-[13px]">
+      <span className="inline-flex items-center gap-1 font-sans text-[13px]">
         <CopyButton
           value={plain}
-          label="share"
+          label={
+            <span className="inline-flex items-center gap-1">
+              <ShareIcon />
+              share
+            </span>
+          }
           copied="copied"
           className={ui.linkBtn}
           title="Copy the share text"
           onFail={() => setMenuOpen(true)} // no clipboard: the text is in the menu to copy by hand
         />
         <PopoverTrigger
-          className="cursor-pointer px-1 text-muted hover:text-accent"
+          className="flex cursor-pointer items-center px-1 text-muted hover:text-accent"
           aria-label="More ways to share"
           title="More ways to share"
         >
-          ⋯
+          <MoreIcon />
         </PopoverTrigger>
       </span>
       <PopoverContent>

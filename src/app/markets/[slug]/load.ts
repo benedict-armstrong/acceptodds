@@ -7,6 +7,7 @@ import { listComments } from '@/server/comments';
 import * as events from '@/server/events';
 import { marketTape, marketView, priceHistory } from '@/server/views';
 import type { Initial } from './MarketLive';
+import { TAPE_LIMIT } from './tape';
 
 /**
  * Everything `MarketLive` starts from, for one market, read on the server.
@@ -20,7 +21,7 @@ export async function loadMarketLive(market: Market, viewer: { account: Account 
   const [view, history, tape, comments, portfolio] = await Promise.all([
     marketView(market),
     priceHistory(market, { limit: 10_000 }),
-    marketTape(market, { limit: 20 }),
+    marketTape(market, { limit: TAPE_LIMIT }),
     listComments(market.id, { limit: 50, viewerAccountId: viewer?.account.id ?? null }),
     viewer ? getPortfolio(viewer.account.id) : null,
   ]);

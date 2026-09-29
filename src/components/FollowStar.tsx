@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { StarIcon } from './icons';
 
 /**
  * Follow (star) a listing. Writes through the public API like every other
@@ -56,13 +57,13 @@ export function FollowStar({
       aria-pressed={following}
       aria-label={label}
       title={failed ? 'Could not update. Try again.' : label}
-      className={`cursor-pointer font-sans leading-none disabled:cursor-default disabled:opacity-50 ${
+      className={`inline-flex cursor-pointer items-center font-sans leading-none disabled:cursor-default disabled:opacity-50 ${
         following ? 'text-accent' : failed ? 'text-down' : 'text-faint hover:text-ink'
       } ${className}`}
     >
-      <span aria-hidden>{following ? '★' : '☆'}</span>
+      <StarIcon filled={following} />
       {showCount && (
-        <span className="ml-1 text-xs text-muted">
+        <span className="ml-1 text-[13px] text-muted">
           {following ? 'following' : 'follow'}
           {followers > 0 ? ` · ${followers}` : ''}
         </span>

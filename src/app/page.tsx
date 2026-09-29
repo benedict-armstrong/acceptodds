@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
 import { MathText } from '@/components/MathText';
+import { MoreIcon } from '@/components/icons';
 import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
@@ -249,9 +250,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </span>
         {/* Status and following, out of the way. */}
         <Popover>
-          <PopoverTrigger title="More filters: status, following" className="cursor-pointer px-1 text-ink hover:text-accent">
+          <PopoverTrigger title="More filters: status, following" className="inline-flex cursor-pointer items-center gap-1 px-1 text-ink hover:text-accent">
             {[status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ')}
-            {(status !== 'open' || onlyFollowed) && ' '}⋯
+            <MoreIcon />
           </PopoverTrigger>
           <PopoverContent menu align="end" className="text-[13px]">
             {STATUSES.map((s) => (

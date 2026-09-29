@@ -11,6 +11,7 @@ import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES, paletteSlot,
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
+import { TAPE_LIMIT } from './tape';
 import { TradeBox } from './TradeBox';
 
 type Market = z.output<typeof S.Market>;
@@ -45,7 +46,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
     fallbackData: initial.market,
     refreshInterval: POLL_MS,
   });
-  const { data: tape = initial.tape, mutate: refreshTape } = useSWR<Tape>(`/api/v1/markets/${id}/orders?limit=20`, publicJson, {
+  const { data: tape = initial.tape, mutate: refreshTape } = useSWR<Tape>(`/api/v1/markets/${id}/orders?limit=${TAPE_LIMIT}`, publicJson, {
     fallbackData: initial.tape,
     refreshInterval: POLL_MS,
   });
@@ -161,7 +162,8 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
             })}
           </div>
         </div>
-        <div>
+        {/* On a narrow screen the trade box comes before the tape. */}
+        <div className="narrow:order-first">
           {tradable ? (
             <TradeBox market={market} holdings={holdings} viewer={initial.viewer} onFilled={onFilled} />
           ) : (

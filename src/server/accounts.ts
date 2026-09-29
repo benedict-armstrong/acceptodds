@@ -235,6 +235,102 @@ export async function getPortfolio(
   };
 }
 
+export interface ClosedPosition {
+  marketSlug: string;
+  listingSlug: string | null;
+  question: string;
+  marketStatus: (typeof schema.marketStatus.enumValues)[number];
+  outcomeId: string;
+  outcomeLabel: string;
+  /** Σ shares bought, over every fill. */
+  boughtMicro: bigint;
+  /** Σ cost of the buys. */
+  paidMicro: bigint;
+  /** Σ proceeds of the sells. */
+  soldMicro: bigint;
+  /** 1 per share still held at settlement if this outcome won, else 0. */
+  payoutMicro: bigint;
+  /** `soldMicro + payoutMicro − paidMicro`: exact, the ledger's own figures. */
+  pnlMicro: bigint;
+  /** How it closed: every share sold, or held into settlement (won or lost). */
+  closedBy: 'sold' | 'won' | 'lost';
+  closedAt: Date;
+}
+
+/**
+ * The viewer's closed positions, newest first: every outcome they have traded
+ * and now hold none of, sold out or settled. One row per outcome over its
+ * whole history. Read from `orders` alone: positions change only by fills,
+ * so the shares held at settlement are the net of the fills, and settlement
+ * paid exactly that many units on the winner (`engine.settle`). Sums are
+ * `numeric`, read as text (§1.6). Offset-paged with a total, like the home list.
+ */
+export async function closedPositions(
+  accountId: string,
+  { limit = 50, offset = 0 }: { limit?: number; offset?: number } = {},
+  database: Db = getDb(),
+): Promise<{ rows: ClosedPosition[]; total: number }> {
+  const result = await database.execute<{
+    market_slug: string;
+    listing_slug: string | null;
+    question: string;
+    status: ClosedPosition['marketStatus'];
+    outcome_id: string;
+    label: string;
+    resolved_outcome_id: string | null;
+    bought: string;
+    paid: string;
+    sold: string;
+    net: string;
+    closed_at: Date;
+    total: number;
+  }>(sql`
+    select m.slug as market_slug, l.slug as listing_slug, m.question, m.status,
+           oc.id as outcome_id, oc.label, m.resolved_outcome_id,
+           coalesce(sum(o.shares_micro) filter (where o.shares_micro > 0), 0)::text as bought,
+           coalesce(sum(o.cost_micro) filter (where o.shares_micro > 0), 0)::text as paid,
+           coalesce(-sum(o.cost_micro) filter (where o.shares_micro < 0), 0)::text as sold,
+           sum(o.shares_micro)::text as net,
+           case when m.status = 'settled' and sum(o.shares_micro) <> 0 then m.settled_at
+                else max(o.created_at) end as closed_at,
+           (count(*) over ())::int as total
+      from orders o
+      join outcomes oc on oc.id = o.outcome_id
+      join markets m on m.id = o.market_id
+      left join listings l on l.id = m.listing_id
+      left join positions p on p.account_id = o.account_id and p.outcome_id = o.outcome_id
+     where o.account_id = ${accountId}::uuid
+       and coalesce(p.shares_micro, 0) = 0
+     group by m.id, l.slug, oc.id
+     order by closed_at desc, oc.id
+     limit ${limit} offset ${offset}
+  `);
+  const rows = result.rows.map((r): ClosedPosition => {
+    const net = BigInt(r.net);
+    const settled = r.status === 'settled' && net !== 0n;
+    const won = settled && r.resolved_outcome_id === r.outcome_id;
+    const payoutMicro = won ? net : 0n;
+    const paidMicro = BigInt(r.paid);
+    const soldMicro = BigInt(r.sold);
+    return {
+      marketSlug: r.market_slug,
+      listingSlug: r.listing_slug,
+      question: r.question,
+      marketStatus: r.status,
+      outcomeId: r.outcome_id,
+      outcomeLabel: r.label,
+      boughtMicro: BigInt(r.bought),
+      paidMicro,
+      soldMicro,
+      payoutMicro,
+      pnlMicro: soldMicro + payoutMicro - paidMicro,
+      closedBy: !settled ? 'sold' : won ? 'won' : 'lost',
+      closedAt: new Date(r.closed_at),
+    };
+  });
+  return { rows, total: result.rows[0]?.total ?? 0 };
+}
+
 /**
  * `accounts.balance_micro` is a cache of `sum(ledger_entries.delta_micro)`.
  * This is the reconciliation: it returns every account where the two disagree,

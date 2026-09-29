@@ -1,14 +1,18 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { Pager } from '@/components/Pager';
 import { Stat } from '@/components/Stat';
 import { ui } from '@/components/ui';
-import { pct, rep, shares, signedRep } from '@/lib/format';
-import { getPortfolio, type Holding } from '@/server/accounts';
+import { day, pct, rep, REP, shares, signedRep } from '@/lib/format';
+import { closedPositions, getPortfolio, type Holding } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 
 export const dynamic = 'force-dynamic';
+
+const CLOSED_PAGE = 50;
+const CLOSED_BY = { sold: 'sold', won: 'settled · won', lost: 'settled · lost' } as const;
 
 function holdingHref(h: Pick<Holding, 'marketSlug' | 'listingSlug'>): string {
   return h.listingSlug ? `/papers/${h.listingSlug}?market=${encodeURIComponent(h.marketSlug)}` : `/markets/${h.marketSlug}`;
@@ -17,12 +21,21 @@ function holdingHref(h: Pick<Holding, 'marketSlug' | 'listingSlug'>): string {
 /**
  * Cash, net worth at liquidation value, and P&L, then the holdings — each
  * with its mark and its quoted exit value in two separate columns (§1.1). The
- * mark-based net worth (§1.2) is not shown.
+ * mark-based net worth (§1.2) is not shown. Then the closed positions (#22),
+ * 50 a page on `?page=`.
  */
-export default async function PortfolioPage() {
+export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const viewer = await viewerFromHeaders(await headers());
   if (!viewer) redirect('/signin?next=/portfolio');
+  const requested = Math.max(1, Math.floor(Number((await searchParams).page)) || 1);
   const p = await getPortfolio(viewer.account.id);
+  let closed = await closedPositions(viewer.account.id, { limit: CLOSED_PAGE, offset: (requested - 1) * CLOSED_PAGE });
+  const pages = Math.max(1, Math.ceil(closed.total / CLOSED_PAGE));
+  // A page past the end serves the last page.
+  const page = Math.min(requested, pages);
+  if (page !== requested) {
+    closed = await closedPositions(viewer.account.id, { limit: CLOSED_PAGE, offset: (page - 1) * CLOSED_PAGE });
+  }
   events.log('portfolio.read', { accountId: viewer.account.id });
   const s = p.summary;
 
@@ -83,6 +96,54 @@ export default async function PortfolioPage() {
         because each share you sell moves the price against you. Net worth and unrealized P&L use “sell all now”, never
         the mark.
       </p>
+
+      <h2 className={ui.groupHeading}>Closed positions</h2>
+      {closed.total === 0 ? (
+        <div className={ui.empty}>No closed positions yet.</div>
+      ) : (
+        <>
+          <table className={ui.table}>
+            <thead>
+              <tr>
+                <th className={ui.th()}>Market</th>
+                <th className={ui.th()}>Bought</th>
+                <th className={ui.th(true)}>Paid</th>
+                <th className={ui.th(true)}>Got back</th>
+                <th className={ui.th(true)}>P&L</th>
+                <th className={ui.th()}>Closed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {closed.rows.map((c) => (
+                <tr key={c.outcomeId}>
+                  <td className={ui.td}>
+                    <Link href={holdingHref(c)}>{c.question}</Link>
+                  </td>
+                  <td className={`${ui.td} font-mono text-[13px]`}>
+                    {shares(c.boughtMicro)} {c.outcomeLabel}
+                  </td>
+                  <td className={`${ui.td} ${ui.num}`}>{rep(c.paidMicro)}</td>
+                  <td
+                    className={`${ui.td} ${ui.num}`}
+                    title={`sold for ${rep(c.soldMicro)}${c.closedBy === 'sold' ? '' : `, settlement paid ${rep(c.payoutMicro)}`}`}
+                  >
+                    {rep(c.soldMicro + c.payoutMicro)}
+                  </td>
+                  <td className={`${ui.td} ${ui.num} ${ui.pnl(c.pnlMicro)}`}>{signedRep(c.pnlMicro)}</td>
+                  <td className={`${ui.td} text-[13px] whitespace-nowrap`}>
+                    {day(c.closedAt)} <span className="text-muted">{CLOSED_BY[c.closedBy]}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <Pager page={page} pages={pages} href={(n) => `/portfolio?page=${n}`} />
+          <p className={`${ui.fine} mb-3`}>
+            An outcome you traded and hold none of now, over all its fills. “Got back” is what selling paid plus, if you
+            held into settlement, 1 {REP} per winning share.
+          </p>
+        </>
+      )}
     </main>
   );
 }

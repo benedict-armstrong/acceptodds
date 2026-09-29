@@ -2,13 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ImageResponse } from 'next/og';
 import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, TIER_HEX } from '@/lib/headline';
-import { LIKELIHOOD_BAND, marketLikelihood } from '@/lib/likelihood';
-import { siteUrl, teaser, type ShareSubject } from './share';
+import type { ShareSubject } from './share';
 
 /**
- * The link-preview image of a paper or market (issue #11 §1): the title, the
- * outcome bar **without numbers**, a band ("Leaning accept"), and a teaser
- * (the week's move, or how many traders). The exact prices are the reason to
+ * The link-preview image of a paper or market (issue #11 §1): the title and
+ * the outcome bar **without numbers**. The exact prices are the reason to
  * click. Settled: the result. Everything on it comes from the database.
  * Prices, not values (§1.1); nothing here writes.
  */
@@ -18,7 +16,6 @@ export const OG_SIZE = { width: 1200, height: 630 };
 const INK = '#1d1d1d';
 const MUTED = '#777';
 const ACCENT = '#b31b1b';
-const BAND_COLOR = { accept: '#3d7a4f', reject: '#a24a3f', 'toss-up': INK } as const;
 
 let serif: Promise<Buffer> | null = null;
 function serifFont(): Promise<Buffer> {
@@ -39,10 +36,7 @@ export async function previewImage(subject: ShareSubject | null): Promise<ImageR
   const n = main?.outcomes.length ?? 0;
   const status = main?.market.status;
   const trading = status === 'open' || status === 'closed';
-  const likely = main ? marketLikelihood({ ...main.market, outcomes: main.outcomes }) : null;
   const winner = status === 'settled' ? main?.outcomes.find((o) => o.id === main.market.resolvedOutcomeId) : undefined;
-  const hint = main ? await teaser(main) : null;
-  const link = `${siteUrl().replace(/^https?:\/\//, '')}${subject?.sharePath ?? ''}`;
 
   return new ImageResponse(
     (
@@ -105,29 +99,15 @@ export async function previewImage(subject: ShareSubject | null): Promise<ImageR
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 34 }}>
-          <div style={{ display: 'flex', fontSize: 40, color: likely ? BAND_COLOR[likely] : INK }}>
-            {winner
-              ? `Decided: ${winner.label}`
-              : status === 'void'
-                ? 'Void'
-                : likely && subject?.listing
-                  ? LIKELIHOOD_BAND[likely]
-                  : main
-                    ? 'What are the odds?'
-                    : ''}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: 26, color: MUTED }}>
-            {hint && <div style={{ display: 'flex' }}>{hint}</div>}
-            <div style={{ display: 'flex', color: ACCENT }}>{link}</div>
-          </div>
-        </div>
+        {(winner || status === 'void') && (
+          <div style={{ display: 'flex', fontSize: 40 }}>{winner ? `Decided: ${winner.label}` : 'Void'}</div>
+        )}
       </div>
     ),
     {
       ...OG_SIZE,
       fonts: [{ name: 'Serif', data: await serifFont(), style: 'normal', weight: 400 }],
-      // Crawlers fetch previews hard; five minutes is fresh enough for a band.
+      // Crawlers fetch previews hard; five minutes is fresh enough for a bar without numbers.
       headers: { 'Cache-Control': 'public, max-age=300, s-maxage=300' },
     },
   );

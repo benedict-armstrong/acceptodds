@@ -1,8 +1,6 @@
 import { getDb, type Database } from '@/db';
 import type { Listing } from '@/db/schema';
-import { movePp } from '@/lib/digest';
-import { DAY_MS, moves } from './follows';
-import { listingView, marketView, resolveListing, resolveMarket, traderCount, type MarketView } from './views';
+import { listingView, marketView, resolveListing, resolveMarket, type MarketView } from './views';
 import { ApiError } from './api/errors';
 
 /**
@@ -71,23 +69,4 @@ export async function shareSubject(ref: string, database: Database = getDb()): P
 function notFoundAsNull(err: unknown): null {
   if (err instanceof ApiError && err.status === 404) return null;
   throw err;
-}
-
-/** A move at least this big over the past week is worth a teaser. */
-const TEASER_MIN_PP = 5;
-
-/**
- * One line to make a preview worth clicking, without giving the price away:
- * the week's headline move if it is big enough, else how many traders.
- * The move is replayed exactly from the fills (`follows.moves`).
- */
-export async function teaser(main: MarketView, now: Date = new Date(), database: Database = getDb()): Promise<string> {
-  if (main.market.status === 'open' || main.market.status === 'closed') {
-    const move = (await moves([main], now, 7 * DAY_MS, database)).get(main.market.id);
-    const pp = move ? Math.round(movePp(move)) : 0;
-    // ASCII signs: the preview image's fonts are Latin-only.
-    if (Math.abs(pp) >= TEASER_MIN_PP) return `${pp > 0 ? '+' : '-'}${Math.abs(pp)} pp this week`;
-  }
-  const n = await traderCount(main.market.id, database);
-  return n === 0 ? 'No trades yet' : `${n} ${n === 1 ? 'trader' : 'traders'}`;
 }

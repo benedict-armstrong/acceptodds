@@ -31,13 +31,6 @@ export function marketLikelihood(m: MarketLike): Likelihood | null {
   return h === null ? null : likelihood(h);
 }
 
-/** The words for a likelihood, for a preview that shows direction without a number. */
-export const LIKELIHOOD_BAND: Record<Likelihood, string> = {
-  accept: 'Leaning accept',
-  reject: 'Leaning reject',
-  'toss-up': 'Toss-up',
-};
-
 /**
  * Class lists per likelihood. Written out whole so Tailwind finds them.
  * `text`: the price. `bar`: the background of a thin bar at a row's left

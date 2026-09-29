@@ -1,11 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import { MiniCurve } from './MiniCurve';
+import { Popover, PopoverContent, PopoverTrigger } from './Popover';
 import { ui } from './ui';
-
-export type NavWorthMode = 'rep' | 'percentile';
 
 /** Where the viewer sits, for the navbar: see `MiniCurve`. */
 export interface NavStanding {
@@ -13,54 +11,53 @@ export interface NavStanding {
   curve: number[];
   /** The viewer's position across it, 0 to 1. */
   at: number;
-  /** "ahead of 96% of traders", for the title and screen readers. */
-  label: string;
+  /** "about #12 of 340", from the viewer's live net worth placed on the field. */
+  rank: string;
+  /** "ahead of 96% of traders", or `null` in a field of one. */
+  ahead: string | null;
 }
 
 /**
- * The navbar's figure: net worth at liquidation value, or, after a click,
- * where that puts the viewer on the net-worth leaderboard (#17): a tiny
- * bell curve of the field with a line at the viewer (`MiniCurve`), the
- * percentile in its title and label. Each click flips it. The choice is a
- * cookie the layout reads, so the page renders it with no flash, and only a
- * viewer who asked for the percentile pays for valuing the field. A
- * preference, nothing more: no account, no API.
+ * The navbar's figure (#17): a tiny bell curve of the net-worth field with a
+ * line at the viewer (`MiniCurve`). Hovering it (or tapping, where there is no
+ * hover) opens a panel below with net worth at liquidation value, cash, and
+ * the rank and percentile. Without a field to draw, the net worth itself.
  */
-export function NavWorth({
-  cookie,
-  mode,
-  worth,
-  standing,
-  title,
-}: {
-  /** The cookie the layout reads the choice from. */
-  cookie: string;
-  mode: NavWorthMode;
-  /** "1,234.00 $rep". */
-  worth: string;
-  /** `null` until the server has rendered it. */
-  standing: NavStanding | null;
-  title: string;
-}) {
-  const router = useRouter();
-  const [shown, setShown] = useState(mode);
-  const [pending, startTransition] = useTransition();
-  const flip = () => {
-    const next: NavWorthMode = shown === 'rep' ? 'percentile' : 'rep';
-    setShown(next);
-    document.cookie = `${cookie}=${next}; path=/; max-age=31536000; samesite=lax`;
-    // The percentile is computed on the server; fetch it if this render lacks it.
-    if (next === 'percentile' && standing === null) startTransition(() => router.refresh());
-  };
+export function NavWorth({ worth, cash, standing }: { worth: string; cash: string; standing: NavStanding | null }) {
+  const [open, setOpen] = useState(false);
+  const label = standing
+    ? `Net worth ${worth}; ${standing.rank}${standing.ahead ? `, ${standing.ahead}` : ''}`
+    : `Net worth ${worth}`;
   return (
-    <button
-      type="button"
-      onClick={flip}
-      title={`${shown === 'percentile' && standing ? `You: ${standing.label}. ` : ''}${title} · click to show ${shown === 'rep' ? 'where you stand' : 'your net worth'}`}
-      aria-label={shown === 'percentile' ? (standing ? `You are ${standing.label}` : 'Loading where you stand') : undefined}
-      className={`${ui.mono} cursor-pointer hover:text-accent`}
-    >
-      {shown === 'rep' ? worth : standing ? <MiniCurve curve={standing.curve} at={standing.at} /> : pending ? '…' : '—'}
-    </button>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        aria-label={label}
+        className={`${ui.mono} cursor-pointer hover:text-accent`}
+        onPointerEnter={(e) => e.pointerType === 'mouse' && setOpen(true)}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setOpen(false)}
+      >
+        {standing ? <MiniCurve curve={standing.curve} at={standing.at} /> : worth}
+      </PopoverTrigger>
+      <PopoverContent
+        menu
+        align="end"
+        className="pointer-events-none text-[13px]"
+        // Hover opens it; don't steal focus from the page.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <div>
+          <span className="text-muted">net worth</span> <b className={ui.mono}>{worth}</b>
+        </div>
+        <div className="text-muted">
+          if you sold everything now · cash <span className={ui.mono}>{cash}</span>
+        </div>
+        {standing && (
+          <div className="mt-1 border-t border-rule pt-1">
+            {standing.rank} on the net-worth board
+            {standing.ahead && <div className="text-muted">{standing.ahead}</div>}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

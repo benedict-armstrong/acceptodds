@@ -58,6 +58,9 @@ describe('percentAhead', () => {
     expect(percentAhead(0, 100)).toBe(0);
     expect(percentAhead(2, 4)).toBe(66);
     expect(percentAhead(0, 1)).toBeNull();
+    // Decimals round down too: 2/3 is 66.6…%, never 66.7.
+    expect(percentAhead(2, 4, 1)).toBe(66.6);
+    expect(percentAhead(99, 100, 1)).toBe(100);
   });
 });
 
