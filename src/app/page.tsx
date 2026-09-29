@@ -1,12 +1,16 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Sparkline } from '@/components/Sparkline';
+import { ui } from '@/components/ui';
 import { day, pct, rep } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { browseMarkets, MARKET_SORTS, marketKinds, sparklines, type BrowseRow, type MarketSort } from '@/server/views';
 
 export const dynamic = 'force-dynamic';
+
+/** The selected filter link. */
+const ON = 'font-semibold text-ink';
 
 const STATUSES = ['open', 'closed', 'settled', 'all'] as const;
 type Status = (typeof STATUSES)[number];
@@ -51,56 +55,56 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   }
 
   return (
-    <main className="page">
-      <div className="filters">
-        <span className="group">
+    <main className={ui.page}>
+      <div className="mt-3.5 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted">
+        <span className="flex gap-3">
           {kinds.map((k) => (
-            <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? 'on' : ''}>
+            <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
               {k.kind}
             </Link>
           ))}
-          <Link href={href({ kind: 'all' })} className={kind === null ? 'on' : ''}>
+          <Link href={href({ kind: 'all' })} className={kind === null ? ON : ''}>
             all venues
           </Link>
         </span>
-        <span className="spacer" />
-        <span className="group">
+        <span className="flex-1" />
+        <span className="flex gap-3">
           {STATUSES.map((s) => (
-            <Link key={s} href={href({ status: s })} className={s === status ? 'on' : ''}>
+            <Link key={s} href={href({ status: s })} className={s === status ? ON : ''}>
               {s}
             </Link>
           ))}
         </span>
-        <span className="group">
+        <span className="flex gap-3">
           sort:
           {MARKET_SORTS.map((s) => (
-            <Link key={s} href={href({ sort: s })} className={s === sort ? 'on' : ''}>
+            <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
               {s}
             </Link>
           ))}
         </span>
       </div>
 
-      {rows.length === 0 && <div className="empty">No {status === 'all' ? '' : status + ' '}markets here yet.</div>}
+      {rows.length === 0 && <div className={ui.empty}>No {status === 'all' ? '' : status + ' '}markets here yet.</div>}
 
       {groups.map(([key, list]) => (
         <section key={key || 'all'}>
           {key && (
-            <h2 className="group">
-              {key} <span className="n">({list.length})</span>
+            <h2 className={ui.groupHeading}>
+              {key} <span className="font-normal">({list.length})</span>
             </h2>
           )}
-          {!key && <div style={{ height: 14 }} />}
+          {!key && <div className="h-3.5" />}
           {list.map((r) => (
-            <Link key={r.market.id} href={`/markets/${r.market.slug}`} className="ln">
-              <span className="t">{r.market.question}</span>
-              <span className="v" title="volume">
+            <Link key={r.market.id} href={`/markets/${r.market.slug}`} className="grid grid-cols-[1fr_90px_90px_110px] items-center gap-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight hover:no-underline narrow:grid-cols-[1fr_64px]">
+              <span className="leading-[1.35]">{r.market.question}</span>
+              <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
                 {r.orderCount > 0 ? `${rep(r.volumeMicro, 0)} rep` : ''}
               </span>
-              <span className="s">
+              <span className="narrow:hidden">
                 <Sparkline values={sparks.get(r.market.id) ?? []} />
               </span>
-              <span className="p">{headline(r)}</span>
+              <span className="text-right font-mono text-sm">{headline(r)}</span>
             </Link>
           ))}
         </section>
@@ -124,7 +128,7 @@ function headline(r: BrowseRow): React.ReactNode {
   const top = [...r.outcomes].sort((a, b) => b.price - a.price)[0];
   return (
     <>
-      <span style={{ fontFamily: 'var(--serif)', fontSize: 14 }}>{top.label}</span> {pct(top.price)}
+      <span className="font-serif text-sm">{top.label}</span> {pct(top.price)}
     </>
   );
 }

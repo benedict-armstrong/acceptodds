@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
+import { ui } from '@/components/ui';
 import { parseUnits } from '@/lib/money';
 import { pct, rep, shares } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
@@ -22,6 +23,11 @@ const MESSAGES: Record<string, string> = {
   unauthorized: 'Sign in to trade.',
   rate_limited: 'Too many requests. Wait a moment.',
 };
+
+/** One button of a segmented control. */
+function segment(on: boolean): string {
+  return `flex-1 cursor-pointer border px-1 py-[5px] font-sans text-sm leading-[normal] ${on ? 'border-ink bg-ink text-white' : 'border-rule bg-white'}`;
+}
 
 /**
  * Buy or sell — one widget, because selling is a trade with negative shares.
@@ -126,18 +132,18 @@ export function TradeBox({
   }
 
   return (
-    <div className="box">
-      <div className="seg">
-        <button className={side === 'buy' ? 'on' : ''} onClick={() => setSide('buy')}>
+    <div className={ui.box}>
+      <div className="mb-2 flex gap-1.5">
+        <button className={segment(side === 'buy')} onClick={() => setSide('buy')}>
           Buy
         </button>
-        <button className={side === 'sell' ? 'on' : ''} onClick={() => setSide('sell')}>
+        <button className={segment(side === 'sell')} onClick={() => setSide('sell')}>
           Sell
         </button>
       </div>
-      <div className="seg">
+      <div className="mb-2 flex gap-1.5">
         {market.outcomes.map((o, i) => (
-          <button key={o.id} className={i === idx ? 'on' : ''} onClick={() => setIdx(i)}>
+          <button key={o.id} className={segment(i === idx)} onClick={() => setIdx(i)}>
             {o.label} {pct(o.price)}
           </button>
         ))}
@@ -148,22 +154,23 @@ export function TradeBox({
         onChange={(e) => setAmount(e.target.value)}
         aria-label="shares"
         placeholder="shares"
+        className={ui.input}
       />
 
       {cost !== null && current && (
         <>
-          <div className="kv">
+          <div className={ui.kv}>
             <span>{side === 'buy' ? 'Cost' : 'You receive'}</span>
             <b>{rep(side === 'buy' ? cost : -cost)} rep</b>
           </div>
-          <div className="kv">
+          <div className={ui.kv}>
             <span>Price</span>
             <span>
               {pct(current.priceBefore, true)} → {pct(current.priceAfter, true)}
             </span>
           </div>
           {side === 'buy' && (
-            <div className="kv">
+            <div className={ui.kv}>
               <span>Pays if {outcome.label}</span>
               <span>{shares(size!)} rep</span>
             </div>
@@ -172,40 +179,40 @@ export function TradeBox({
       )}
 
       {!viewer.signedIn ? (
-        <Link href="/signin" className="btn" style={{ textDecoration: 'none' }}>
+        <Link href="/signin" className={ui.btn()}>
           Sign in to trade
         </Link>
       ) : !viewer.canTrade ? (
-        <div className="note err">{MESSAGES.not_verified}</div>
+        <div className={ui.note(false)}>{MESSAGES.not_verified}</div>
       ) : (
-        <button className="btn" disabled={!current || busy} onClick={submit}>
+        <button className={ui.btn()} disabled={!current || busy} onClick={submit}>
           {busy ? '…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${size ? shares(size) : ''} ${outcome.label}`}
         </button>
       )}
       {cost !== null && (
-        <div className="fine">
+        <div className={ui.fine}>
           {side === 'buy'
             ? `Refused if the cost rises above ${rep(cost)}.`
             : `Refused if the proceeds fall below ${rep(-cost)}.`}
         </div>
       )}
-      {note && <div className={`note ${note.ok ? 'ok' : 'err'}`}>{note.text}</div>}
+      {note && <div className={ui.note(note.ok)}>{note.text}</div>}
 
-      {holdings.length > 0 && <hr className="thin" />}
+      {holdings.length > 0 && <hr className="my-3.5 border-rule-soft" />}
       {holdings.map((h) => (
-        <div key={h.outcomeId} style={{ marginBottom: 8 }}>
-          <div className="kv">
+        <div key={h.outcomeId} className="mb-2">
+          <div className={ui.kv}>
             <span>
               You hold {shares(h.sharesMicro)} {h.outcomeLabel} · marked
             </span>
             <span>{rep(h.markMicro)}</span>
           </div>
-          <div className="kv">
+          <div className={ui.kv}>
             <span>Sell all now</span>
             <b>{rep(h.quotedExitMicro)}</b>
           </div>
           <button
-            className="btn ghost"
+            className={ui.btn({ ghost: true })}
             onClick={() => {
               setSide('sell');
               setIdx(market.outcomes.findIndex((o) => o.id === h.outcomeId));
@@ -217,7 +224,7 @@ export function TradeBox({
         </div>
       ))}
       {held === undefined && side === 'sell' && viewer.signedIn && (
-        <div className="fine">You hold no {outcome.label}.</div>
+        <div className={ui.fine}>You hold no {outcome.label}.</div>
       )}
     </div>
   );

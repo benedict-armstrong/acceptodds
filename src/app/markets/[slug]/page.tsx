@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import type { z } from 'zod';
+import { ui } from '@/components/ui';
 import { getPortfolio } from '@/server/accounts';
 import { ApiError } from '@/server/api/errors';
 import { presentComments, presentMarket, presentPortfolio, presentTapeEntry } from '@/server/api/present';
@@ -48,7 +49,7 @@ export default async function MarketPage({ params }: { params: Promise<{ slug: s
   };
 
   return (
-    <main className="page">
+    <main className={ui.page}>
       <MarketLive initial={initial} />
     </main>
   );

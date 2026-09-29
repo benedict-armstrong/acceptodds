@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
+import { ui } from '@/components/ui';
 import { ago, day, pct, rep, shares } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
@@ -72,42 +73,42 @@ export function MarketLive({ initial }: { initial: Initial }) {
 
   return (
     <>
-      <div className="eyebrow">
+      <div className="mt-4.5 text-center font-mono text-[13px] text-muted">
         {market.kind} · {statusLine(market)}
       </div>
-      <h1 className="title">{market.question}</h1>
-      {market.description && <div className="desc">{market.description}</div>}
+      <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">{market.question}</h1>
+      {market.description && <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>}
 
-      <div className="probs">
+      <div className="my-4.5 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">
         {sorted.map((o, i) => (
-          <span key={o.id} className={i === 0 ? 'lead' : 'rest'}>
+          <span key={o.id} className={i === 0 ? '' : 'text-muted'}>
             <b>{pct(o.price)}</b> {o.label}
             {market.resolvedOutcomeId === o.id && ' ✓'}
           </span>
         ))}
       </div>
 
-      <div className="figure">
+      <div className="border-y border-rule py-2.5">
         {points.length > 1 ? (
           <>
             <PriceChart points={points} labels={labels} />
-            <div className="caption">
+            <div className={ui.caption}>
               <b>Figure 1.</b> {market.outcomes.length === 2 ? `${labels[0]} price` : 'Prices'} since opening ·{' '}
               {market.orderCount} trades · {rep(market.volumeMicro, 0)} rep.
             </div>
           </>
         ) : (
-          <div className="caption" style={{ padding: '18px 0', textAlign: 'center' }}>
+          <div className={`${ui.caption} py-4.5 text-center`}>
             No trades yet.
           </div>
         )}
       </div>
 
-      <div className="cols">
+      <div className="mt-5.5 grid grid-cols-2 gap-8 narrow:grid-cols-1">
         <div>
-          <h3 className="sec">Recent trades</h3>
-          <div className="tape">
-            {tape.orders.length === 0 && <div className="muted">—</div>}
+          <h3 className={ui.sectionHeading}>Recent trades</h3>
+          <div className="font-mono text-[13px] whitespace-nowrap [&>div]:py-0.5">
+            {tape.orders.length === 0 && <div className="text-muted">—</div>}
             {tape.orders.map((o) => {
               const sell = o.sharesMicro.startsWith('-');
               return (
@@ -124,8 +125,8 @@ export function MarketLive({ initial }: { initial: Initial }) {
           {tradable ? (
             <TradeBox market={market} holdings={holdings} viewer={initial.viewer} onFilled={onFilled} />
           ) : (
-            <div className="box">
-              <h3 className="sec">{market.status === 'settled' ? 'Resolved' : 'Trading closed'}</h3>
+            <div className={ui.box}>
+              <h3 className={ui.sectionHeading}>{market.status === 'settled' ? 'Resolved' : 'Trading closed'}</h3>
               {market.status === 'settled' ? (
                 <div>
                   <b>{label(market.resolvedOutcomeId ?? '')}</b>
@@ -137,7 +138,7 @@ export function MarketLive({ initial }: { initial: Initial }) {
                   )}
                 </div>
               ) : (
-                <div className="muted">Awaiting resolution.</div>
+                <div className="text-muted">Awaiting resolution.</div>
               )}
             </div>
           )}

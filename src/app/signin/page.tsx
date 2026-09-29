@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 
 export default function SignIn() {
@@ -13,8 +14,8 @@ export default function SignIn() {
   const [busy, setBusy] = useState(false);
 
   return (
-    <main className="auth">
-      <h1>Sign in</h1>
+    <main className="mx-auto my-10 max-w-[360px]">
+      <h1 className="my-4.5 text-[26px] font-normal">Sign in</h1>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -30,20 +31,20 @@ export default function SignIn() {
           router.refresh();
         }}
       >
-        <label>
+        <label className="mt-2.5 block font-sans text-[13px] text-muted">
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
         </label>
-        <label>
+        <label className="mt-2.5 block font-sans text-[13px] text-muted">
           Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
         </label>
-        <button className="btn" disabled={busy}>
+        <button className={ui.btn()} disabled={busy}>
           Sign in
         </button>
-        {error && <div className="note err">{error}</div>}
+        {error && <div className={ui.note(false)}>{error}</div>}
       </form>
-      <p className="fine">
+      <p className={`${ui.fine} mb-3`}>
         No account? <Link href="/signup">Sign up</Link>.
       </p>
     </main>

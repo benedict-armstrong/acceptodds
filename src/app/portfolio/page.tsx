@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { ui } from '@/components/ui';
 import { pct, rep, shares } from '@/lib/format';
 import { getPortfolio } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
@@ -19,38 +20,38 @@ export default async function PortfolioPage() {
   events.log('portfolio.read', { accountId: viewer.account.id });
 
   return (
-    <main className="page">
-      <h2 className="group">Portfolio</h2>
-      <div className="kv" style={{ maxWidth: 320 }}>
+    <main className={ui.page}>
+      <h2 className={ui.groupHeading}>Portfolio</h2>
+      <div className={`${ui.kv} max-w-[320px]`}>
         <span>Balance</span>
-        <b className="mono">{rep(p.balanceMicro)} rep</b>
+        <b className={ui.mono}>{rep(p.balanceMicro)} rep</b>
       </div>
       {p.holdings.length === 0 ? (
-        <div className="empty">No open positions.</div>
+        <div className={ui.empty}>No open positions.</div>
       ) : (
-        <table className="data">
+        <table className={ui.table}>
           <thead>
             <tr>
-              <th>Market</th>
-              <th>Holding</th>
-              <th className="n">Price</th>
-              <th className="n">Marked at</th>
-              <th className="n">Sell all now</th>
+              <th className={ui.th()}>Market</th>
+              <th className={ui.th()}>Holding</th>
+              <th className={ui.th(true)}>Price</th>
+              <th className={ui.th(true)}>Marked at</th>
+              <th className={ui.th(true)}>Sell all now</th>
             </tr>
           </thead>
           <tbody>
             {p.holdings.map((h) => (
               <tr key={h.outcomeId}>
-                <td>
+                <td className={ui.td}>
                   <Link href={`/markets/${h.marketSlug}`}>{h.question}</Link>
-                  {h.marketStatus !== 'open' && <span className="badge">{h.marketStatus}</span>}
+                  {h.marketStatus !== 'open' && <span className={ui.badge}>{h.marketStatus}</span>}
                 </td>
-                <td className="mono">
+                <td className={`${ui.td} font-mono text-[13px]`}>
                   {shares(h.sharesMicro)} {h.outcomeLabel}
                 </td>
-                <td className="n">{pct(h.price)}</td>
-                <td className="n">{rep(h.markMicro)}</td>
-                <td className="n">
+                <td className={`${ui.td} ${ui.num}`}>{pct(h.price)}</td>
+                <td className={`${ui.td} ${ui.num}`}>{rep(h.markMicro)}</td>
+                <td className={`${ui.td} ${ui.num}`}>
                   <b>{rep(h.quotedExitMicro)}</b>
                 </td>
               </tr>
@@ -58,7 +59,7 @@ export default async function PortfolioPage() {
           </tbody>
         </table>
       )}
-      <p className="fine">
+      <p className={`${ui.fine} mb-3`}>
         “Marked at” is shares × price. “Sell all now” is what selling the whole holding would actually pay; it is lower,
         because each share you sell moves the price against you.
       </p>

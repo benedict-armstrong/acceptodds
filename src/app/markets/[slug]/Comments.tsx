@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
+import { ui } from '@/components/ui';
 import { ago, shares } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 
@@ -52,43 +53,45 @@ export function Comments({
   }
 
   return (
-    <section className="comments">
-      <h3 className="sec">Discussion ({data.comments.length}{data.nextCursor ? '+' : ''})</h3>
+    <section className="mt-9">
+      <h3 className={ui.sectionHeading}>Discussion ({data.comments.length}{data.nextCursor ? '+' : ''})</h3>
 
       {viewer.canTrade ? (
-        <div className="comment-form">
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} placeholder="Add a comment" />
-          <div className="row">
-            <span className="fine">Shown anonymously, with your position in this market.</span>
-            <button className="btn" disabled={busy || body.trim().length === 0} onClick={post}>
+        <div>
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} placeholder="Add a comment"
+            className="min-h-[70px] w-full border border-rule bg-white p-2 font-sans text-sm"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className={ui.fine}>Shown anonymously, with your position in this market.</span>
+            <button className={ui.btn({ inline: true })} disabled={busy || body.trim().length === 0} onClick={post}>
               Post
             </button>
           </div>
-          {error && <div className="note err">{error}</div>}
+          {error && <div className={ui.note(false)}>{error}</div>}
         </div>
       ) : (
-        <div className="fine">
+        <div className={ui.fine}>
           {viewer.signedIn ? 'Only verified accounts can comment.' : <><Link href="/signin">Sign in</Link> to comment.</>}
         </div>
       )}
 
       {data.comments.map((c) => (
-        <div key={c.id} className="comment">
-          <div className="who">
+        <div key={c.id} className="border-b border-dotted border-rule-strong py-2.5">
+          <div className="flex flex-wrap gap-2 font-sans text-xs text-muted">
             <span>{c.author.isYou ? 'you' : 'anonymous'}</span>
-            {c.author.isBot && <span className="badge">bot</span>}
+            {c.author.isBot && <span className={ui.badge}>bot</span>}
             {c.author.stake.length === 0 ? (
               <span>no position</span>
             ) : (
               c.author.stake.map((s) => (
-                <span key={s.outcomeId} className="stake">
+                <span key={s.outcomeId} className="rounded-[2px] bg-tint px-[5px] font-mono text-xs text-ink">
                   {shares(s.sharesMicro)} {s.outcomeLabel}
                 </span>
               ))
             )}
             <span suppressHydrationWarning>· {ago(c.createdAt)} ago</span>
           </div>
-          <p>{c.body}</p>
+          <p className="mt-1 whitespace-pre-wrap">{c.body}</p>
         </div>
       ))}
     </section>

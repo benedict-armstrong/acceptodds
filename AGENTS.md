@@ -317,10 +317,19 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 
 ### UI (M6)
 
-- **Style is mockup J, "arXiv digest"**: one plain stylesheet
-  (`app/globals.css`), serif for reading, monospace for numbers, one maroon
-  accent. No utility classes, no component library. No invented ids or
+- **Style is mockup J, "arXiv digest"**: serif for reading, monospace for
+  numbers, one maroon accent. No component library. No invented ids or
   numbers on screen: everything shown comes from the database.
+- **Styling is Tailwind v4, utilities in the markup.** The palette and fonts
+  are `@theme` tokens in `app/globals.css` (`text-muted`, `border-rule`,
+  `font-mono`, …); use a token, not a raw hex, for any colour that has one.
+  The 720px breakpoint is the `narrow:` variant. Patterns used on more than
+  one page (section labels, buttons, box, inputs, table cells) are class
+  lists in `components/ui.ts`. Each is a complete look: add utilities for
+  properties it doesn't set, never override one it does — Tailwind picks
+  the winner by stylesheet order, not class order — so a variant is a
+  parameter (`ui.btn({ ghost: true })`). Preflight is on: headings, `p` and
+  `hr` have no default margins, and `svg` is `display: block`.
 - **The UI writes through the public API, not Server Actions.** §9 suggests
   Server Actions; the trade widget and the comment form `fetch` `/api/v1`
   instead, so the UI gets the same validation, Origin check, trading gate,

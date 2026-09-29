@@ -1,3 +1,4 @@
+import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 
 export interface ChartPoint {
@@ -70,9 +71,9 @@ export function PriceChart({
         </text>
       </svg>
       {lines.length > 1 && (
-        <div className="caption">
+        <div className={ui.caption}>
           {lines.map((i) => (
-            <span key={i} style={{ marginRight: 14 }}>
+            <span key={i} className="mr-3.5">
               <span style={{ color: COLORS[i % COLORS.length] }}>━</span> {labels[i]}
             </span>
           ))}

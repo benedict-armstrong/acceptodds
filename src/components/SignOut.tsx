@@ -7,7 +7,7 @@ export function SignOut() {
   const router = useRouter();
   return (
     <button
-      className="linkbtn"
+      className="cursor-pointer hover:underline"
       onClick={async () => {
         await authClient.signOut();
         router.push('/');
