@@ -1,7 +1,14 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import { asc, eq } from 'drizzle-orm';
-import { createAccount, createHouse, getAccountByHandle, startingBalanceMicro } from '@/server/accounts';
+import { asc, eq, sql } from 'drizzle-orm';
+import {
+  createAccount,
+  createHouse,
+  ensureAccountForUser,
+  getAccountByHandle,
+  startingBalanceMicro,
+} from '@/server/accounts';
+import { createAuth } from '@/server/better-auth';
 import { HOUSE_HANDLE, closeMarket, createMarket, settle, trade } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { prices as lmsrPrices } from '@/lib/lmsr';
@@ -9,7 +16,8 @@ import { createDb, createPool, type Database } from './index';
 import { accounts, markets, orders } from './schema';
 
 /**
- * A dev database with something to look at (`npm run db:seed`):
+ * A dev database with something to look at (`npm run db:seed`), which first
+ * wipes every table (local databases only):
  *
  * - on an empty database, the house, two traders, an unlisted binary market
  *   and an example listing with two markets (a paper can still have more
@@ -35,6 +43,8 @@ async function main() {
   const pool = createPool(url);
   const db = createDb(pool);
 
+  if (!process.argv.includes('--papers-only')) await wipeData(url, db);
+
   const existing = await db.select().from(accounts);
   if (process.argv.includes('--papers-only')) {
     // For a deployed database: just the house (if missing) and the papers —
@@ -48,7 +58,57 @@ async function main() {
     await seedBase(db);
   }
   await seedPapers(db);
+  if (!process.argv.includes('--papers-only')) await seedAdmin(db);
   await pool.end();
+}
+
+/**
+ * Empties every table in `public` (users and sessions included) so the full
+ * seed starts from nothing. Refuses any database that is not on this machine;
+ * `--papers-only` never calls it.
+ */
+async function wipeData(url: string, db: Database) {
+  const host = new URL(url).hostname;
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
+    throw new Error(`refusing to wipe ${host}: only a local database is reset (use --papers-only for others)`);
+  }
+  const { rows } = await db.execute<{ t: string }>(
+    sql`select format('%I', tablename) as t from pg_tables where schemaname = 'public'`,
+  );
+  if (rows.length > 0) {
+    await db.execute(sql.raw(`truncate table ${rows.map((r) => r.t).join(', ')} restart identity cascade`));
+  }
+  console.log(`wiped ${rows.length} tables`);
+}
+
+/** Dev-only password of the seeded admin; the seed refuses non-local databases. */
+const ADMIN_PASSWORD = 'testtesttest';
+
+/**
+ * A confirmed, funded, verified user for the first `ADMIN_EMAILS` address, who
+ * can sign in with `ADMIN_PASSWORD`. Inserted through Better Auth's own
+ * adapter, so the password hash is its format, but past the sign-up hook and
+ * the confirmation mail.
+ */
+async function seedAdmin(db: Database) {
+  const email = (process.env.ADMIN_EMAILS ?? '').split(',')[0]?.trim().toLowerCase();
+  if (!email) {
+    console.log('ADMIN_EMAILS is empty; no admin user seeded');
+    return;
+  }
+  const ctx = await createAuth(db).$context;
+  const user = await ctx.internalAdapter.createUser(
+    { email, name: 'Admin', emailVerified: true },
+    { method: 'email-password' },
+  );
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: 'credential',
+    accountId: user.id,
+    password: await ctx.password.hash(ADMIN_PASSWORD),
+  });
+  const account = await ensureAccountForUser({ id: user.id, name: user.name, email }, db);
+  console.log(`admin       ${email}  (${account.handle}) password ${ADMIN_PASSWORD}`);
 }
 
 /** The four outcomes of a paper's market, best first; the headline is 1 − P(Reject). */

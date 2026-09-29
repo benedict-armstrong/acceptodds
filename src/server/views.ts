@@ -836,6 +836,8 @@ export async function browseListings(
     limit?: number;
     /** Only listings this account follows (so no unlisted markets). */
     followedBy?: string | null;
+    /** Only rows where this account holds shares in any market of the row. */
+    heldBy?: string | null;
   },
   database: Database = getDb(),
 ): Promise<BrowseRow[]> {
@@ -902,6 +904,13 @@ export async function browseListings(
         q.kind ? eq(markets.kind, q.kind) : undefined,
         q.followedBy
           ? sql`${markets.listingId} in (select lf.listing_id from listing_follows lf where lf.account_id = ${q.followedBy})`
+          : undefined,
+        q.heldBy
+          ? sql`exists (
+              select 1 from positions p
+                join outcomes po on po.id = p.outcome_id
+               where p.account_id = ${q.heldBy} and p.shares_micro > 0
+                 and po.market_id in ${rowMarketIds})`
           : undefined,
         isRowMarket,
         match,

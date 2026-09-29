@@ -34,6 +34,9 @@ const LIMIT = 200;
 const FOLLOWING_PAGE = 10;
 /** The cookie remembering whether that section was left collapsed. */
 const FOLLOWING_COOKIE = 'home_following_open';
+/** Same for the "My positions" section. */
+const POSITIONS_PAGE = 10;
+const POSITIONS_COOKIE = 'home_positions_open';
 
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
 const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
@@ -85,7 +88,23 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const fpage = Math.min(fpages, Math.max(1, Number.parseInt(one(sp.fpage) ?? '1', 10) || 1));
   const followed = followedAll.slice((fpage - 1) * FOLLOWING_PAGE, fpage * FOLLOWING_PAGE);
   const followingOpen = (await cookies()).get(FOLLOWING_COOKIE)?.value !== '0';
-  const sparks = await sparklines([...rows, ...followed]);
+  // Papers the viewer holds shares in. One row per paper already; those also
+  // in "Following" are shown there only, so no paper is pinned twice.
+  const followedIds = new Set(followedAll.map((r) => r.market.id));
+  const heldAll =
+    viewer && !q && !onlyFollowed
+      ? (await browseListings({ kind, status, sort, limit: LIMIT, heldBy: viewer.account.id })).filter(
+          (r) => !followedIds.has(r.market.id),
+        )
+      : [];
+  // "All papers" is the rest: nothing pinned above is repeated below.
+  const pinned = new Set([...followedIds, ...heldAll.map((r) => r.market.id)]);
+  const rest = rows.filter((r) => !pinned.has(r.market.id));
+  const hpages = Math.max(1, Math.ceil(heldAll.length / POSITIONS_PAGE));
+  const hpage = Math.min(hpages, Math.max(1, Number.parseInt(one(sp.hpage) ?? '1', 10) || 1));
+  const held = heldAll.slice((hpage - 1) * POSITIONS_PAGE, hpage * POSITIONS_PAGE);
+  const positionsOpen = (await cookies()).get(POSITIONS_COOKIE)?.value !== '0';
+  const sparks = await sparklines([...rows, ...followed, ...held]);
   events.log('market.list', { accountId: viewer?.account.id ?? null });
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
@@ -236,9 +255,39 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </Collapsible>
       )}
 
+      {heldAll.length > 0 && (
+        <Collapsible
+          id="positions"
+          cookie={POSITIONS_COOKIE}
+          open={positionsOpen}
+          className="group mt-3.5"
+          summary={
+            <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+              <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
+                ›
+              </span>
+              My positions <span className="font-normal">({heldAll.length})</span>
+            </summary>
+          }
+        >
+          {held.map((r) => (
+            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+          ))}
+          {hpages > 1 && (
+            <div className="mt-1.5 flex justify-end gap-3 font-sans text-[13px] text-muted">
+              {hpage > 1 && <Link href={`${href({ hpage: String(hpage - 1) })}#positions`}>← prev</Link>}
+              <span>
+                page {hpage} of {hpages}
+              </span>
+              {hpage < hpages && <Link href={`${href({ hpage: String(hpage + 1) })}#positions`}>next →</Link>}
+            </div>
+          )}
+        </Collapsible>
+      )}
+
       <section>
-        {followedAll.length > 0 ? <h2 className={ui.groupHeading}>All papers</h2> : <div className="h-3.5" />}
-        {rows.map((r) => (
+        {followedAll.length > 0 || heldAll.length > 0 ? <h2 className={ui.groupHeading}>All papers</h2> : <div className="h-3.5" />}
+        {rest.map((r) => (
           <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
         ))}
       </section>
