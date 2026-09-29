@@ -386,9 +386,47 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   author's *current* position in that market and a bot badge — no handle, no
   id (`server/comments.ts`). Posting needs the `trade` scope and a
   trading-eligible account, so every comment has something behind it. The
-  stake is read at display time, so it is empty after settlement. The table
+  stake is read at display time, so it is empty after settlement. `comments`
   has foreign keys (unlike `events`) because it is written in its own tiny
-  transaction, never inside a trade.
+  transaction, never inside a trade. `comment_backings` is the exception
+  (below): the engine trims it inside `trade()`.
+- **Comment bodies are Markdown with TeX math**, stored as raw text and
+  rendered by `components/Markdown.tsx` (react-markdown + remark-gfm +
+  remark-math + rehype-katex; KaTeX's CSS is imported in `app/layout.tsx`).
+  No raw HTML (never add `rehype-raw`), links only to absolute http(s) and
+  mailto (`lib/markdown.ts`, `rel="nofollow noopener noreferrer ugc"`), and
+  images become links, so a comment cannot make readers fetch a URL.
+- **Backing: traders put shares they hold behind other people's comments**
+  (`POST`/`DELETE /comments/{id}/backing`, `server/backings.ts`). No
+  reputation moves; the shares stay in `positions`. Rules:
+  - For each (account, outcome), Σ backing ≤ position — across all comments.
+    Over-allocating is `409 insufficient_stake`; your own comment is
+    `409 own_comment`. Open markets only (status `open`, before `closes_at`),
+    the window in which a position can change. Withdrawing is always allowed.
+  - A backing is inserted in a short transaction holding the backer's
+    `accounts` row `FOR UPDATE` — the row `trade()` locks second — so a
+    backing and a sell on one account serialize. It takes no market lock, so
+    there is no lock-order inversion. Its FK checks take only `KEY SHARE` on
+    the comment, the (already locked) account and the outcome, which trades
+    update without touching its key.
+  - **A sell trims backings LIFO**, inside `trade()`'s transaction, after the
+    position upsert: newest first (`created_at desc, id desc`, with
+    `clock_timestamp()` defaults), whole backings then one partial, until Σ ≤
+    the new position (`lib/backing.ts` `lifoTrim`, property-tested). A full
+    sell removes them all; buying back restores nothing. This is the engine's
+    only write outside market state: it is bound to the position, not the
+    market.
+  - Settlement zeroes positions but **keeps** backings, as a frozen record
+    of who stood behind which argument.
+  - **Displayed value is a mark, a relevance weight — never a sale price**
+    (§1.1): Σ backed shares × current price, rounded once per outcome with
+    `costToMicro` like portfolio marks; after settlement 1 per winning share
+    and 0 otherwise; 0 on a void market. Labelled "backing". Backers are
+    anonymous: a comment shows a count and the viewer's own share (`yours`),
+    and the list carries the viewer's held/allocated per outcome
+    (`viewer`, `null` when anonymous).
+  - `?sort=relevance` orders the 200 most recent comments by backing value
+    (ties newest first) as a single page; `newest` stays keyset-paginated.
 - **The home page lists papers, not markets.** One row per listing, read
   from its main market (status, `kind`, closing date, headline price,
   sparkline), with volume summed and activity taken over all its markets;

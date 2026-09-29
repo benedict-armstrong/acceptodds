@@ -72,10 +72,13 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
   const sorted = market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
   const lead = likelihoodClass(marketLikelihood(market)).text;
 
+  // A fill can trim the viewer's comment backings (a sell), so comments refresh too.
+  const [commentsVersion, setCommentsVersion] = useState(0);
   const onFilled = () => {
     void refreshMarket();
     void refreshTape();
     void refreshPortfolio();
+    setCommentsVersion((v) => v + 1);
   };
 
   return (
@@ -156,7 +159,14 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
         </div>
       </div>
 
-      <Comments marketId={id} initial={initial.comments} viewer={initial.viewer} />
+      <Comments
+        marketId={id}
+        initial={initial.comments}
+        viewer={initial.viewer}
+        tradable={tradable}
+        version={commentsVersion}
+        onChanged={() => void refreshPortfolio()}
+      />
     </>
   );
 }

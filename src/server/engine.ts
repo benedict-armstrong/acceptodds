@@ -1,16 +1,18 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import { isUniqueViolation } from '@/db/errors';
 import * as schema from '@/db/schema';
 import {
   accounts,
+  commentBackings,
   ledgerEntries,
   markets,
   orders,
   outcomes,
   positions,
 } from '@/db/schema';
+import { lifoTrim } from '@/lib/backing';
 import { cost, costToTrade, liquidityFor, maxSubsidy, prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { EngineError } from './errors';
@@ -21,7 +23,9 @@ import * as events from './events';
  *
  * Everything else in the app reads. If you are about to write to `outcomes`,
  * `orders`, `positions` or `ledger_entries` from somewhere else, don't: put it
- * here, where the transaction and the invariants live together.
+ * here, where the transaction and the invariants live together. (It also
+ * trims `comment_backings` on a sell: not market state, but bound to the
+ * position the sell shrinks. See `trade()`.)
  *
  * ## How the money moves, and why it is conserved (invariant §1.7)
  *
@@ -494,6 +498,37 @@ async function runTrade(
         set: { sharesMicro: sql`${positions.sharesMicro} + ${sharesMicro}` },
       })
       .returning();
+
+    /**
+     * A sell shrinks the position, and comment backings are claims on it:
+     * Σ backings for (account, outcome) must stay ≤ the position. Trim the
+     * excess newest first (LIFO), here, in the trade's own transaction, so no
+     * one ever sees a backing the shares no longer cover.
+     *
+     * The one write the engine makes outside market state. It is bound to
+     * the position, not to the market: no reputation moves. It takes no new
+     * lock order — the market and account rows are already held, and
+     * `server/backings.ts` locks the same account row before it inserts, so
+     * a backing and a sell on one account serialize on that row.
+     */
+    if (sharesMicro < 0n) {
+      const backed = await tx
+        .select({ id: commentBackings.id, sharesMicro: commentBackings.sharesMicro })
+        .from(commentBackings)
+        .where(and(eq(commentBackings.accountId, accountId), eq(commentBackings.outcomeId, outcomeId)))
+        .orderBy(desc(commentBackings.createdAt), desc(commentBackings.id))
+        .for('update');
+      const plan = lifoTrim(backed, position.sharesMicro);
+      if (plan.remove.length > 0) {
+        await tx.delete(commentBackings).where(inArray(commentBackings.id, plan.remove));
+      }
+      if (plan.reduce) {
+        await tx
+          .update(commentBackings)
+          .set({ sharesMicro: plan.reduce.sharesMicro })
+          .where(eq(commentBackings.id, plan.reduce.id));
+      }
+    }
 
     return {
       orderId: order.id,

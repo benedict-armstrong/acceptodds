@@ -3,7 +3,7 @@ import type { Account } from '@/db/schema';
 import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
-import type { CommentView } from '../comments';
+import type { CommentView, ViewerStake } from '../comments';
 import type { TokenRecord } from '../tokens';
 import type { ListingView, MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
@@ -172,21 +172,45 @@ export function presentToken(t: TokenRecord): z.input<typeof S.TokenInfo> {
   };
 }
 
+export function presentComment(c: CommentView): z.input<typeof S.Comment> {
+  return {
+    id: c.id,
+    body: c.body,
+    createdAt: toIso(c.createdAt),
+    author: {
+      isBot: c.author.isBot,
+      isYou: c.author.isYou,
+      stake: c.author.stake.map((s) => ({ ...s, sharesMicro: s.sharesMicro.toString() })),
+    },
+    backing: {
+      totalMicro: c.backing.totalMicro.toString(),
+      byOutcome: c.backing.byOutcome.map((o) => ({
+        ...o,
+        sharesMicro: o.sharesMicro.toString(),
+        valueMicro: o.valueMicro.toString(),
+      })),
+      backers: c.backing.backers,
+      yours: c.backing.yours.map((y) => ({ ...y, sharesMicro: y.sharesMicro.toString() })),
+    },
+  };
+}
+
 export function presentComments(page: {
   comments: CommentView[];
   nextCursor: string | null;
+  viewer: ViewerStake | null;
 }): z.input<typeof S.CommentList> {
   return {
-    comments: page.comments.map((c) => ({
-      id: c.id,
-      body: c.body,
-      createdAt: toIso(c.createdAt),
-      author: {
-        isBot: c.author.isBot,
-        isYou: c.author.isYou,
-        stake: c.author.stake.map((s) => ({ ...s, sharesMicro: s.sharesMicro.toString() })),
-      },
-    })),
+    comments: page.comments.map(presentComment),
     nextCursor: page.nextCursor,
+    viewer: page.viewer
+      ? {
+          available: page.viewer.available.map((a) => ({
+            ...a,
+            heldMicro: a.heldMicro.toString(),
+            allocatedMicro: a.allocatedMicro.toString(),
+          })),
+        }
+      : null,
   };
 }

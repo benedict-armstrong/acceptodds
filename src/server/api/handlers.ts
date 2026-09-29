@@ -3,7 +3,8 @@ import { authenticate, requireAuth, requireSession, requireTradingEligibility, t
 import { getPortfolio, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import * as events from '../events';
-import { listComments, postComment } from '../comments';
+import { backComment, withdrawBacking } from '../backings';
+import { getComment, listComments, postComment } from '../comments';
 import { upsertListing } from '../listings';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import {
@@ -30,6 +31,7 @@ import {
   presentPortfolio,
   presentQuote,
   presentTapeEntry,
+  presentComment,
   presentComments,
   presentToken,
 } from './present';
@@ -42,7 +44,8 @@ import * as S from './schemas';
  * Handlers read through `views.ts` and write **only** by calling the engine
  * (`quote`, `trade`, `settle`, `closeMarket`, `createMarket`). None of them
  * touches market state directly. (Listings, which are not market state, are
- * written by `listings.ts`; comments by `comments.ts`.) Selling is `POST …/orders` with negative
+ * written by `listings.ts`; comments by `comments.ts`; comment backings by
+ * `backings.ts`, and trimmed by the engine on a sell.) Selling is `POST …/orders` with negative
  * `sharesMicro`; there is no sell endpoint.
  *
  * Every read is logged to `events` with its kind and ids — no payload (§1.4) —
@@ -176,7 +179,7 @@ export const getAccount = route(async (req, params) => {
 export const getComments = route(async (req, params) => {
   const principal = await authenticate(req);
   const market = await resolveMarket(parseParam(params.id, S.MarketRef, 'id'));
-  const q = parseQuery(req, S.PaginationQuery);
+  const q = parseQuery(req, S.CommentListQuery);
   const page = await listComments(market.id, { ...q, viewerAccountId: accountIdOf(principal) });
   events.log('comments.read', { accountId: accountIdOf(principal), marketId: market.id });
   return respond(S.CommentList, presentComments(page), { principal });
@@ -237,12 +240,38 @@ export const postMarketComment = route(async (req, params) => {
   const body = await parseBody(req, S.CommentRequest);
   const created = await postComment({ marketId: market.id, accountId: principal.account.id, body: body.body });
   events.log('comment.posted', { accountId: principal.account.id, marketId: market.id });
-  const page = await listComments(market.id, { limit: 50, viewerAccountId: principal.account.id });
-  const mine = page.comments.find((c) => c.id === created.id)!;
-  return respond(S.Comment, presentComments({ comments: [mine], nextCursor: null }).comments[0], {
-    status: 201,
-    principal,
+  const view = await getComment(created.id, principal.account.id);
+  return respond(S.Comment, presentComment(view!), { status: 201, principal });
+});
+
+/**
+ * Put shares behind a comment. Same gate as posting one. The shares stay in
+ * the backer's position; a later sell trims backings newest first.
+ */
+export const postCommentBacking = route(async (req, params) => {
+  const principal = await requireAuth(req, 'trade');
+  requireTradingEligibility(principal);
+  const commentId = parseParam(params.id, S.CommentId, 'id');
+  const body = await parseBody(req, S.CommentBackingRequest);
+  const { marketId } = await backComment({
+    commentId,
+    accountId: principal.account.id,
+    outcomeId: body.outcomeId,
+    sharesMicro: body.sharesMicro,
   });
+  events.log('comment.backed', { accountId: principal.account.id, marketId });
+  const view = await getComment(commentId, principal.account.id);
+  return respond(S.Comment, presentComment(view!), { status: 201, principal });
+});
+
+/** Remove all of the caller's backing from a comment. Idempotent. */
+export const deleteCommentBacking = route(async (req, params) => {
+  const principal = await requireAuth(req, 'trade');
+  requireTradingEligibility(principal);
+  const commentId = parseParam(params.id, S.CommentId, 'id');
+  const { marketId } = await withdrawBacking({ commentId, accountId: principal.account.id });
+  events.log('comment.unbacked', { accountId: principal.account.id, marketId });
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 });
 
 export const getMe = route(async (req) => {

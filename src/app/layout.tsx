@@ -6,6 +6,7 @@ import { ui } from '@/components/ui';
 import { rep } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
 import { valuation } from '@/server/valuation';
+import 'katex/dist/katex.min.css';
 import './globals.css';
 
 export const metadata: Metadata = {

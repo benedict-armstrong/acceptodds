@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   bigserial,
+  check,
   doublePrecision,
   index,
   integer,
@@ -390,12 +391,63 @@ export const comments = pgTable(
   (t) => [index('comments_market_created_idx').on(t.marketId, t.createdAt)],
 );
 
+/**
+ * Stake put behind a comment: "I hold these shares, and I think this comment
+ * is right". Shares of one outcome of the comment's market, held by the
+ * backer, never the comment's author.
+ *
+ * **Not market state, and not money.** No reputation moves when a backing is
+ * made or removed; the shares stay in `positions`, where they are. A backing
+ * is a claim on part of a position, so it is bound to it:
+ *
+ *   - for each (account, outcome), Σ `shares_micro` ≤ the position. Enforced
+ *     when a backing is made (`server/backings.ts`, under the account's row
+ *     lock) and when a position shrinks: `engine.trade()` trims backings on a
+ *     sell, **newest first** (LIFO), in the trade's own transaction;
+ *   - settlement zeroes positions but keeps backings, as a frozen record,
+ *     valued at 1 per share of the winner and 0 otherwise.
+ *
+ * Foreign keys, unlike `events`, and safe: only `server/backings.ts`
+ * inserts, and an insert's FK checks take `FOR KEY SHARE` on the comment, the
+ * account (which that transaction already holds `FOR UPDATE`) and the outcome
+ * (which a trade only ever updates without touching its key, so the two
+ * never conflict). Nothing here locks the market row a trade holds. The
+ * engine only updates and deletes rows here, which takes no parent locks.
+ */
+export const commentBackings = pgTable(
+  'comment_backings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    commentId: uuid('comment_id')
+      .notNull()
+      .references(() => comments.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    outcomeId: uuid('outcome_id')
+      .notNull()
+      .references(() => outcomes.id, { onDelete: 'cascade' }),
+    sharesMicro: money('shares_micro').notNull(),
+    // clock_timestamp(), not now(): LIFO order must be the order backings were
+    // actually made in, not their transactions' start times.
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (t) => [
+    check('comment_backings_shares_positive', sql`${t.sharesMicro} > 0`),
+    index('comment_backings_account_outcome_created_idx').on(t.accountId, t.outcomeId, t.createdAt),
+    index('comment_backings_comment_idx').on(t.commentId),
+  ],
+);
+
 export type Account = typeof accounts.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Position = typeof positions.$inferSelect;
+export type CommentBacking = typeof commentBackings.$inferSelect;
 /** What an API credential may do. Stored as the API-key plugin's permissions, `{ api: [...] }`. */
 export const TOKEN_SCOPES = ['read', 'trade', 'admin'] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];

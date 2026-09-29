@@ -41,6 +41,8 @@ export type EventKind =
   | 'account.read'
   | 'comments.read'
   | 'comment.posted'
+  | 'comment.backed'
+  | 'comment.unbacked'
   | 'listing.list'
   | 'listing.read'
   | 'listing.created'

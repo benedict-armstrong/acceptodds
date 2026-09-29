@@ -28,6 +28,8 @@ export const API_ERROR_CODES = [
   'slug_taken',
   'idempotency_key_reused',
   'not_verified',
+  'insufficient_stake',
+  'own_comment',
   'method_not_allowed',
   'internal_error',
 ] as const;

@@ -548,10 +548,26 @@ export const TokenId = z.string().min(1).max(100);
 // comments
 // ---------------------------------------------------------------------------
 
+export const CommentBacking = z
+  .object({
+    totalMicro: Micro.meta({
+      description:
+        'Σ `valueMicro`: the relevance weight. A **mark** (backed shares × current price), not a sale price; after settlement, 1 per winning share and 0 otherwise.',
+    }),
+    byOutcome: z
+      .array(z.object({ outcomeId: Id, outcomeLabel: z.string(), sharesMicro: Micro, valueMicro: Micro }))
+      .meta({ description: 'Backed shares per outcome, in ordinal order. Outcomes with none are left out.' }),
+    backers: z.number().int().min(0).meta({ description: 'How many accounts back it. Never who.' }),
+    yours: z
+      .array(z.object({ outcomeId: Id, sharesMicro: Micro }))
+      .meta({ description: "The caller's own backing on this comment. Empty when anonymous." }),
+  })
+  .meta({ id: 'CommentBacking', description: 'Shares traders have put behind this comment.' });
+
 export const Comment = z
   .object({
     id: Id,
-    body: z.string(),
+    body: z.string().meta({ description: 'Raw text, as posted. Clients render it as Markdown (GFM) with $…$ / $$…$$ TeX math.' }),
     createdAt: Timestamp,
     author: z
       .object({
@@ -562,13 +578,47 @@ export const Comment = z
           .meta({ description: "The author's current holdings in this market. Empty once it settles." }),
       })
       .meta({ description: 'Anonymous by design: no handle, no account id.' }),
+    backing: CommentBacking,
   })
   .meta({ id: 'Comment' });
 
+export const CommentViewer = z
+  .object({
+    available: z
+      .array(z.object({ outcomeId: Id, outcomeLabel: z.string(), heldMicro: Micro, allocatedMicro: Micro }))
+      .meta({
+        description:
+          'Outcomes of this market the caller holds, with how much is already backing comments. `heldMicro − allocatedMicro` is what can still be put behind one.',
+      }),
+  })
+  .meta({ id: 'CommentViewer' });
+
+export const COMMENT_SORTS = ['newest', 'relevance'] as const;
+
+export const CommentListQuery = PaginationQuery.extend({
+  sort: z.enum(COMMENT_SORTS).default('newest').meta({
+    description:
+      '`newest` (default): newest first, paginated. `relevance`: by backing value, highest first, ties newest first — over the 200 most recent comments only, one page (`nextCursor` is always null, and `cursor` is refused).',
+  }),
+});
+
 export const CommentList = z
-  .object({ comments: z.array(Comment).meta({ description: 'Newest first.' }), nextCursor: Cursor })
+  .object({
+    comments: z.array(Comment).meta({ description: 'In the requested `sort` order.' }),
+    nextCursor: Cursor,
+    viewer: CommentViewer.nullable().meta({ description: 'The caller\'s stake available for backing. `null` when anonymous.' }),
+  })
   .meta({ id: 'CommentList' });
 
 export const CommentRequest = z
   .object({ body: z.string().trim().min(1).max(2000) })
   .meta({ id: 'CommentRequest' });
+
+export const CommentBackingRequest = z
+  .object({
+    outcomeId: Id.meta({ description: "An outcome of the comment's market that you hold." }),
+    sharesMicro: MicroInput.refine((v) => v > 0n, 'must be positive'),
+  })
+  .meta({ id: 'CommentBackingRequest' });
+
+export const CommentId = Id.meta({ description: 'A comment id.' });

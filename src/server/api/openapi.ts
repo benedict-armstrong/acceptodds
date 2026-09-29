@@ -208,8 +208,9 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/markets/{id}/comments',
       tags: ['markets'],
       summary: 'Comments',
-      description: 'Newest first. Anonymous: each comment shows only whether its author is a bot and their current stake in this market.',
-      request: { params: idParam, query: S.PaginationQuery },
+      description:
+        'Newest first, or by backing with `sort=relevance`. Anonymous: each comment shows only whether its author is a bot, their current stake in this market, and how much stake others have put behind it (never by whom). Bodies are raw Markdown with TeX math.',
+      request: { params: idParam, query: S.CommentListQuery },
       ok: { status: 200, schema: S.CommentList, description: 'A page of comments.' },
       errors: { 404: 'not_found' },
     }),
@@ -228,6 +229,45 @@ export function buildRegistry(): OpenAPIRegistry {
       errors: { 403: 'forbidden | not_verified', 404: 'not_found' },
     }),
   );
+
+  const commentIdParam = z.object({ id: S.CommentId });
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/comments/{id}/backing',
+      tags: ['trading'],
+      summary: 'Back a comment with shares',
+      description:
+        "Puts `sharesMicro` of an outcome you hold behind someone else's comment on an open market. No reputation moves; the shares stay in your position. Across all comments, what you back on an outcome never exceeds what you hold of it: selling trims your backings newest first, and buying back does not restore them. Needs the `trade` scope and a trading-eligible account.",
+      scope: 'trade',
+      request: {
+        params: commentIdParam,
+        body: { content: { 'application/json': { schema: S.CommentBackingRequest } } },
+      },
+      ok: { status: 201, schema: S.Comment, description: 'The comment, with its updated backing.' },
+      errors: {
+        403: 'forbidden | not_verified',
+        404: "not_found: no such comment, or the outcome is not on the comment's market.",
+        409: 'insufficient_stake | own_comment | market_not_open | market_closed',
+      },
+    }),
+  );
+
+  const unback = op({
+    method: 'delete',
+    path: '/comments/{id}/backing',
+    tags: ['trading'],
+    summary: 'Withdraw your backing from a comment',
+    description: 'Removes all of your backing from this comment. Idempotent.',
+    scope: 'trade',
+    request: { params: commentIdParam },
+    ok: { status: 200, schema: S.Comment, description: 'unused' },
+    errors: { 403: 'forbidden | not_verified', 404: 'not_found' },
+  });
+  delete unback.responses[200];
+  unback.responses[204] = { description: 'Withdrawn (or there was nothing to withdraw).' };
+  r.registerPath(unback);
 
   // -- authenticated --------------------------------------------------------
 
