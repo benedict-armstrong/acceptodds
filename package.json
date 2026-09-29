@@ -22,6 +22,7 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@better-auth/api-key": "^1.7.6",
+    "@radix-ui/react-popover": "^1.1.23",
     "@sentry/nextjs": "^11.0.0",
     "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",

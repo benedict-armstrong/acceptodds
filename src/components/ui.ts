@@ -38,6 +38,8 @@ export const ui = {
     return v > 0n ? 'text-up' : v < 0n ? 'text-down' : 'text-ink';
   },
   note: (ok: boolean) => `mt-2 text-[13px] ${ok ? 'text-up' : 'text-down'}`,
+  /** A button that reads as an accent link: an inline action, not a call to action. */
+  linkBtn: 'cursor-pointer text-accent hover:underline disabled:cursor-default disabled:opacity-50',
   btn: ({ ghost = false, inline = false } = {}) =>
     `mt-2 block cursor-pointer text-center font-sans text-sm leading-[normal] font-semibold hover:no-underline disabled:cursor-default disabled:opacity-50 ${
       ghost ? 'bg-rule-soft text-ink' : 'bg-accent text-white'

@@ -384,7 +384,10 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   lists in `components/ui.ts`. Each is a complete look: add utilities for
   properties it doesn't set, never override one it does — Tailwind picks
   the winner by stylesheet order, not class order — so a variant is a
-  parameter (`ui.btn({ ghost: true })`). Preflight is on: headings, `p` and
+  parameter (`ui.btn({ ghost: true })`). Shared behaviour is a component in
+  `components/`: `CopyButton`, and `Popover` (Radix, the primitive shadcn
+  wraps, in our tokens) for anything that floats over the page — reuse
+  them rather than hand-roll another. Preflight is on: headings, `p` and
   `hr` have no default margins, and `svg` is `display: block`.
 - **The UI writes through the public API, not Server Actions.** §9 suggests
   Server Actions; the trade widget and the comment form `fetch` `/api/v1`
@@ -595,11 +598,13 @@ unpaginated, and 5 s for that search.
   - `/badge/<slug>.svg` (`lib/badge.ts`): site name, headline, a small bar;
     `?style=compact`, `?bar=0`. Public, five-minute cache, an ETag that
     changes with each fill. An image, not `/api/v1`, so not in OpenAPI.
-  - The paper page's **share** panel: the Wordle-style text (a title line of
-    ≤ 50 characters that always keeps `@ <kind>?`, ten squares, the bare
-    link), with "I'm 🟩. You?" while the viewer holds shares — the outcome
-    they hold most of, never a size. Plus the badge's Markdown/HTML and the
-    link. It reads the same SWR keys as `MarketLive`, so it adds no polling.
+  - The paper page's **share** button copies the Wordle-style text (a title
+    line of ≤ 50 characters that always keeps `@ <kind>?`, ten squares, the
+    bare link), never with the viewer's stake (#18). The `⋯` beside it opens
+    a popover with the short name, an opt-in "I'm 🟩. You?" while the viewer
+    holds shares — the outcome they hold most of, never a size — the
+    badge's Markdown/HTML and the link. It reads the same SWR keys as
+    `MarketLive`, so it adds no polling.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** gives a dev venue of invented papers with four-outcome

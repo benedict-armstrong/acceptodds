@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ui } from '@/components/ui';
 
 /** Longer than this and the abstract starts collapsed to three lines. */
 const COLLAPSE_OVER = 280;
@@ -17,7 +18,7 @@ export function Abstract({ text }: { text: string }) {
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="mt-0.5 block cursor-pointer font-sans text-[13px] text-accent hover:underline"
+          className={`mt-0.5 block font-sans text-[13px] ${ui.linkBtn}`}
           aria-expanded={open}
         >
           {open ? 'show less' : 'show more'}

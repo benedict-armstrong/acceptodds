@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
+import { CopyButton } from '@/components/CopyButton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { ui } from '@/components/ui';
 import { shareText } from '@/lib/headline';
 import type * as S from '@/server/api/schemas';
@@ -12,12 +14,14 @@ type Market = z.output<typeof S.Market>;
 type Portfolio = z.output<typeof S.Portfolio>;
 
 /**
- * "Share" on a paper's page (issue #11 §2–3): the Wordle-style text share,
- * the embeddable badge and the short link, each with a copy button. The text
- * is built from the main market's live prices — the same SWR keys and
- * fetchers as `MarketLive`, so no extra polling — and, while the viewer holds
- * shares in it, can carry their side ("I'm 🟩. You?"): the outcome they hold
- * most of, never a size or a value (§1.1). Nothing here writes.
+ * "Share" on a paper's page (issues #11 §2–3, #18). Clicking "share" copies
+ * the Wordle-style text, without the viewer's stake; the "⋯" menu beside it
+ * has a short-name field, the embeddable badge and the short link, each with
+ * a copy button. The text is built from the main market's live prices — the
+ * same SWR keys and fetchers as `MarketLive`, so no extra polling — and,
+ * while the viewer holds shares in it, the menu can opt in to their side
+ * ("I'm 🟩. You?"): the outcome they hold most of, never a size or a value
+ * (§1.1). Nothing here writes.
  */
 export function SharePanel({
   title,
@@ -46,7 +50,8 @@ export function SharePanel({
   });
 
   const [name, setName] = useState(title.replace(/\$/g, ''));
-  const [mine, setMine] = useState(true);
+  const [mine, setMine] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // The outcome the viewer holds most shares of in this market, if any.
   const held = (portfolio?.holdings ?? [])
@@ -55,23 +60,41 @@ export function SharePanel({
   const heldOrdinal = held ? (market.outcomes.find((o) => o.id === held.outcomeId)?.ordinal ?? null) : null;
 
   const byOrdinal = [...market.outcomes].sort((a, b) => a.ordinal - b.ordinal);
-  const text = shareText({
-    title: name.trim() || title,
-    kind,
-    url: shareUrl,
-    status: market.status,
-    prices: byOrdinal.map((o) => o.price),
-    heldOrdinal: mine ? heldOrdinal : null,
-  });
+  const textFor = (side: number | null) =>
+    shareText({
+      title: name.trim() || title,
+      kind,
+      url: shareUrl,
+      status: market.status,
+      prices: byOrdinal.map((o) => o.price),
+      heldOrdinal: side,
+    });
+  // The one-click share never carries a stake; "include my side" is opt-in, in the menu.
+  const plain = textFor(null);
+  const text = textFor(mine ? heldOrdinal : null);
   const markdown = `[![${kind ?? 'acceptodds'} odds](${badgeUrl})](${shareUrl})`;
   const html = `<a href="${shareUrl}"><img src="${badgeUrl}" alt="${kind ?? 'acceptodds'} odds"></a>`;
 
   return (
-    <details className="group relative">
-      <summary className="cursor-pointer list-none font-sans text-[13px] text-accent [&::-webkit-details-marker]:hidden">
-        share
-      </summary>
-      <div className="absolute left-1/2 z-10 mt-2 w-[min(460px,calc(100vw-32px))] -translate-x-1/2 border border-frame bg-card p-3.5 text-left font-sans text-sm shadow-sm">
+    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+      <span className="inline-flex items-baseline gap-1 font-sans text-[13px]">
+        <CopyButton
+          value={plain}
+          label="share"
+          copied="copied"
+          className={ui.linkBtn}
+          title="Copy the share text"
+          onFail={() => setMenuOpen(true)} // no clipboard: the text is in the menu to copy by hand
+        />
+        <PopoverTrigger
+          className="cursor-pointer px-1 text-muted hover:text-accent"
+          aria-label="More ways to share"
+          title="More ways to share"
+        >
+          ⋯
+        </PopoverTrigger>
+      </span>
+      <PopoverContent>
         <h3 className={ui.sectionHeading}>Share</h3>
         <label className="mb-1 block text-xs text-muted" htmlFor="share-name">
           Short name
@@ -81,7 +104,7 @@ export function SharePanel({
           {text}
         </pre>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <Copy value={text} label="Copy text" />
+          <CopyButton value={text} label="Copy text" />
           {heldOrdinal !== null && (
             <label className="flex items-center gap-1.5 text-[13px] text-muted">
               <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
@@ -96,37 +119,16 @@ export function SharePanel({
           <img src={badgeUrl} alt={`${kind ?? 'acceptodds'} odds`} />
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
-          <Copy value={markdown} label="Copy Markdown" />
-          <Copy value={html} label="Copy HTML" />
+          <CopyButton value={markdown} label="Copy Markdown" />
+          <CopyButton value={html} label="Copy HTML" />
         </div>
 
         <h3 className={`${ui.sectionHeading} mt-4`}>Link</h3>
         <div className="flex items-center gap-3">
           <code className="min-w-0 truncate font-mono text-[13px]">{shareUrl}</code>
-          <Copy value={shareUrl} label="Copy" />
+          <CopyButton value={shareUrl} label="Copy" />
         </div>
-      </div>
-    </details>
-  );
-}
-
-function Copy({ value, label }: { value: string; label: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      type="button"
-      className={ui.btn({ ghost: true, inline: true })}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        } catch {
-          /* no clipboard (insecure context): the text is on screen to copy by hand */
-        }
-      }}
-    >
-      {done ? 'Copied' : label}
-    </button>
+      </PopoverContent>
+    </Popover>
   );
 }
