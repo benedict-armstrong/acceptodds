@@ -341,6 +341,22 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   without a trader. The unique index on `accounts.user_id` decides a race, so
   there is exactly one grant. A domain dropped from the list between sign-up
   and confirmation gets a funded account that is not verified and cannot trade.
+- **Confirming is a link or a 6-digit code, never a dead end** (#15). One
+  mail carries both (`sendVerificationEmail` mints the code with the
+  email-OTP plugin's server-only `createVerificationOTP`, hashed, rotated on
+  every send, an hour like the link). The person types it at `/confirm`, in
+  the tab they signed up in; `POST /email-otp/verify-email` runs the same
+  `afterEmailVerification` and signs in. Every other email-OTP route is in
+  `disabledPaths` — sign-in by code would also sign up past the password —
+  so the only way to get a code is a confirmation mail, and the only resend
+  is `/send-verification-email`. Signing in unconfirmed with the right
+  password resends (`sendOnSignIn`) and goes to `/confirm`. Sign-in, sign-up
+  and the mail's link return to the page the person came from (`?next=`,
+  `callbackURL`), only ever a same-site path (`lib/return-to.ts`). While a
+  code is outstanding a banner follows them round the site, from this
+  browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
+  nothing. There is still no user session, account or reputation before
+  confirmation.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is

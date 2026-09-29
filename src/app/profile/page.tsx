@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 /** The signed-in viewer's own account. Read-only; signing out goes through Better Auth's client. */
 export default async function ProfilePage() {
   const viewer = await viewerFromHeaders(await headers());
-  if (!viewer) redirect('/signin');
+  if (!viewer) redirect('/signin?next=/profile');
   const a = viewer.account;
   const v = await valuation(a.id);
   const follows = await followedListings(a.id);

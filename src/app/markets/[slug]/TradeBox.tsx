@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
+import { SignInLink } from '@/components/AuthLinks';
 import { ui } from '@/components/ui';
 import { parseUnits } from '@/lib/money';
 import { pct, rep, shares } from '@/lib/format';
@@ -190,9 +190,7 @@ export function TradeBox({
       )}
 
       {!viewer.signedIn ? (
-        <Link href="/signin" className={ui.btn()}>
-          Sign in to trade
-        </Link>
+        <SignInLink className={ui.btn()}>Sign in to trade</SignInLink>
       ) : !viewer.canTrade ? (
         <div className={ui.note(false)}>{MESSAGES.not_verified}</div>
       ) : (

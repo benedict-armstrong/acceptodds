@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { emailOTP } from 'better-auth/plugins/email-otp';
 import { apiKey } from '@better-auth/api-key';
 import { getDb, type Database } from '@/db';
 import * as authSchema from '@/db/auth-schema';
@@ -20,6 +21,9 @@ import { sendMail } from './mail';
  * the institution allowlist (`server/institution-domains.ts`). The trader
  * account — and with it the starting balance — is created only when that
  * address is **confirmed**, which is also what marks the account verified.
+ * One mail confirms it two ways: a link, and a 6-digit code typed into
+ * `/confirm` in the tab the person signed up in (issue #15), so they are never
+ * stuck on a "check your inbox" page or sent to a new tab.
  *
  * Nothing outside `server/auth.ts` should ask this module who a request is.
  */
@@ -42,8 +46,29 @@ function baseURL(): string {
 /** Thrown from the sign-up hook; Better Auth returns it as a 422 with this code. */
 export const EMAIL_DOMAIN_NOT_ALLOWED = 'EMAIL_DOMAIN_NOT_ALLOWED';
 
+/** How long a confirmation link and code stay valid. */
+const CONFIRMATION_TTL_SECONDS = 60 * 60;
+
+/**
+ * The email-OTP plugin's routes, all but the one that confirms an address.
+ * It is here for the code in the confirmation mail only: sign-in by code
+ * (which would also sign up, past the password), password reset by code and
+ * email change stay off, and codes are only ever sent with the link, by
+ * `sendVerificationEmail` below — so there is one resend path, not two.
+ */
+const DISABLED_OTP_PATHS = [
+  '/email-otp/send-verification-otp',
+  '/email-otp/check-verification-otp',
+  '/sign-in/email-otp',
+  '/email-otp/request-password-reset',
+  '/forget-password/email-otp',
+  '/email-otp/reset-password',
+  '/email-otp/request-email-change',
+  '/email-otp/change-email',
+];
+
 export function createAuth(database: Database) {
-  return betterAuth({
+  const auth = betterAuth({
     appName: 'acceptodds',
     baseURL: baseURL(),
     secret: process.env.BETTER_AUTH_SECRET,
@@ -64,12 +89,19 @@ export function createAuth(database: Database) {
     },
     emailVerification: {
       sendOnSignUp: true,
+      // Signing in unconfirmed (right password only) sends a fresh code + link.
+      sendOnSignIn: true,
       autoSignInAfterVerification: true,
+      expiresIn: CONFIRMATION_TTL_SECONDS,
       sendVerificationEmail: async ({ user, url }) => {
+        // Each mail rotates the code: only the newest one works.
+        const code = await auth.api.createVerificationOTP({ body: { email: user.email, type: 'email-verification' } });
         await sendMail({
           to: user.email,
-          subject: 'Confirm your acceptodds email',
-          text: `Confirm this address to finish signing up:\n\n${url}`,
+          subject: `${code} is your acceptodds confirmation code`,
+          text:
+            `Your confirmation code is ${code}. Enter it on the page you signed up on, or open this link:\n\n${url}\n\n` +
+            `Both work for an hour. If you did not sign up, ignore this.`,
         });
       },
       // Confirmation is the institutional verification: it creates the trader
@@ -106,6 +138,8 @@ export function createAuth(database: Database) {
       },
     },
 
+    disabledPaths: DISABLED_OTP_PATHS,
+
     advanced: {
       // Better Auth skips its origin/CSRF check when NODE_ENV=test. Pin it on,
       // so the tests exercise what production runs.
@@ -116,6 +150,15 @@ export function createAuth(database: Database) {
     },
 
     plugins: [
+      emailOTP({
+        expiresIn: CONFIRMATION_TTL_SECONDS,
+        storeOTP: 'hashed',
+        disableSignUp: true,
+        // Never called: every route that would send a code is disabled above.
+        sendVerificationOTP: async () => {
+          throw new Error('codes are sent only with the confirmation link');
+        },
+      }),
       apiKey({
         defaultPrefix: API_KEY_PREFIX,
         // §7: `pm_live_` + 32 random bytes. The plugin stores only its SHA-256.
@@ -128,6 +171,7 @@ export function createAuth(database: Database) {
       }),
     ],
   });
+  return auth;
 }
 
 export type Auth = ReturnType<typeof createAuth>;
