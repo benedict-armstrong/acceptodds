@@ -8,6 +8,9 @@
 
 const MICRO = 1_000_000n;
 
+/** The unit reputation is shown in, after the amount: "1,000.00 $rep". */
+export const REP = '$rep';
+
 function group(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }

@@ -4,10 +4,10 @@ import { Collapsible } from '@/components/Collapsible';
 import { MathText } from '@/components/MathText';
 import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/Popover';
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { Sparkline } from '@/components/Sparkline';
 import { ui } from '@/components/ui';
-import { pct, rep } from '@/lib/format';
+import { pct, rep, REP } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { FIELD_HELP, parseSearch, peopleText } from '@/lib/query';
@@ -247,31 +247,32 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             </Link>
           ))}
         </span>
-        {/* Status and following, out of the way. A <details>, so it works without JavaScript. */}
-        <details className="relative">
-          <summary
-            title="More filters: status, following"
-            className="cursor-pointer list-none px-1 text-ink hover:text-accent [&::-webkit-details-marker]:hidden"
-          >
+        {/* Status and following, out of the way. */}
+        <Popover>
+          <PopoverTrigger title="More filters: status, following" className="cursor-pointer px-1 text-ink hover:text-accent">
             {[status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ')}
             {(status !== 'open' || onlyFollowed) && ' '}⋯
-          </summary>
-          <div className="absolute right-0 z-10 mt-1 flex min-w-32 flex-col gap-1 border border-frame bg-card px-3 py-2">
+          </PopoverTrigger>
+          <PopoverContent menu align="end" className="text-[13px]">
             {STATUSES.map((s) => (
-              <Link key={s} href={href({ status: s })} className={s === status ? ON : ''}>
-                {s}
-              </Link>
+              <PopoverClose key={s} asChild>
+                <Link href={href({ status: s })} className={s === status ? ON : ''}>
+                  {s}
+                </Link>
+              </PopoverClose>
             ))}
             {viewer && (
-              <Link
-                href={href({ following: onlyFollowed ? '0' : '1' })}
-                className={`mt-1 border-t border-rule pt-1.5 ${onlyFollowed ? ON : ''}`}
-              >
-                ★ following
-              </Link>
+              <PopoverClose asChild>
+                <Link
+                  href={href({ following: onlyFollowed ? '0' : '1' })}
+                  className={`mt-1 border-t border-rule pt-1.5 ${onlyFollowed ? ON : ''}`}
+                >
+                  ★ following
+                </Link>
+              </PopoverClose>
             )}
-          </div>
-        </details>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {all.total + pinnedCount === 0 &&
@@ -407,7 +408,7 @@ function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
         )}
       </span>
       <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
-        {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} rep` : ''}
+        {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} ${REP}` : ''}
       </span>
       <span className="narrow:hidden" title={r.listing ? r.market.question : undefined}>
         <Sparkline values={spark} />

@@ -1,0 +1,163 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { countBelow, niceTicks } from '@/lib/distribution';
+import { REP } from '@/lib/format';
+
+const HEIGHT = 190;
+const PAD = { top: 30, right: 12, bottom: 26, left: 12 };
+
+/** Whole units with grouping: axis ticks and the tooltip, not the ledger's figures. */
+function units(x: number): string {
+  return Math.round(x).toLocaleString('en');
+}
+
+/**
+ * The field and where the viewer sits in it (the leaderboard's net-worth
+ * tab): the kernel density of every trader's net worth at liquidation value
+ * from the shared snapshot (`server/field-snapshot.ts`, computed once for
+ * everyone), a rug of one tick per trader so a small field's curve can't
+ * pretend to more than it has, and — for a signed-in viewer — the part below
+ * them shaded (its share is the percentile) and a maroon line at them. Hover
+ * (or arrow keys) reads any point off: how many traders have less. One
+ * series, so no legend; the page renders the numbers as a table beside it.
+ */
+export function StandingChart({
+  curve,
+  domain,
+  values,
+  you,
+  label,
+}: {
+  /** The density at evenly spaced points across `domain`, peaking at 1. */
+  curve: number[];
+  /** In units. */
+  domain: [number, number];
+  /** Every trader's net worth in units, sorted ascending, for the rug and the hover counts. Display only. */
+  values: number[];
+  /** The viewer's, in the same units; `null` for no marker (signed out, or not on the board). */
+  you: number | null;
+  /** Beside the viewer's line, e.g. "you · ahead of 96%". */
+  label: string | null;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(720);
+  const [hover, setHover] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(240, e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const d = useMemo(() => {
+    const n = curve.length - 1;
+    return { xs: curve.map((_, i) => domain[0] + ((domain[1] - domain[0]) * i) / n), ys: curve, domain };
+  }, [curve, domain]);
+  // A viewer whose live figure has left the snapshot's range is drawn at its edge.
+  const at = you === null ? null : Math.min(domain[1], Math.max(domain[0], you));
+  const plotW = width - PAD.left - PAD.right;
+  const plotH = HEIGHT - PAD.top - PAD.bottom;
+  const sx = (x: number) => PAD.left + ((x - d.domain[0]) / (d.domain[1] - d.domain[0])) * plotW;
+  const sy = (y: number) => PAD.top + plotH - y * plotH;
+  const base = PAD.top + plotH;
+  const invert = (px: number) => d.domain[0] + ((px - PAD.left) / plotW) * (d.domain[1] - d.domain[0]);
+
+  const line = d.xs.map((x, i) => `${i ? 'L' : 'M'}${sx(x).toFixed(1)},${sy(d.ys[i]).toFixed(1)}`).join('');
+  const area = `${line}L${sx(d.domain[1]).toFixed(1)},${base}L${sx(d.domain[0]).toFixed(1)},${base}Z`;
+  const youX = at === null ? null : sx(at);
+  const youY = at === null ? null : sy(yAt(d, at));
+  const ticks = niceTicks(d.domain[0], d.domain[1], Math.max(2, Math.floor(plotW / 140)));
+  // Keep the label inside the chart when the viewer is near an edge.
+  const anchor = youX === null ? 'middle' : youX < width * 0.2 ? 'start' : youX > width * 0.8 ? 'end' : 'middle';
+
+  const hoverX = hover === null ? null : sx(hover);
+  const hoverBelow = hover === null ? 0 : countBelow(values, hover);
+
+  return (
+    <div ref={box} className="relative mt-2 select-none">
+      <svg
+        width={width}
+        height={HEIGHT}
+        role="img"
+        aria-label={`Net worth of ${values.length} traders${label ? `; ${label}` : ''}`}
+        tabIndex={0}
+        className="block overflow-visible focus:outline-none"
+        onPointerMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const x = invert(e.clientX - r.left);
+          setHover(x >= d.domain[0] && x <= d.domain[1] ? x : null);
+        }}
+        onPointerLeave={() => setHover(null)}
+        onBlur={() => setHover(null)}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+          e.preventDefault();
+          const step = (d.domain[1] - d.domain[0]) / 40;
+          const from = hover ?? at ?? (d.domain[0] + d.domain[1]) / 2;
+          setHover(Math.min(d.domain[1], Math.max(d.domain[0], from + (e.key === 'ArrowLeft' ? -step : step))));
+        }}
+      >
+        <path d={area} className="fill-rule-soft" />
+        {youX !== null && (
+          <>
+            <clipPath id="standing-below">
+              <rect x={0} y={0} width={Math.max(0, youX)} height={HEIGHT} />
+            </clipPath>
+            <path d={area} clipPath="url(#standing-below)" className="fill-accent opacity-15" />
+          </>
+        )}
+        <path d={line} fill="none" strokeWidth={2} strokeLinejoin="round" className="stroke-subtle" />
+        {/* One tick per trader: the data under the curve. */}
+        {values.map((v, i) => (
+          <line key={i} x1={sx(v)} x2={sx(v)} y1={base} y2={base - 6} strokeWidth={1} className="stroke-faint opacity-60" />
+        ))}
+        <line x1={PAD.left} x2={width - PAD.right} y1={base} y2={base} strokeWidth={1} className="stroke-rule-strong" />
+        {ticks.map((t) => (
+          <text key={t} x={sx(t)} y={base + 17} textAnchor="middle" className="fill-muted font-mono text-[11px]">
+            {units(t)}
+          </text>
+        ))}
+        {youX !== null && youY !== null && (
+          <>
+            {/* The viewer. */}
+            <line x1={youX} x2={youX} y1={base} y2={Math.min(youY, PAD.top - 6)} strokeWidth={2} className="stroke-accent" />
+            <circle cx={youX} cy={youY} r={4} strokeWidth={2} className="fill-accent stroke-card" />
+            {label && (
+              <text x={youX} y={PAD.top - 12} textAnchor={anchor} className="fill-ink font-sans text-xs font-semibold">
+                {label}
+              </text>
+            )}
+          </>
+        )}
+        {hoverX !== null && (
+          <line x1={hoverX} x2={hoverX} y1={PAD.top} y2={base} strokeWidth={1} className="stroke-rule-strong" pointerEvents="none" />
+        )}
+      </svg>
+      {hover !== null && hoverX !== null && (
+        <div
+          className="pointer-events-none absolute top-1 z-10 border border-frame bg-card px-2 py-1 font-sans text-xs whitespace-nowrap text-ink shadow-sm"
+          style={hoverX > width / 2 ? { right: width - hoverX + 8 } : { left: hoverX + 8 }}
+        >
+          <span className="font-mono">
+            {units(hover)} {REP}
+          </span>
+          <span className="text-muted">
+            {' '}
+            · {hoverBelow} of {values.length} {values.length === 1 ? 'trader has' : 'traders have'} less
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The density at `x`, linearly interpolated between the sampled points. */
+function yAt(d: { xs: number[]; ys: number[] }, x: number): number {
+  const i = d.xs.findIndex((v) => v >= x);
+  if (i <= 0) return d.ys[Math.max(0, i)];
+  const t = (x - d.xs[i - 1]) / (d.xs[i] - d.xs[i - 1]);
+  return d.ys[i - 1] + (d.ys[i] - d.ys[i - 1]) * t;
+}

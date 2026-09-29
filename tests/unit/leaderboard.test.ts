@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { leaderboardSegments, percentAhead } from '@/lib/leaderboard';
+import { leaderboardSegments, percentAhead, placeIn } from '@/lib/leaderboard';
 
 describe('leaderboardSegments', () => {
   it('is the top ten and the focus with two either side', () => {
@@ -58,5 +58,22 @@ describe('percentAhead', () => {
     expect(percentAhead(0, 100)).toBe(0);
     expect(percentAhead(2, 4)).toBe(66);
     expect(percentAhead(0, 1)).toBeNull();
+  });
+});
+
+describe('placeIn', () => {
+  const field = [100n, 200n, 200n, 300n, 400n];
+
+  it('ranks as the leaderboard does: one more than those strictly higher', () => {
+    expect(placeIn(field, 400n)).toEqual({ rank: 1, fieldSize: 5, percentAhead: 100 });
+    expect(placeIn(field, 200n)).toEqual({ rank: 3, fieldSize: 5, percentAhead: 25 });
+    expect(placeIn(field, 100n)).toEqual({ rank: 5, fieldSize: 5, percentAhead: 0 });
+  });
+
+  it('places a figure between or beyond the snapshot’s', () => {
+    expect(placeIn(field, 250n)).toEqual({ rank: 3, fieldSize: 5, percentAhead: 75 });
+    expect(placeIn(field, 999n)).toMatchObject({ rank: 1 });
+    expect(placeIn(field, 0n)).toEqual({ rank: 6, fieldSize: 6, percentAhead: 0 });
+    expect(placeIn([], 5n)).toEqual({ rank: 1, fieldSize: 1, percentAhead: null });
   });
 });

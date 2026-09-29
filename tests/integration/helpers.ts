@@ -4,6 +4,7 @@ import { getDb, getPool } from '@/db';
 const db = getDb();
 import { createAccount, createHouse } from '@/server/accounts';
 import { createMarket } from '@/server/engine';
+import { invalidateStandings } from '@/server/standings-cache';
 
 export const STARTING_MICRO = 1_000_000_000n; // 1000 units
 export const HOUSE_MICRO = 1_000_000_000_000n; // 1,000,000 units
@@ -12,10 +13,12 @@ export async function resetDatabase(): Promise<void> {
   await db.execute(sql`
     truncate table
       events, ledger_entries, orders, positions, outcomes,
-      listings, markets, usd_costs, rate_limit_buckets, comment_backings, comments, listing_follows, digest_sends, accounts,
+      listings, markets, usd_costs, rate_limit_buckets, comment_backings, comments, listing_follows, digest_sends, field_snapshots, accounts,
       apikey, session, account, verification, "user"
     restart identity cascade
   `);
+  // Truncating is a write the engine never saw.
+  invalidateStandings();
 }
 
 export async function closePool(): Promise<void> {

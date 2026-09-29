@@ -1,7 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- response bodies are checked field by field */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/db';
+import { accounts, fieldSnapshots, ledgerEntries } from '@/db/schema';
 import { createAccount, createHouse } from '@/server/accounts';
-import { leaderboardStandings, searchPeople } from '@/server/views';
+import { fieldSnapshot, refreshFieldSnapshot } from '@/server/field-snapshot';
+import { invalidateStandings } from '@/server/standings-cache';
+import { leaderboardStandings, searchPeople, standingOf } from '@/server/views';
 import { api } from './api-client';
 import { closePool, HOUSE_MICRO, resetDatabase } from './helpers';
 
@@ -13,6 +18,7 @@ import { closePool, HOUSE_MICRO, resetDatabase } from './helpers';
  */
 
 const UNIT = 1_000_000n;
+const db = getDb();
 
 beforeAll(async () => {
   await resetDatabase();
@@ -72,6 +78,16 @@ describe('leaderboard standings', () => {
     ]);
   });
 
+  it('gives a trader’s standing: rank, field size, and the share of the others strictly below', async () => {
+    const field = await leaderboardStandings({ basis: 'net_worth' });
+    const id = (handle: string) => field.find((r) => r.handle === handle)!.accountId;
+    expect(standingOf(field, id('ada'), 'net_worth')).toEqual({ rank: 1, fieldSize: 5, percentAhead: 100 });
+    expect(standingOf(field, id('ylecun'), 'net_worth')).toEqual({ rank: 3, fieldSize: 5, percentAhead: 50 });
+    // Tied last: nobody strictly below.
+    expect(standingOf(field, id('bengio'), 'net_worth')).toEqual({ rank: 4, fieldSize: 5, percentAhead: 0 });
+    expect(standingOf(field, '00000000-0000-0000-0000-000000000000', 'net_worth')).toBeNull();
+  });
+
   it('ranks one institution among itself', async () => {
     const field = await leaderboardStandings({ basis: 'net_worth', institution: 'ETH Zurich' });
     expect(field.map((r) => [r.handle, r.rank])).toEqual([
@@ -79,6 +95,83 @@ describe('leaderboard standings', () => {
       ['ylecun', 2],
     ]);
     expect(await leaderboardStandings({ basis: 'net_worth', institution: 'Nowhere' })).toEqual([]);
+  });
+});
+
+describe('the cached field', () => {
+  it('is served from the cache until a write commits', async () => {
+    const a = await leaderboardStandings({ basis: 'net_worth' });
+    expect(await leaderboardStandings({ basis: 'net_worth' })).toBe(a);
+    expect(Object.isFrozen(a) && Object.isFrozen(a[0])).toBe(true);
+    // Concurrent readers share one computation.
+    const [x, y] = await Promise.all([
+      leaderboardStandings({ basis: 'settled_pnl' }),
+      leaderboardStandings({ basis: 'settled_pnl' }),
+    ]);
+    expect(x).toBe(y);
+
+    const late = await createAccount({ handle: 'late', displayName: 'Late Comer', grantMicro: 700n * UNIT });
+    const b = await leaderboardStandings({ basis: 'net_worth' });
+    expect(b).not.toBe(a);
+    expect(b[0].handle).toBe('late');
+    // Leave the shared fixture as the other tests expect it.
+    await db.delete(ledgerEntries).where(eq(ledgerEntries.accountId, late.id));
+    await db.delete(accounts).where(eq(accounts.id, late.id));
+    invalidateStandings();
+    expect((await leaderboardStandings({ basis: 'net_worth' })).map((r) => r.handle)).not.toContain('late');
+  });
+
+  it('never serves a field computed while a write committed', async () => {
+    const pending = leaderboardStandings({ basis: 'net_worth' });
+    invalidateStandings(); // a write commits mid-computation
+    const during = await pending;
+    expect(await leaderboardStandings({ basis: 'net_worth' })).not.toBe(during);
+  });
+
+  it('bypasses the cache inside a transaction', async () => {
+    const cached = await leaderboardStandings({ basis: 'net_worth' });
+    await db.transaction(async (tx) => {
+      expect(await leaderboardStandings({ basis: 'net_worth' }, tx as any)).not.toBe(cached);
+    });
+  });
+});
+
+describe('the shared field snapshot', () => {
+  it('is computed once, stored, and shared until it is old', async () => {
+    await db.delete(fieldSnapshots);
+    const first = await fieldSnapshot();
+    expect(first.worthsMicro).toEqual([300n, 300n, 400n, 500n, 600n].map((u) => u * UNIT));
+    expect(first.curve).toHaveLength(120);
+    expect(Math.max(...first.curve)).toBeCloseTo(1);
+    expect(first.domain[0]).toBeLessThan(300);
+    expect(first.domain[1]).toBeGreaterThan(600);
+    // Within the max age, the stored row is served as it is.
+    expect((await fieldSnapshot()).computedAt).toEqual(first.computedAt);
+  });
+
+  it('serves a stale snapshot at once and refreshes it in the background', async () => {
+    const before = await fieldSnapshot();
+    process.env.FIELD_SNAPSHOT_MAX_AGE_SECONDS = '0';
+    try {
+      const served = await fieldSnapshot();
+      expect(served.computedAt).toEqual(before.computedAt);
+      // The refresh it started is shared: await it.
+      const fresh = await refreshFieldSnapshot();
+      expect(fresh.computedAt.getTime()).toBeGreaterThan(before.computedAt.getTime());
+    } finally {
+      delete process.env.FIELD_SNAPSHOT_MAX_AGE_SECONDS;
+    }
+    const [row] = await db.select().from(fieldSnapshots);
+    expect(row.computedAt.getTime()).toBeGreaterThan(before.computedAt.getTime());
+  });
+
+  it('never lets an older computation overwrite a newer snapshot', async () => {
+    const future = new Date(Date.now() + 3_600_000);
+    await db.update(fieldSnapshots).set({ computedAt: future });
+    await refreshFieldSnapshot();
+    const [row] = await db.select().from(fieldSnapshots);
+    expect(row.computedAt).toEqual(future);
+    await db.delete(fieldSnapshots);
   });
 });
 

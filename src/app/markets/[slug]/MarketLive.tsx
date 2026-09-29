@@ -6,7 +6,7 @@ import type { z } from 'zod';
 import { OutcomeBar } from '@/components/OutcomeBar';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
-import { ago, day, pct, rep, shares } from '@/lib/format';
+import { ago, day, pct, rep, REP, shares } from '@/lib/format';
 import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES, paletteSlot, TIER_BG } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type * as S from '@/server/api/schemas';
@@ -134,7 +134,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
             <PriceChart points={points} labels={labels} />
             <div className={ui.caption}>
               <b>Figure 1.</b> {market.outcomes.length === 2 ? `${labels[0]} price` : 'Prices'} since opening ·{' '}
-              {market.orderCount} trades · {rep(market.volumeMicro, 0)} rep.
+              {market.orderCount} trades · {rep(market.volumeMicro, 0)} {REP}.
             </div>
           </>
         ) : (

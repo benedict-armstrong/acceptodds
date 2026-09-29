@@ -376,7 +376,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 
 - **Style is mockup J, "arXiv digest"**: serif for reading, monospace for
   numbers, one maroon accent. No component library. No invented ids or
-  numbers on screen: everything shown comes from the database.
+  numbers on screen: everything shown comes from the database. Reputation
+  is shown as `1,000.00 $rep` (#21): write the unit as `REP` from
+  `lib/format.ts`, never the literal. The API is unchanged (`…Micro`).
 - **Styling is Tailwind v4, utilities in the markup.** The palette and fonts
   are `@theme` tokens in `app/globals.css` (`text-muted`, `border-rule`,
   `font-mono`, …); use a token, not a raw hex, for any colour that has one.
@@ -413,7 +415,15 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   The Buy/Sell toggle and sell buttons show only while the viewer holds
   shares in that market; at zero the widget falls back to buy.
 - **The navbar shows net worth at liquidation value**, not cash (cash is in
-  its title), and a `profile` link. `/profile` has the account details, the
+  its title), and a `profile` link. Clicking the figure flips it to where
+  the viewer stands on the net-worth leaderboard and back (#17,
+  `components/NavWorth`): a tiny bell curve of the field with a line at the
+  viewer (`MiniCurve`), the rank and percentile in its title and
+  aria-label, never as a bare "ahead of 0%". The choice is the `nav_worth`
+  cookie the layout reads. The curve is the shared field snapshot (#10
+  section), never a per-viewer valuation of the field; the viewer is placed
+  on it by their own live net worth (`placeIn`), hence "about #N".
+  `/profile` has the account details, the
   same cash / net worth / unrealized / realized row as `/portfolio`, and
   sign-out at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
 - **"Venue" is the market's `kind`.** The home page filters on it and opens
@@ -423,7 +433,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   main market's **headline** (#11, below), highest first, 1/0 once settled,
   void last), volume, activity (last fill), newest. The
   venue's `closing` sort is not offered. Status and "following" filters sit
-  in a `⋯` `<details>` menu, which shows the active one when not the default.
+  in a `⋯` `Popover` menu, which shows the active one when not the default.
   A signed-in viewer sees a **Following** section above the list: the
   followed subset of that same list (venue, status, sort), 10 a page on its
   own `?fpage=`, collapsible, the open state in the `home_following_open`
@@ -653,3 +663,30 @@ unpaginated, and 5 s for that search.
   - `venue:` or `status:` in a query makes the page's own filter of that
     kind step aside. `accept` compares the headline cache ×100 (a void
     market fails every comparison, so a negated one includes it); `volume` compares in `numeric` micro-units, never a float.
+- **The net-worth leaderboard shows the field's shape** under the table
+  ("The field", unfiltered `net_worth` only): `components/StandingChart`,
+  maths in `lib/distribution.ts` — a Gaussian kernel density of every
+  trader's liquidation net worth (never a mark), a rug of one tick per
+  trader, and for a signed-in viewer the part below them shaded and a line
+  at their exact figure from the board. Its table twin's quantiles are
+  nearest-rank: real traders' exact figures. Floats there are for plotting
+  only.
+- **The ranked field is cached in process** (`views.rankedField`, per
+  basis, frozen rows — never mutate them): the leaderboard and its API need
+  exact live ranks, so it is invalidated, not aged. `server/standings-cache.ts`
+  holds a generation that `engine.trade`, `createMarket`, `settle` and
+  `accounts.createAccount` bump **after their commit**; an entry computed
+  under an older generation is never served, including one a commit landed
+  in the middle of. A 30 s TTL covers writers outside the process (the
+  seed). Correct for the single container of §11, like Better Auth's
+  limiter. A new write path that moves a balance, a share vector or who is
+  a trader must bump it. Not `ledger_entries.created_at` as a version: it
+  is not commit order.
+- **The curves share one snapshot**, `field_snapshots`
+  (`server/field-snapshot.ts`), since the field's shape is the same for
+  everyone: every trader's net worth, sorted, as `BIGINT` micro, and its
+  density at 120 points, peaking at 1. Recomputed at most every
+  `FIELD_SNAPSHOT_MAX_AGE_SECONDS` (300), stale-while-revalidate: an old row
+  is served at once and one background refresh starts; only a missing row
+  makes a reader wait. An older computation never overwrites a newer row.
+  A cache, not a source of truth: no foreign keys, and ranks never read it.

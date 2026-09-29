@@ -6,7 +6,7 @@ import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { Markdown } from '@/components/Markdown';
 import { ui } from '@/components/ui';
-import { ago, rep, shares } from '@/lib/format';
+import { ago, rep, REP, shares } from '@/lib/format';
 import { parseUnits } from '@/lib/money';
 import type * as S from '@/server/api/schemas';
 
@@ -215,7 +215,7 @@ function CommentItem({
               .map((o) => `${shares(o.sharesMicro)} ${o.outcomeLabel}`)
               .join(', ')}. A relevance weight, not a sale price.`}
           >
-            ▲ {rep(c.backing.totalMicro)} rep backing · {c.backing.backers} {c.backing.backers === 1 ? 'backer' : 'backers'}
+            ▲ {rep(c.backing.totalMicro)} {REP} backing · {c.backing.backers} {c.backing.backers === 1 ? 'backer' : 'backers'}
           </span>
         )}
         {mine && (

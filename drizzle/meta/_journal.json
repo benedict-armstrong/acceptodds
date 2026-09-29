@@ -57,6 +57,13 @@
       "when": 1790695210330,
       "tag": "0007_people_search",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790696682201,
+      "tag": "0008_field_snapshots",
+      "breakpoints": true
     }
   ]
 }

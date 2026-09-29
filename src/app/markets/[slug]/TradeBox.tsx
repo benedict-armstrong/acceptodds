@@ -6,7 +6,7 @@ import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { ui } from '@/components/ui';
 import { parseUnits } from '@/lib/money';
-import { pct, rep, shares } from '@/lib/format';
+import { pct, rep, REP, shares } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 
 type Market = z.output<typeof S.Market>;
@@ -122,8 +122,8 @@ export function TradeBox({
           ok: true,
           text:
             side === 'buy'
-              ? `Bought ${shares(size!)} ${outcome.label} for ${rep(c)} rep.`
-              : `Sold ${shares(size!)} ${outcome.label} for ${rep(-c)} rep.`,
+              ? `Bought ${shares(size!)} ${outcome.label} for ${rep(c)} ${REP}.`
+              : `Sold ${shares(size!)} ${outcome.label} for ${rep(-c)} ${REP}.`,
         });
         idempotencyKey.current = null;
         onFilled();
@@ -172,7 +172,7 @@ export function TradeBox({
         <>
           <div className={ui.kv}>
             <span>{side === 'buy' ? 'Cost' : 'You receive'}</span>
-            <b>{rep(side === 'buy' ? cost : -cost)} rep</b>
+            <b>{rep(side === 'buy' ? cost : -cost)} {REP}</b>
           </div>
           <div className={ui.kv}>
             <span>Price</span>
@@ -183,7 +183,7 @@ export function TradeBox({
           {side === 'buy' && (
             <div className={ui.kv}>
               <span>Pays if {outcome.label}</span>
-              <span>{shares(size!)} rep</span>
+              <span>{shares(size!)} {REP}</span>
             </div>
           )}
         </>

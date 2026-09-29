@@ -53,7 +53,7 @@ export const FIELD_HELP: { field: SearchField; aliases: string[]; example: strin
   { field: 'venue', aliases: ['v', 'kind'], example: 'venue:iclr', means: 'venue contains' },
   { field: 'status', aliases: ['s'], example: 'status:settled', means: 'open, closed, settled or void' },
   { field: 'accept', aliases: ['p', 'chance'], example: 'accept>=70', means: 'chance of acceptance, in %' },
-  { field: 'volume', aliases: ['vol'], example: 'volume>100', means: 'rep traded' },
+  { field: 'volume', aliases: ['vol'], example: 'volume>100', means: '$rep traded' },
   { field: 'trades', aliases: ['fills'], example: 'trades>=5', means: 'number of fills' },
 ];
 

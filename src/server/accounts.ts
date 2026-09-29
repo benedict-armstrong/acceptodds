@@ -9,6 +9,7 @@ import { creditAccount, HOUSE_HANDLE, quote } from './engine';
 import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
 import { institutionForEmail } from './institution-domains';
+import { invalidateStandings } from './standings-cache';
 import { tradeFlows } from './valuation';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -42,7 +43,7 @@ export async function createAccount(
   database: Db = getDb(),
 ): Promise<typeof accounts.$inferSelect> {
   const grant = input.grantMicro ?? startingBalanceMicro();
-  return database.transaction(async (tx) => {
+  const created = await database.transaction(async (tx) => {
     const [account] = await tx
       .insert(accounts)
       .values({
@@ -63,6 +64,9 @@ export async function createAccount(
     const [funded] = await tx.select().from(accounts).where(eq(accounts.id, account.id));
     return funded;
   });
+  // After the commit: a new trader is on the leaderboard's field.
+  invalidateStandings();
+  return created;
 }
 
 /** The house treasury. Markets are subsidised out of it (invariant §1.7). */

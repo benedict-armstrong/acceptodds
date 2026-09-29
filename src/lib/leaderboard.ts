@@ -25,6 +25,31 @@ export function leaderboardSegments(total: number, focus: number | null, top = 1
 }
 
 /**
+ * Where a net worth of `mine` falls in `sortedWorths` (ascending): rank as
+ * the leaderboard ranks (one more than how many are strictly higher, so ties
+ * share it) and the share of the others strictly below. For placing a
+ * viewer's live figure on a snapshot of the field (`field_snapshots`), which
+ * may be minutes old and holds the viewer's own older figure too, so the
+ * result can be one place out: fine for "where you stand", never for the
+ * leaderboard's ranks.
+ */
+export function placeIn(
+  sortedWorths: readonly bigint[],
+  mine: bigint,
+): { rank: number; fieldSize: number; percentAhead: number | null } {
+  let below = 0;
+  let above = 0;
+  for (const w of sortedWorths) {
+    if (w < mine) below += 1;
+    else if (w > mine) above += 1;
+  }
+  const rank = above + 1;
+  // Below everyone in an older snapshot is still a place on the board, not "#6 of 5".
+  const fieldSize = Math.max(sortedWorths.length, rank);
+  return { rank, fieldSize, percentAhead: percentAhead(below, fieldSize) };
+}
+
+/**
  * The share of the rest of the field a trader is strictly ahead of, as a
  * whole percentage rounded down, so it never flatters. `below` is how many
  * traders score strictly lower; ties are not beaten. `null` for a field of

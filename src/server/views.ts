@@ -3,10 +3,12 @@ import { getDb, type Database } from '@/db';
 import { accounts, listingFollows, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
 import { headlinePrice, openingHeadline } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
+import { percentAhead } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import { containsPattern, parseSearch, requiredText, websearchOf, type SearchNode } from '@/lib/query';
 import { normalizeSearch, prefixTsquery } from '@/lib/search';
 import { ApiError } from './api/errors';
+import { standingsGeneration } from './standings-cache';
 import { valuations } from './valuation';
 
 /**
@@ -775,16 +777,33 @@ export async function leaderboard(
 }
 
 /** What a basis ranks on. */
-export function leaderboardScore(row: LeaderboardRow, basis: LeaderboardBasis): bigint {
+export function leaderboardScore(row: Omit<LeaderboardRow, 'rank'>, basis: LeaderboardBasis): bigint {
   return basis === 'net_worth' ? row.netWorthMicro : row.settledPnlMicro;
+}
+
+/** Where one trader stands in a ranked field (`leaderboardStandings`). */
+export interface Standing {
+  rank: number;
+  fieldSize: number;
+  /** `lib/leaderboard.percentAhead`: the share of the others scoring strictly lower; `null` alone on the board. */
+  percentAhead: number | null;
+}
+
+/** `accountId`'s standing in `field`, or `null` when they are not on it. */
+export function standingOf(field: readonly LeaderboardRow[], accountId: string, basis: LeaderboardBasis): Standing | null {
+  const row = field.find((r) => r.accountId === accountId);
+  if (!row) return null;
+  const score = leaderboardScore(row, basis);
+  const below = field.filter((r) => leaderboardScore(r, basis) < score).length;
+  return { rank: row.rank, fieldSize: field.length, percentAhead: percentAhead(below, field.length) };
 }
 
 /** `field` narrowed to the traders a people search for `q` finds, in rank order. Blank `q` is the whole field. */
 export async function matchingTraders(
-  field: LeaderboardRow[],
+  field: readonly LeaderboardRow[],
   q: string | null | undefined,
   database: Database = getDb(),
-): Promise<LeaderboardRow[]> {
+): Promise<readonly LeaderboardRow[]> {
   const text = normalizeSearch(q);
   if (text === null) return field;
   const found = new Set((await searchPeople(text, null, database)).map((p) => p.accountId));
@@ -793,41 +812,75 @@ export async function matchingTraders(
 
 /**
  * The whole ranked field, best first, ties by account id. Valued and sorted
- * in JS: every call values the field — one query per table (`valuations()`),
- * not per holding — which is fine for a field of hundreds to a few thousand
- * traders and makes ranks exact however the list is sliced (pages, the UI's
- * window around the viewer, a search). If the field outgrows that, snapshot
- * the valuations.
+ * in JS — one query per table (`valuations()`), not per holding — which makes
+ * ranks exact however the list is sliced (pages, the UI's window around the
+ * viewer, a search). `institution` filters the field and ranks it again among
+ * itself.
+ *
+ * Cached per basis (`rankedField`), since the leaderboard, the portfolio and
+ * the navbar all read it: the rows are frozen and shared, never mutate them.
  */
 export async function leaderboardStandings(
   q: { basis?: LeaderboardBasis; institution?: string | null },
   database: Database = getDb(),
-): Promise<LeaderboardRow[]> {
+): Promise<readonly LeaderboardRow[]> {
   const basis = q.basis ?? 'settled_pnl';
-  const institution = q.institution ?? null;
-  let rows: LeaderboardRow[];
+  const field = await rankedField(basis, database);
+  if (q.institution == null) return field;
+  return ranked(
+    field.filter((r) => r.institutionName === q.institution),
+    basis,
+  );
+}
+
+/** How long a cached field may be served at most, for writers outside this process (`standings-cache.ts`). */
+const STANDINGS_TTL_MS = 30_000;
+
+const standingsCache = new Map<
+  LeaderboardBasis,
+  { generation: number; at: number; rows: Promise<readonly LeaderboardRow[]> }
+>();
+
+/**
+ * The whole field for `basis`, from the cache when no write has committed
+ * since it was computed (`standings-cache.ts`) and it is younger than the
+ * TTL. Concurrent readers share one computation. Only reads on the shared
+ * database are cached: a caller passing a transaction sees its own writes.
+ */
+function rankedField(basis: LeaderboardBasis, database: Database): Promise<readonly LeaderboardRow[]> {
+  if (database !== getDb()) return computeField(basis, database);
+  const generation = standingsGeneration();
+  const hit = standingsCache.get(basis);
+  if (hit && hit.generation === generation && Date.now() - hit.at < STANDINGS_TTL_MS) return hit.rows;
+  const entry = { generation, at: Date.now(), rows: computeField(basis, database) };
+  standingsCache.set(basis, entry);
+  // A failure is not cached: the next reader tries again.
+  entry.rows.catch(() => {
+    if (standingsCache.get(basis) === entry) standingsCache.delete(basis);
+  });
+  return entry.rows;
+}
+
+async function computeField(basis: LeaderboardBasis, database: Database): Promise<readonly LeaderboardRow[]> {
+  let rows: Omit<LeaderboardRow, 'rank'>[];
   if (basis === 'net_worth') {
-    rows = [...(await valuations(undefined, database)).values()]
-      .filter((v) => institution === null || v.account.institutionName === institution)
-      .map((v) => ({
-        accountId: v.accountId,
-        handle: v.account.handle,
-        displayName: v.account.displayName,
-        isBot: v.account.isBot,
-        institutionName: v.account.institutionName,
-        settledPnlMicro: v.realizedPnlMicro,
-        settledMarkets: v.settledMarkets,
-        netWorthMicro: v.netWorthMicro,
-        unrealizedPnlMicro: v.unrealizedPnlMicro,
-        rank: 0,
-      }));
+    rows = [...(await valuations(undefined, database)).values()].map((v) => ({
+      accountId: v.accountId,
+      handle: v.account.handle,
+      displayName: v.account.displayName,
+      isBot: v.account.isBot,
+      institutionName: v.account.institutionName,
+      settledPnlMicro: v.realizedPnlMicro,
+      settledMarkets: v.settledMarkets,
+      netWorthMicro: v.netWorthMicro,
+      unrealizedPnlMicro: v.unrealizedPnlMicro,
+    }));
   } else {
     // Only accounts with a settled market are on this board.
     const result = await database.execute<{ account_id: string; pnl: string; markets: number }>(sql`
       select s.account_id, s.pnl::text as pnl, s.markets
         from (${settledPnl}) s
         join accounts a on a.id = s.account_id and not a.is_house
-       ${institution === null ? sql`` : sql`where a.institution_name = ${institution}`}
     `);
     const values = await valuations(
       result.rows.map((r) => r.account_id),
@@ -845,22 +898,27 @@ export async function leaderboardStandings(
         settledMarkets: r.markets,
         netWorthMicro: v.netWorthMicro,
         unrealizedPnlMicro: v.unrealizedPnlMicro,
-        rank: 0,
       };
     });
   }
+  return ranked(rows, basis);
+}
 
-  rows.sort((x, y) => {
+/** `rows` sorted best first, ties by account id, as new frozen rows with ranks; ties share a rank (1, 2, 2, 4). */
+function ranked(rows: readonly Omit<LeaderboardRow, 'rank'>[], basis: LeaderboardBasis): readonly LeaderboardRow[] {
+  const sorted = [...rows].sort((x, y) => {
     const a = leaderboardScore(x, basis);
     const b = leaderboardScore(y, basis);
     if (a !== b) return a > b ? -1 : 1;
     return x.accountId < y.accountId ? -1 : x.accountId > y.accountId ? 1 : 0;
   });
-  rows.forEach((r, i) => {
-    const prev = rows[i - 1];
-    r.rank = prev && leaderboardScore(prev, basis) === leaderboardScore(r, basis) ? prev.rank : i + 1;
+  const out: LeaderboardRow[] = [];
+  sorted.forEach((r, i) => {
+    const prev = out[i - 1];
+    const rank = prev && leaderboardScore(prev, basis) === leaderboardScore(r, basis) ? prev.rank : i + 1;
+    out.push(Object.freeze({ ...r, rank }));
   });
-  return rows;
+  return Object.freeze(out);
 }
 
 export async function publicAccount(handle: string, database: Database = getDb()) {

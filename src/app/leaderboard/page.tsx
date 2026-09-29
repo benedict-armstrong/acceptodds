@@ -1,16 +1,19 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Pager } from '@/components/Pager';
+import { StandingChart } from '@/components/StandingChart';
 import { ui } from '@/components/ui';
-import { rep, signedRep } from '@/lib/format';
-import { leaderboardSegments, percentAhead } from '@/lib/leaderboard';
+import { ago, rep, REP, signedRep } from '@/lib/format';
+import { leaderboardSegments } from '@/lib/leaderboard';
+import { microToFloat } from '@/lib/money';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
+import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
 import {
-  leaderboardScore,
   leaderboardStandings,
   matchingTraders,
+  standingOf,
   type LeaderboardBasis,
   type LeaderboardRow,
 } from '@/server/views';
@@ -58,16 +61,15 @@ export default async function LeaderboardPage({
 
   const viewer = await viewerFromHeaders(await headers());
   const field = await leaderboardStandings({ basis, institution });
+  // The whole field's shape, shared by every viewer: only on the unfiltered net-worth board it describes.
+  const snapshot = basis === 'net_worth' && institution === null ? await fieldSnapshot() : null;
   const matches = await matchingTraders(field, q);
   events.log('leaderboard.read', { accountId: viewer?.account.id ?? null });
 
   const me = viewer?.account.id ?? null;
   const mine = me === null ? -1 : field.findIndex((r) => r.accountId === me);
   const focus = around === null ? mine : field.findIndex((r) => r.handle === around);
-  const standing = (i: number) => {
-    const score = leaderboardScore(field[i], basis);
-    return percentAhead(field.filter((r) => leaderboardScore(r, basis) < score).length, field.length);
-  };
+  const standing = (i: number) => standingOf(field, field[i].accountId, basis)?.percentAhead ?? null;
 
   // What is on screen: the compact view as segments of the board, or one page
   // of the board or of the search.
@@ -227,6 +229,14 @@ export default async function LeaderboardPage({
         />
       )}
 
+      {snapshot && (
+        <FieldCurve
+          field={snapshot}
+          you={mine >= 0 ? field[mine].netWorthMicro : null}
+          label={mine >= 0 ? (standing(mine) === null ? 'you' : `you · ahead of ${standing(mine)}%`) : null}
+        />
+      )}
+
       <p className={`${ui.fine} mb-3`}>
         Net worth is cash plus what selling every open holding right now would actually pay — not holdings marked at the
         current price, which a trader could inflate by pushing the price themselves. Unrealized is what selling now would
@@ -283,5 +293,68 @@ function Segment({
         );
       })}
     </>
+  );
+}
+
+/** Micro-units as whole units, for plotting only: the chart never feeds back into money. */
+const toUnits = (micro: bigint) => microToFloat(micro) / 1_000_000;
+
+/**
+ * The field's shape: the shared snapshot of every trader's net worth at
+ * liquidation value (never a mark, §1.2) as a curve (`StandingChart`), the
+ * viewer on it by their exact figure from this board, and the same figures
+ * as a table. The snapshot may be a few minutes old and says so. Nothing for
+ * a field of one.
+ */
+function FieldCurve({ field, you, label }: { field: FieldSnapshot; you: bigint | null; label: string | null }) {
+  const worths = field.worthsMicro;
+  if (worths.length < 2) return null;
+  // Nearest-rank quantiles: real traders' figures, exact, never interpolated money.
+  const at = (q: number) => worths[Math.round((worths.length - 1) * q)];
+  const rows: [string, bigint][] = [
+    ['Lowest', worths[0]],
+    ['25th percentile', at(0.25)],
+    ['Median', at(0.5)],
+    ['75th percentile', at(0.75)],
+    ['Highest', worths[worths.length - 1]],
+  ];
+  return (
+    <section aria-label="The field">
+      <h3 className={ui.groupHeading}>The field</h3>
+      <p className={ui.caption}>
+        Net worth of all {worths.length.toLocaleString('en')} traders, if each sold everything now, as of{' '}
+        {ago(field.computedAt)} ago.{you !== null && ' The shaded part is everyone below you.'}
+      </p>
+      <StandingChart
+        curve={field.curve}
+        domain={field.domain}
+        values={worths.map(toUnits)}
+        you={you === null ? null : toUnits(you)}
+        label={label}
+      />
+      <details className="mt-1 font-sans text-xs text-muted">
+        <summary className="cursor-pointer">the numbers</summary>
+        <table className="mt-1">
+          <tbody>
+            {rows.map(([name, v]) => (
+              <tr key={name}>
+                <td className="pr-4">{name}</td>
+                <td className="text-right font-mono text-ink">
+                  {rep(v)} {REP}
+                </td>
+              </tr>
+            ))}
+            {you !== null && (
+              <tr>
+                <td className="pr-4 font-semibold text-ink">You</td>
+                <td className="text-right font-mono font-semibold text-ink">
+                  {rep(you)} {REP}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </details>
+    </section>
   );
 }

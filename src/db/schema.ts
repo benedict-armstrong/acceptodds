@@ -529,6 +529,28 @@ export const digestSends = pgTable(
   (t) => [primaryKey({ columns: [t.accountId, t.day] })],
 );
 
+/**
+ * A snapshot of the whole field's net worth at liquidation value, for the
+ * "where you stand" curves (navbar, portfolio): the same for every viewer,
+ * so computed once and shared, recomputed at most every few minutes by
+ * `server/field-snapshot.ts`. Deliberately a little stale; the leaderboard
+ * itself never reads it. One row per basis; only `net_worth` exists.
+ *
+ * `worths_micro` is every non-house trader's net worth, sorted ascending:
+ * money, so `BIGINT`. `curve` is its kernel density at evenly spaced points
+ * from `domain_lo` to `domain_hi` (units), scaled to peak at 1 — plotting
+ * numbers, not money, hence `double precision`. No foreign keys: it is a
+ * cache and never a source of truth, like `events`.
+ */
+export const fieldSnapshots = pgTable('field_snapshots', {
+  basis: text('basis').primaryKey(),
+  computedAt: timestamp('computed_at', { withTimezone: true, mode: 'date' }).notNull(),
+  worthsMicro: money('worths_micro').array().notNull(),
+  curve: doublePrecision('curve').array().notNull(),
+  domainLo: doublePrecision('domain_lo').notNull(),
+  domainHi: doublePrecision('domain_hi').notNull(),
+});
+
 export type Account = typeof accounts.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
 export type Market = typeof markets.$inferSelect;
