@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import { createAccount, createHouse, getAccountByHandle, startingBalanceMicro } from '@/server/accounts';
-import { closeMarket, createMarket, settle, trade } from '@/server/engine';
+import { HOUSE_HANDLE, closeMarket, createMarket, settle, trade } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { prices as lmsrPrices } from '@/lib/lmsr';
 import { createDb, createPool, type Database } from './index';
@@ -21,19 +21,28 @@ import { accounts, markets, orders } from './schema';
  *   a few `ICLR 2026` papers already settled. Papers whose market exists are
  *   left alone, so it can be rerun.
  *
+ * `--papers-only` (`npm run db:seed:demo`) skips the base set and creates just
+ * the house if it is missing: demo data for a deployed database.
+ *
  * The titles are invented. The platform still knows nothing about papers:
  * everything here goes in through the same engine and listing calls a client
  * would make. The one exception is `spreadOverTime`, a dev-only rewrite of
  * fill timestamps so charts have a history — see there.
  */
 async function main() {
-  const url = process.argv[2] ?? process.env.DATABASE_URL;
+  const url = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set');
   const pool = createPool(url);
   const db = createDb(pool);
 
   const existing = await db.select().from(accounts);
-  if (existing.length > 0) {
+  if (process.argv.includes('--papers-only')) {
+    // For a deployed database: just the house (if missing) and the papers —
+    // no example markets, no alice.
+    if (!(await getAccountByHandle(HOUSE_HANDLE, db))) {
+      await createHouse(startingBalanceMicro() * 1000n, db);
+    }
+  } else if (existing.length > 0) {
     console.log(`database already has ${existing.length} accounts; not seeding the base set`);
   } else {
     await seedBase(db);
