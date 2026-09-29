@@ -114,7 +114,9 @@ domain on the institution allowlist** (below); anything else is refused with
 Confirming the address is the institutional verification: it creates their
 trader account, grants `STARTING_BALANCE_MICRO` as a `signup` ledger entry,
 and sets `verified_at`, so they can trade straight away. Nothing is granted
-before confirmation. A signed-in user mints their own `read`/`trade` tokens
+before confirmation. The confirmation mail carries both a link and a 6-digit
+code (`POST /api/auth/email-otp/verify-email`, entered at `/confirm`); either
+confirms and signs in, and both last an hour. A signed-in user mints their own `read`/`trade` tokens
 with `POST /api/v1/me/tokens`. A signed-in user whose email is in
 `ADMIN_EMAILS` (comma-separated) can also create, close and settle markets.
 

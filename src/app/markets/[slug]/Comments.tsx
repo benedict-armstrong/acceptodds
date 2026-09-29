@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
+import { SignInLink } from '@/components/AuthLinks';
 import { Markdown } from '@/components/Markdown';
 import { ui } from '@/components/ui';
 import { ago, rep, shares } from '@/lib/format';
@@ -149,7 +149,7 @@ export function Comments({
         </div>
       ) : (
         <div className={ui.fine}>
-          {viewer.signedIn ? 'Only verified accounts can comment.' : <><Link href="/signin">Sign in</Link> to comment.</>}
+          {viewer.signedIn ? 'Only verified accounts can comment.' : <><SignInLink>Sign in</SignInLink> to comment.</>}
         </div>
       )}
 
