@@ -106,7 +106,6 @@ export default async function PaperPage({
               shareUrl={`${siteUrl()}/s/${encodeURIComponent(listing.slug)}`}
               badgeUrl={`${siteUrl()}/badge/${encodeURIComponent(listing.slug)}.svg`}
               initial={presentMarket(markets[0]) as z.output<typeof S.Market>}
-              signedIn={viewer !== null}
             />
           )}
         </div>

@@ -1,4 +1,4 @@
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { z } from 'zod';
 import { marketHref } from '@/lib/links';
@@ -10,7 +10,7 @@ import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
 import { hasPassword } from '@/server/better-auth';
-import { pendingBetFor } from '@/server/onboarding';
+import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor } from '@/server/onboarding';
 import { browseListings, listingViews, marketView, resolveListing, resolveMarket } from '@/server/views';
 import { Finish } from './Finish';
 import { Welcome, type Chosen, type Step } from './Welcome';
@@ -52,6 +52,7 @@ export default async function WelcomePage({
             outcomeId: bet.outcomeId,
             stakeMicro: bet.stakeMicro.toString(),
             seenOrderCount: bet.seenOrderCount,
+            choseHere: choseHere(bet, (await cookies()).get(ONBOARDING_BROWSER_COOKIE)?.value),
             title: listing?.title ?? market.question,
             href: marketHref({ marketSlug: market.slug, listingSlug: listing?.slug ?? null }),
           }}

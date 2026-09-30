@@ -776,9 +776,20 @@ export const OnboardingRequest = z
   .strict()
   .meta({ id: 'OnboardingRequest' });
 
-export const OnboardingStarted = z
+export const SignUpRequest = z
+  .object({
+    email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
+    name: z.string().trim().min(1).max(100),
+    next: z.string().max(2000).optional().meta({
+      description: 'A path on this site to return to after confirming and choosing a password. Anything else means `/`.',
+    }),
+  })
+  .strict()
+  .meta({ id: 'SignUpRequest' });
+
+export const SignUpStarted = z
   .object({ email: z.string().meta({ description: 'Where the confirmation mail went.' }) })
-  .meta({ id: 'OnboardingStarted' });
+  .meta({ id: 'SignUpStarted' });
 
 export const SetPasswordRequest = z
   .object({ password: z.string().min(12).max(128) })

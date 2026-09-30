@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CodeInput } from '@/components/CodeInput';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
-import { setPasswordPath } from '@/lib/links';
+import { setPasswordPath, signInContinueHref } from '@/lib/links';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
 import { authHref } from '@/lib/return-to';
 
@@ -72,7 +72,9 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
       return;
     }
     clearPending();
-    router.push(next);
+    // Not straight to `next`: the new account may still need a password (and
+    // an onboarding bet its last step), which that page asks for first.
+    router.push(signInContinueHref(next));
     router.refresh();
   }
 
@@ -80,7 +82,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
     if (!email.trim()) return;
     setBusy(true);
     setNote(null);
-    const { error } = await authClient.sendVerificationEmail({ email: email.trim(), callbackURL: next });
+    const { error } = await authClient.sendVerificationEmail({ email: email.trim(), callbackURL: signInContinueHref(next) });
     setBusy(false);
     if (error) {
       setNote({ ok: false, text: error.message ?? 'Could not send a new code.' });

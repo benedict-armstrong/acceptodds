@@ -5,6 +5,7 @@ import { account as authAccount, user } from '@/db/auth-schema';
 import { accounts, pendingBets } from '@/db/schema';
 import { WELCOME_FINISH } from '@/lib/onboarding';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
+import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor } from '@/server/onboarding';
 import { api, authCall, cookieFrom, signUp } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -191,6 +192,26 @@ describe('onboarding', () => {
       body: { email: 'ada@example.org', otp, password: 'another horse battery' },
     });
     expect(again.status).toBe(400);
+  });
+
+  it('names the browser the bet was chosen in, and a replaced bet is no longer that browser\'s', async () => {
+    const mine = await start('ada@example.org');
+    const cookie = mine.headers.get('set-cookie')!;
+    expect(cookie).toContain(`${ONBOARDING_BROWSER_COOKIE}=`);
+    expect(cookie).toContain('HttpOnly');
+    const nonce = new RegExp(`${ONBOARDING_BROWSER_COOKIE}=([^;]+)`).exec(cookie)![1];
+    const u = await userRow('ada@example.org');
+    expect(choseHere((await pendingBetFor(u.id))!, nonce)).toBe(true);
+    expect(choseHere((await pendingBetFor(u.id))!, undefined)).toBe(false);
+
+    // Someone else onboards with the same unconfirmed address: their bet is
+    // never placed unasked, in their browser or in the owner's.
+    const theirs = await start('ada@example.org', { outcomeId: fx.outcomeIds[1] });
+    const theirNonce = new RegExp(`${ONBOARDING_BROWSER_COOKIE}=([^;]+)`).exec(theirs.headers.get('set-cookie')!)![1];
+    const bet = (await pendingBetFor(u.id))!;
+    expect(bet.outcomeId).toBe(fx.outcomeIds[1]);
+    expect(choseHere(bet, nonce)).toBe(false);
+    expect(choseHere(bet, theirNonce)).toBe(true); // theirs, but they never get the owner's session
   });
 
   it('replaces the bet of an address not yet confirmed, and resends', async () => {

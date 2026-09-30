@@ -530,10 +530,27 @@ export function buildRegistry(): OpenAPIRegistry {
       description:
         'Makes a password-less sign-up for an address at an approved institution and mails it a confirmation link and code. The bet is stored, not placed: no account exists until the address is confirmed. After confirming, the person sets a password (`POST /me/password`) and places the bet like any order, at the price then. Answers the same whether or not the address already has an account; a confirmed one is mailed a note to sign in instead, and its bet dropped. Five mails a day per address.',
       request: { body: { content: { 'application/json': { schema: S.OnboardingRequest } } } },
-      ok: { status: 200, schema: S.OnboardingStarted, description: 'The mail is on its way.' },
+      ok: { status: 200, schema: S.SignUpStarted, description: 'The mail is on its way.' },
       errors: {
         404: 'not_found: no such market or outcome.',
         409: 'market_not_open | market_closed',
+        422: 'email_domain_not_allowed: the domain is not on the institution allowlist.',
+        429: 'rate_limited: too many sign-up mails to this address. See Retry-After.',
+      },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/signup',
+      tags: ['onboarding'],
+      summary: 'Sign up',
+      description:
+        'Makes a password-less sign-up for an address at an approved institution and mails it a confirmation link and code. No password is taken here: it is chosen after confirming, so nobody can attach one to an address they have not proven. Answers the same whether or not the address already has an account; a confirmed one is mailed a note instead. Five mails a day per address, shared with `POST /onboarding`.',
+      request: { body: { content: { 'application/json': { schema: S.SignUpRequest } } } },
+      ok: { status: 200, schema: S.SignUpStarted, description: 'The mail is on its way.' },
+      errors: {
         422: 'email_domain_not_allowed: the domain is not on the institution allowlist.',
         429: 'rate_limited: too many sign-up mails to this address. See Retry-After.',
       },
@@ -626,7 +643,7 @@ export function openApiDocument() {
       { name: 'trading', description: 'Quotes and orders.' },
       { name: 'accounts', description: 'Public profiles and the leaderboard.' },
       { name: 'me', description: 'The authenticated account.' },
-      { name: 'onboarding', description: 'Signing up by choosing a first bet.' },
+      { name: 'onboarding', description: 'Signing up: plainly, or by choosing a first bet.' },
       { name: 'admin', description: 'Requires the `admin` scope.' },
     ],
   });

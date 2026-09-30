@@ -63,7 +63,8 @@ export function SignInForm({ next }: { next: string }) {
         setBusy(true);
         setError(null);
         const address = email.trim();
-        const { error } = await authClient.signIn.email({ email: address, password, callbackURL: next });
+        // `callbackURL` is only for the confirmation mail an unconfirmed sign-in gets.
+        const { error } = await authClient.signIn.email({ email: address, password, callbackURL: signInContinueHref(next) });
         if (error) {
           setBusy(false);
           if (error.code === 'EMAIL_NOT_VERIFIED') {

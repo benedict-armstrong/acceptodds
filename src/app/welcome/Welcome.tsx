@@ -311,7 +311,9 @@ function EmailStep({
         const address = email.trim();
         const res = await fetch('/api/v1/onboarding', {
           method: 'POST',
-          credentials: 'omit',
+          // Not 'omit': the answer sets the cookie that names this browser as
+          // the one the bet was chosen in (`choseHere`).
+          credentials: 'same-origin',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             email: address,

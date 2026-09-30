@@ -152,19 +152,29 @@ describe('shareText', () => {
     url: 'https://acceptodds.com/s/sparse-moe',
     status: 'open',
     prices: [0.1, 0.2, 0.3, 0.4],
+    year: 2026,
   };
 
-  it('is the title, the bar and the bare link', () => {
-    expect(shareText(base)).toBe(['Sparse MoE @ ICLR 2027?', '🟥🟥🟥🟥🟨🟨🟨🟩🟩🟦', 'acceptodds.com/s/sparse-moe'].join('\n'));
+  it('is a BibTeX @misc with the title, the link and the bar', () => {
+    expect(shareText(base)).toBe(
+      [
+        '@misc{sparse-moe,',
+        '  title        = {Sparse MoE @ ICLR 2027?},',
+        '  howpublished = {\\url{https://acceptodds.com/s/sparse-moe}},',
+        '  note         = {🟥🟥🟥🟥🟨🟨🟨🟩🟩🟦},',
+        '  year         = {2026}',
+        '}',
+      ].join('\n'),
+    );
   });
 
-  it('adds the sharer’s side, never a size or value', () => {
-    expect(shareText({ ...base, heldOrdinal: 1 }).split('\n')[2]).toBe("I'm 🟩. You? acceptodds.com/s/sparse-moe");
+  it('escapes BibTeX specials in the title', () => {
+    expect(shareText({ ...base, title: 'A_b & 50% of $x$' })).toContain('title        = {A\\_b \\& 50\\% of x @ ICLR 2027?}');
   });
 
   it('has no bar for a settled or void market, or one with too many outcomes', () => {
-    expect(shareText({ ...base, status: 'settled' })).toBe('Sparse MoE @ ICLR 2027?\nacceptodds.com/s/sparse-moe');
-    expect(shareText({ ...base, status: 'void', heldOrdinal: 0 })).toBe('Sparse MoE @ ICLR 2027?\nacceptodds.com/s/sparse-moe');
-    expect(shareText({ ...base, prices: [0.2, 0.2, 0.2, 0.2, 0.2] }).split('\n')).toHaveLength(2);
+    expect(shareText({ ...base, status: 'settled' })).not.toContain('note');
+    expect(shareText({ ...base, status: 'void' })).not.toContain('note');
+    expect(shareText({ ...base, prices: [0.2, 0.2, 0.2, 0.2, 0.2] })).not.toContain('note');
   });
 });

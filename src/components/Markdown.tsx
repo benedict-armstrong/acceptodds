@@ -2,7 +2,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import { safeUrl } from '@/lib/markdown';
+import { gifUrl, safeUrl } from '@/lib/markdown';
 
 /**
  * User-written Markdown (GFM) with TeX math (`$…$`, `$$…$$`, via KaTeX; its
@@ -11,8 +11,9 @@ import { safeUrl } from '@/lib/markdown';
  *   - no raw HTML: react-markdown escapes it, and `rehype-raw` is not used;
  *   - links only to absolute http(s) and mailto URLs, opened in a new tab and
  *     marked `nofollow noopener noreferrer ugc`; anything else loses its href;
- *   - no images: an image becomes a plain link to it, so a comment cannot make
- *     every reader's browser fetch a URL of its author's choosing;
+ *   - images only as GIFs from `GIF_HOSTS` (`lib/markdown.ts`); any other image
+ *     becomes a plain link to it, so a comment cannot make every reader's
+ *     browser fetch a URL of its author's choosing;
  *   - KaTeX runs with `trust: false` (its default), so `\href`, `\url` and
  *     friends are inert.
  *
@@ -29,7 +30,16 @@ const components: Components = {
       <span>{children}</span>
     ),
   img: ({ src, alt }) =>
-    typeof src === 'string' && src ? (
+    typeof src === 'string' && gifUrl(src) ? (
+      // eslint-disable-next-line @next/next/no-img-element -- an allowlisted GIF, shown as written
+      <img
+        src={gifUrl(src)!}
+        alt={alt ?? ''}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        className="my-1.5 max-h-72 max-w-full"
+      />
+    ) : typeof src === 'string' && src ? (
       <a href={src} target="_blank" rel="nofollow noopener noreferrer ugc">
         {alt || src}
       </a>

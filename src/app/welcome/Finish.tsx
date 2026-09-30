@@ -20,6 +20,11 @@ export interface PendingBet {
   stakeMicro: string;
   /** The market's `orderCount` when the bet was chosen; `null` when not recorded. */
   seenOrderCount: number | null;
+  /**
+   * Whether this browser is the one the bet was chosen in. Anyone may replace
+   * an unconfirmed address's pending bet, so only then is it placed unasked.
+   */
+  choseHere: boolean;
   /** The paper's title (a standalone market's question). */
   title: string;
   href: string;
@@ -32,11 +37,12 @@ export interface PendingBet {
  * the fresh board, quoted, and sent with that quote as its bound. Then the
  * pending bet is dropped. "Skip" drops it unplaced.
  *
- * If no fill has moved the market since the bet was chosen (its
- * `orderCount` is the one seen then), the board is the one the person saw,
- * so the same stake buys the same shares at the same cost: the bet is
- * placed at once, without asking, and only the password is left. Otherwise
- * it is shown at the price now, to place or skip.
+ * If this is the browser the bet was chosen in, and no fill has moved the
+ * market since (its `orderCount` is the one seen then), the board is the one
+ * the person saw, so the same stake buys the same shares at the same cost:
+ * the bet is placed at once, without asking, and only the password is left.
+ * Otherwise it is shown at the price now, to place or skip — in another
+ * browser because it may not be the person's own bet at all.
  *
  * With no bet (placed, or the address was already registered) it only asks
  * for the password.
@@ -49,7 +55,8 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
   const [error, setError] = useState<string | null>(null);
   const { send } = useOrder(bet?.market.id ?? '', () => {});
   const label = bet?.market.outcomes.find((o) => o.id === bet.outcomeId)?.label ?? '';
-  const unmoved = bet !== null && bet.seenOrderCount !== null && bet.market.orderCount === bet.seenOrderCount;
+  const unmoved =
+    bet !== null && bet.choseHere && bet.seenOrderCount !== null && bet.market.orderCount === bet.seenOrderCount;
   // 'auto' while placing an unmoved bet by itself; 'moved' if it moved after all.
   const [auto, setAuto] = useState<'auto' | 'moved' | null>(unmoved ? 'auto' : null);
   const [placed, setPlaced] = useState<string | null>(null);
@@ -166,9 +173,11 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
         </button>
         {bet && !placed && (
           <div className={ui.fine}>
-            {auto === 'moved' || !unmoved
-              ? 'The market has moved since you chose this bet: it is placed at the price now.'
-              : 'At the price now.'}
+            {!bet.choseHere
+              ? 'This bet was chosen in another browser, or by someone else using your address. Place it only if it is yours.'
+              : auto === 'moved' || !unmoved
+                ? 'The market has moved since you chose this bet: it is placed at the price now.'
+                : 'At the price now.'}
           </div>
         )}
         {error && <div className={ui.note(false)}>{error}</div>}

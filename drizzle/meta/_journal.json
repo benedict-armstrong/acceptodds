@@ -99,6 +99,13 @@
       "when": 1790788387622,
       "tag": "0013_drop_pending_bet_comment",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790793819304,
+      "tag": "0014_pending_bet_browser_hash",
+      "breakpoints": true
     }
   ]
 }

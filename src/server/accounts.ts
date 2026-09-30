@@ -421,8 +421,13 @@ export async function reconcileBalances(
 // accounts for Better Auth users
 // ---------------------------------------------------------------------------
 
-/** A handle from a display name or an email local part: `[a-z0-9-]`, 3–30 chars. */
-export function handleFrom(name: string | null | undefined, email: string): string {
+/**
+ * A handle from a display name: `[a-z0-9-]`, 3–30 chars, or `trader` when
+ * the name gives fewer than 3 (none yet, or not Latin). Never from the email:
+ * a handle is public (`/people/<handle>`), and an address's local part is
+ * often the person's full name at their institution.
+ */
+export function handleFrom(name: string | null | undefined): string {
   const pick = (s: string) =>
     s
       .normalize('NFKD')
@@ -433,8 +438,7 @@ export function handleFrom(name: string | null | undefined, email: string): stri
       .slice(0, 30)
       .replace(/-+$/, '');
   const fromName = pick(name ?? '');
-  const fromEmail = pick(email.split('@')[0] ?? '');
-  const base = fromName.length >= 3 ? fromName : fromEmail.length >= 3 ? fromEmail : 'trader';
+  const base = fromName.length >= 3 ? fromName : 'trader';
   // `market:` and `house` are the engine's; a UUID-shaped handle would be confusing.
   return base === 'house' ? 'house-trader' : base;
 }
@@ -461,9 +465,11 @@ export async function ensureAccountForUser(
   // Sign-up already refused unlisted domains; a domain removed from the list
   // since then gets an account that may browse but not trade.
   const institution = institutionForEmail(user.email);
-  const base = handleFrom(user.name, user.email);
+  const base = handleFrom(user.name);
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const handle = attempt === 0 ? base : `${base.slice(0, 25)}-${randomSuffix()}`;
+    // No name (an account made by a sign-in link): `trader-xxxx` from the
+    // start, and a real handle from the first name set (`setDisplayName`).
+    const handle = attempt === 0 && base !== 'trader' ? base : `${base.slice(0, 25)}-${randomSuffix()}`;
     try {
       return await createAccount(
         {
@@ -490,7 +496,9 @@ function randomSuffix(): string {
 
 /**
  * Rename a trader: `accounts.display_name`, and the Better Auth user's
- * `name` with it, so the two never disagree. The handle stays. Names are on
+ * `name` with it, so the two never disagree. The handle stays — except for
+ * the first name of an account that had none (made by a sign-in link), whose
+ * placeholder `trader-xxxx` handle is then made from it, once. Names are on
  * the leaderboard, so the ranked field is invalidated after the commit.
  */
 export async function setDisplayName(
@@ -499,11 +507,30 @@ export async function setDisplayName(
   database: Db = getDb(),
 ): Promise<typeof accounts.$inferSelect> {
   const name = displayName.trim();
-  const row = await database.transaction(async (tx) => {
-    const [updated] = await tx.update(accounts).set({ displayName: name }).where(eq(accounts.id, account.id)).returning();
-    if (account.userId) await tx.update(authUser).set({ name }).where(eq(authUser.id, account.userId));
-    return updated;
-  });
-  invalidateStandings();
-  return row;
+  const [before] = account.userId
+    ? await database.select({ name: authUser.name }).from(authUser).where(eq(authUser.id, account.userId))
+    : [];
+  const firstName = !!before && !before.name.trim();
+  const base = handleFrom(name);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const handle =
+      !firstName || base === 'trader' ? account.handle : attempt === 0 ? base : `${base.slice(0, 25)}-${randomSuffix()}`;
+    try {
+      const row = await database.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(accounts)
+          .set({ displayName: name, handle })
+          .where(eq(accounts.id, account.id))
+          .returning();
+        if (account.userId) await tx.update(authUser).set({ name }).where(eq(authUser.id, account.userId));
+        return updated;
+      });
+      invalidateStandings();
+      return row;
+    } catch (err) {
+      // The handle was taken: try another.
+      if (!isUniqueViolation(err) || handle === account.handle) throw err;
+    }
+  }
+  throw new Error(`could not find a free handle for account ${account.id}`);
 }

@@ -605,6 +605,13 @@ export const pendingBets = pgTable(
      * it was recorded: treated as moved.
      */
     seenOrderCount: integer('seen_order_count'),
+    /**
+     * SHA-256 of the nonce in the `onboarding_browser` cookie of the browser
+     * the bet was chosen in (`server/onboarding.ts`). Only there is it placed
+     * without asking; anyone may replace an unconfirmed address's bet, so
+     * anywhere else it is shown first. Null: never placed without asking.
+     */
+    browserHash: text('browser_hash'),
     createdAt: createdAt(),
   },
   (t) => [check('pending_bets_stake_positive', sql`${t.stakeMicro} > 0`)],

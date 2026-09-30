@@ -208,25 +208,32 @@ export interface ShareInput {
   status: string;
   /** Prices indexed by ordinal. */
   prices: readonly number[];
-  /** The ordinal the sharer holds most of, to add "I'm 🟩. You?"; null for the public version. */
-  heldOrdinal?: number | null;
+  /** The year of the entry, the sharer's own. */
+  year: number;
+}
+
+/** A BibTeX field value: `& % # _ \ { }` are escaped so the entry compiles. */
+function bibEscape(text: string): string {
+  return text.replace(/[\\&%#_{}]/g, (c) => (c === '\\' ? '\\textbackslash{}' : `\\${c}`));
 }
 
 /**
- * The Wordle-style text share (issue #11 §3): a title line, the outcome bar,
- * the link. Short and unexplained on purpose. Only while the market is open
- * or closed and has 2–4 outcomes; otherwise just the title line and the link.
+ * The text a share copies (issue #33): a BibTeX `@misc` entry, keyed by the
+ * slug, whose title is the usual `<title> @ <kind>?` line, `howpublished` the
+ * link and `note` the outcome bar. The bar (prices, never a value, §1.1) is
+ * there only while the market is open or closed and has 2–4 outcomes.
  */
 export function shareText(s: ShareInput): string {
-  const link = s.url.replace(/^https?:\/\//, '');
-  const lines = [shareTitleLine(s.title, s.kind)];
+  const key = decodeURIComponent(s.url.replace(/[?#].*$/, '').split('/').pop() ?? '') || 'market';
+  const fields: [string, string][] = [
+    ['title', bibEscape(shareTitleLine(s.title, s.kind, 120))],
+    ['howpublished', `\\url{${s.url}}`],
+  ];
   const barred =
     (s.status === 'open' || s.status === 'closed') && s.prices.length >= 2 && s.prices.length <= MAX_BAR_OUTCOMES;
-  if (barred) lines.push(squareRow(s.prices));
-  if (barred && s.heldOrdinal != null && s.heldOrdinal >= 0 && s.heldOrdinal < s.prices.length) {
-    lines.push(`I'm ${squareOf(s.heldOrdinal, s.prices.length)}. You? ${link}`);
-  } else {
-    lines.push(link);
-  }
-  return lines.join('\n');
+  if (barred) fields.push(['note', squareRow(s.prices)]);
+  fields.push(['year', String(s.year)]);
+  const width = Math.max(...fields.map(([k]) => k.length));
+  const body = fields.map(([k, v]) => `  ${k.padEnd(width)} = {${v}}`).join(',\n');
+  return `@misc{${key.replace(/[^\w.:-]/g, '-')},\n${body}\n}`;
 }

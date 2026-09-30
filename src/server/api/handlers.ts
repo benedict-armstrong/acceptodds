@@ -9,7 +9,10 @@ import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
 import { upsertListing } from '../listings';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
-import { clearPendingBet, setFirstPassword, startOnboarding } from '../onboarding';
+import { clearPendingBet, newBrowserNonce, ONBOARDING_BROWSER_COOKIE, setFirstPassword, startOnboarding } from '../onboarding';
+import { claimSignUp, sendConfirmation } from '../signup';
+import { signInContinueHref } from '@/lib/links';
+import { safeReturnTo } from '@/lib/return-to';
 import {
   accountOrders,
   leaderboard as leaderboardView,
@@ -424,9 +427,28 @@ export const deleteMyAffiliation = route(async (req, params) => {
 export const postOnboarding = route(async (req) => {
   const principal = await authenticate(req);
   const body = await parseBody(req, S.OnboardingRequest);
-  await startOnboarding(body);
+  const nonce = newBrowserNonce();
+  await startOnboarding(body, nonce);
   events.log('onboarding.started', { accountId: null, marketId: body.marketId });
-  return respond(S.OnboardingStarted, { email: body.email }, { principal });
+  // Names this browser as the one the bet was chosen in (`choseHere`).
+  const cookie =
+    `${ONBOARDING_BROWSER_COOKIE}=${nonce}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax` +
+    (process.env.NODE_ENV === 'production' ? '; Secure' : '');
+  return respond(S.SignUpStarted, { email: body.email }, { principal, headers: { 'Set-Cookie': cookie } });
+});
+
+/**
+ * Sign up (`server/signup.ts`): a name and an email, no password; the
+ * password is chosen after confirming, at `/signin/continue`. Answers the
+ * same whether or not the address is taken.
+ */
+export const postSignUp = route(async (req) => {
+  const principal = await authenticate(req);
+  const body = await parseBody(req, S.SignUpRequest);
+  const claimed = await claimSignUp(body.email, body.name);
+  if (claimed) await sendConfirmation(claimed.email, signInContinueHref(safeReturnTo(body.next)));
+  events.log('signup.started', { accountId: null });
+  return respond(S.SignUpStarted, { email: body.email }, { principal });
 });
 
 /** The first password of an account made by onboarding. Session only. */

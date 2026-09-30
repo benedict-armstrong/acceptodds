@@ -1,15 +1,12 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { isUniqueViolation } from '@/db/errors';
-import { user } from '@/db/auth-schema';
 import { markets, outcomes, pendingBets, type PendingBet } from '@/db/schema';
 import { WELCOME_FINISH } from '@/lib/onboarding';
 import { ApiError } from './api/errors';
 import { startingBalanceMicro } from './accounts';
-import { normalizeEmail } from './affiliations';
-import { getAuth, mailAlreadyRegistered } from './better-auth';
-import { institutionForEmail } from './institution-domains';
-import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
+import { getAuth } from './better-auth';
+import { claimSignUp, sendConfirmation } from './signup';
 
 /**
  * Onboarding (`/welcome`): someone with no account picks a paper and a bet,
@@ -25,16 +22,11 @@ import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
  *
  * Answers the same whether or not the address is taken: a confirmed one gets
  * a "sign in instead" mail and its bet is dropped, never added to that
- * account; an unconfirmed one gets a fresh mail and its bet replaced, which
- * is harmless because the bet is shown before it is placed.
+ * account; an unconfirmed one gets a fresh mail and its bet replaced. That
+ * is harmless only because a replaced bet is never placed unseen: it is
+ * placed without asking only in the browser that chose it (`choseHere`).
+ * The sign-up itself is `server/signup.ts`, shared with `POST /signup`.
  */
-
-/**
- * Onboarding mails per address: 5, refilling over a day. It is an
- * unauthenticated route that sends mail; the edge limits by IP, this limits
- * what any number of IPs can send to one inbox.
- */
-const MAIL_BUDGET: RateLimitConfig = { burst: 5, perSecond: 5 / 86_400 };
 
 export interface StartOnboarding {
   email: string;
@@ -45,11 +37,12 @@ export interface StartOnboarding {
   seenOrderCount: number;
 }
 
-export async function startOnboarding(input: StartOnboarding, database: Database = getDb()): Promise<void> {
-  const email = normalizeEmail(input.email);
-  if (!institutionForEmail(email)) {
-    throw new ApiError(422, 'email_domain_not_allowed', 'sign-up is open to approved institutional email domains only');
-  }
+export async function startOnboarding(
+  input: StartOnboarding,
+  /** The random nonce set as `ONBOARDING_BROWSER_COOKIE` in the browser that chose the bet. */
+  browserNonce: string,
+  database: Database = getDb(),
+): Promise<void> {
   if (input.stakeMicro <= 0n || input.stakeMicro > startingBalanceMicro()) {
     throw new ApiError(400, 'validation_error', 'stakeMicro must be positive and at most the starting balance');
   }
@@ -62,54 +55,44 @@ export async function startOnboarding(input: StartOnboarding, database: Database
   if (target.status !== 'open') throw new ApiError(409, 'market_not_open', 'this market is not open');
   if (target.closesAt.getTime() <= Date.now()) throw new ApiError(409, 'market_closed', 'this market has closed');
 
-  const budget = await consume(`onboarding-mail:${email}`, MAIL_BUDGET);
-  if (!budget.allowed) {
-    throw new ApiError(
-      429,
-      'rate_limited',
-      'too many sign-up emails to this address; try again later',
-      { retryAfterSeconds: budget.retryAfterSeconds },
-      rateLimitHeaders(budget),
-    );
-  }
-
-  const auth = getAuth();
-  let existing = await userByEmail(email, database);
-  if (!existing) {
-    try {
-      const ctx = await auth.$context;
-      await ctx.internalAdapter.createUser({ email, name: input.name.trim(), emailVerified: false }, { method: 'onboarding' });
-    } catch (err) {
-      // The same address, signing up at the same moment: the other one won.
-      if (!isUniqueViolation(err)) throw err;
-    }
-    existing = await userByEmail(email, database);
-    if (!existing) throw new Error(`user ${email} vanished after creation`);
-  }
-
-  if (existing.emailVerified) {
-    await mailAlreadyRegistered(email, database);
-    return;
-  }
+  const claimed = await claimSignUp(input.email, input.name, database);
+  if (!claimed) return; // already confirmed: mailed instead, and the bet is dropped
   const bet = {
     marketId: input.marketId,
     outcomeId: input.outcomeId,
     stakeMicro: input.stakeMicro,
     seenOrderCount: input.seenOrderCount,
+    browserHash: browserHash(browserNonce),
   };
   await database
     .insert(pendingBets)
-    .values({ userId: existing.id, ...bet })
+    .values({ userId: claimed.userId, ...bet })
     .onConflictDoUpdate({ target: pendingBets.userId, set: { ...bet, createdAt: new Date() } });
-  await auth.api.sendVerificationEmail({ body: { email, callbackURL: WELCOME_FINISH } });
+  await sendConfirmation(claimed.email, WELCOME_FINISH);
 }
 
-async function userByEmail(email: string, database: Database) {
-  const [row] = await database
-    .select({ id: user.id, emailVerified: user.emailVerified })
-    .from(user)
-    .where(eq(user.email, email));
-  return row ?? null;
+/**
+ * The cookie naming the browser a pending bet was chosen in. Anyone may
+ * onboard with an unconfirmed address and replace its pending bet, so a
+ * bet is placed without asking only in the browser that chose it (its hash
+ * is on the bet): anywhere else it is shown first, to place or skip.
+ */
+export const ONBOARDING_BROWSER_COOKIE = 'onboarding_browser';
+
+export function newBrowserNonce(): string {
+  return randomBytes(24).toString('base64url');
+}
+
+function browserHash(nonce: string): string {
+  return createHash('sha256').update(nonce).digest('hex');
+}
+
+/** Whether `nonce` (this browser's cookie) is the one the bet was chosen with. */
+export function choseHere(bet: PendingBet, nonce: string | undefined): boolean {
+  if (!nonce || !bet.browserHash) return false;
+  const a = Buffer.from(bet.browserHash, 'hex');
+  const b = Buffer.from(browserHash(nonce), 'hex');
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** The user's pending bet, or `null`. */

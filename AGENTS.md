@@ -387,20 +387,42 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   code are a confirmation mail and the "choose a password" mail (below), and
   the only resends are `/send-verification-email` and
   `/request-password-reset`. Signing in unconfirmed with the right
-  password resends (`sendOnSignIn`) and goes to `/confirm`. Sign-in, sign-up
+  password (only a user from before sign-up stopped taking passwords has
+  one) resends (`sendOnSignIn`) and goes to `/confirm`. Sign-in, sign-up
   and the mail's link return to the page the person came from (`?next=`,
-  `callbackURL`), only ever a same-site path (`lib/return-to.ts`). While a
+  `callbackURL`), only ever a same-site path (`lib/return-to.ts`), by way
+  of `/signin/continue`, which first asks for anything the account lacks. While a
   code is outstanding a banner follows them round the site, from this
   browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
   nothing. There is still no user session, account or reputation before
   confirmation.
+- **Sign-up takes no password** (`POST /signup`, `server/signup.ts`,
+  shared with onboarding): a name and an email make a user with no
+  credential and mail the confirmation; the password is chosen after
+  confirming, at `/signin/continue`. Better Auth's `/sign-up/email` is in
+  `disabledPaths`. Otherwise anyone could sign up with your address and
+  their password and wait for you to confirm it, which Better Auth's own
+  confirmation does not undo. As a second lock, `afterEmailVerification`
+  drops every password and session the user had before the address was
+  proven (`revokeUnprovenAccess`); it runs before the confirmation's own
+  session is made. Five sign-up mails per address a day
+  (`signup-mail:<email>`, both routes together).
 - **Signing up with a taken address looks like success, and mails the
-  owner.** With verification required, Better Auth answers a duplicate
-  sign-up with a fake 200 (enumeration guard) and creates nothing.
-  `onExistingUserSignUp` then resends the code and link if the address was
-  never confirmed, or mails "you already have an account, sign in" if it
-  was. The typed password is ignored. Don't turn this into a 422: that
-  tells anyone which addresses have accounts.
+  owner**: the code and link again if it was never confirmed, else "you
+  already have an account" (sign in, or choose a password). Don't turn
+  this into a 422: that tells anyone which addresses have accounts.
+- **Every auth mail spends a per-address budget**, `auth-mail:<email>`, 10
+  a day: confirmations, resets and "already registered" notes. Over it,
+  nothing is sent and the answer is unchanged — a 429 would tell anyone
+  which addresses have accounts, since Better Auth only mails an existing
+  one. It is checked before a code is minted, so it also caps the fresh
+  3-guess codes anyone can have made for an inbox.
+- **A password reset ends every other session**
+  (`revokeSessionsOnPasswordReset`), by link or by code.
+- **A handle never comes from the email** (`handleFrom`): it is public, and
+  a local part is often a full name. No usable name gives `trader-xxxx`;
+  the first name an account without one sets (`accounts.setDisplayName`)
+  replaces that placeholder, once.
 - **Sign-in links** (Better Auth's `magicLink` plugin): `/signin` offers
   "Email me a sign-in link" under the password, for the address typed. The
   allowlist and a per-address budget (`magic-link-mail:<email>`, 5 a day)
@@ -592,7 +614,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   remark-math + rehype-katex; KaTeX's CSS is imported in `app/layout.tsx`).
   No raw HTML (never add `rehype-raw`), links only to absolute http(s) and
   mailto (`lib/markdown.ts`, `rel="nofollow noopener noreferrer ugc"`), and
-  images become links, so a comment cannot make readers fetch a URL.
+  images become links, except an https `.gif` on `GIF_HOSTS`
+  (`lib/markdown.ts`: giphy, tenor), which renders inline — so a comment can
+  make readers fetch only from those CDNs, never an author's own URL.
 - **Backing: traders put shares they hold behind other people's comments**
   (`POST`/`DELETE /comments/{id}/backing`, `server/backings.ts`). No
   reputation moves; the shares stay in `positions`. Rules:
@@ -753,13 +777,12 @@ unpaginated, and 5 s for that search.
   - `/badge/<slug>.svg` (`lib/badge.ts`): site name, headline, a small bar;
     `?style=compact`, `?bar=0`. Public, five-minute cache, an ETag that
     changes with each fill. An image, not `/api/v1`, so not in OpenAPI.
-  - The paper page's **share** button copies the Wordle-style text (a title
-    line of ≤ 50 characters that always keeps `@ <kind>?`, ten squares, the
-    bare link), never with the viewer's stake (#18). The `⋯` beside it opens
-    a popover with the short name, an opt-in "I'm 🟩. You?" while the viewer
-    holds shares — the outcome they hold most of, never a size — the
-    badge's Markdown/HTML and the link. It reads the same SWR keys as
-    `MarketLive`, so it adds no polling.
+  - The paper page's **share** button copies a BibTeX `@misc` entry (#33,
+    `shareText`: keyed by the slug; `title` is `<title> @ <kind>?`,
+    `howpublished` the `\url{}` link, `note` the ten squares while open or
+    closed, `year`), never with the viewer's stake (#18). The `⋯` beside it opens
+    a popover with only the badge and its Markdown/HTML copy buttons. It
+    reads the same SWR key as `MarketLive`, so it adds no polling.
 - **Page analytics are Umami** (`components/Analytics`, host-wide
   instance in `~/ops`), on only when `UMAMI_URL` and `UMAMI_WEBSITE_ID` are
   set, counting only `APP_URL`'s host. Every hit's URL and referrer pass
@@ -871,8 +894,9 @@ unpaginated, and 5 s for that search.
   (`POST /me/password`, Better Auth's server-only `setPassword`; forgot
   password also works for a user without one) and places the bet as an
   ordinary order: **the stake is kept, not the share count**, sized on the
-  board then and bounded by its quote. Then `DELETE /me/pending-bet`. It is shown before it is placed, so another
-  onboarding with the same unconfirmed address may replace it.
+  board then and bounded by its quote. Then `DELETE /me/pending-bet`.
+  Another onboarding with the same unconfirmed address may replace it, so
+  it is placed unasked only in the browser that chose it (below).
 - **An unmoved bet is placed without asking** (`pending_bets.seen_order_count`,
   `seenOrderCount` in `POST /onboarding`): the market's `orderCount` on the
   board the bet was chosen from. Prices move only by fills, so while it is
@@ -880,12 +904,17 @@ unpaginated, and 5 s for that search.
   saw; `Finish` places it on arrival (checking the count again on the fresh
   board, once, guarded against a double mount), then asks for the password.
   A moved market, or a bet stored before the column (null), is shown at the
-  price now to place or skip. The count is client-supplied, and harmless if
-  wrong: the order is still bounded by a quote on the live board.
+  price now to place or skip. The count is client-supplied, so this is also
+  gated on the browser: `POST /onboarding` sets an `onboarding_browser`
+  cookie (HttpOnly, a random nonce, so the form posts with
+  `credentials: 'same-origin'`) and stores its SHA-256 on the bet
+  (`browser_hash`). Only where `choseHere` matches is it placed unasked;
+  anywhere else — another device, or a bet someone else planted with your
+  unconfirmed address — it is shown, saying so.
 - **Same answer whether or not the address is taken**, as for sign-up: a
   confirmed address is mailed "sign in instead" and its bet is dropped,
-  never added to that account. Five mails per address a day
-  (`onboarding-mail:<email>`), since the route is anonymous.
+  never added to that account. Five mails per address a day, shared with
+  `POST /signup` (`signup-mail:<email>`), since the route is anonymous.
 - **`/welcome` comes first, once per browser.** `/signin` and `/signup`
   redirect to it (keeping `?next=`) until the `welcomed` cookie is set,
   which `/welcome` sets when shown; its intro links to both. The cookie is

@@ -13,7 +13,6 @@ import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
 import { consume, type RateLimitConfig } from './ratelimit';
 import { setPasswordPath } from '@/lib/links';
-import { safeReturnTo } from '@/lib/return-to';
 import { sendMail } from './mail';
 import { siteUrl } from './share';
 
@@ -121,6 +120,31 @@ export async function resetTokenEmail(token: string, database: Database = getDb(
   return u?.email ?? null;
 }
 
+/**
+ * Auth mail per address — confirmations, resets and "already registered"
+ * notes together: 10, refilling over a day. Every route that sends one is
+ * anonymous, and Better Auth's own limiter is per IP; this caps what any
+ * number of IPs can send one inbox, and how many fresh codes (3 guesses
+ * each) anyone can have minted for it. `false` means send nothing.
+ */
+async function authMailBudget(email: string): Promise<boolean> {
+  return (await consume(`auth-mail:${email.trim().toLowerCase()}`, AUTH_MAIL_BUDGET)).allowed;
+}
+
+const AUTH_MAIL_BUDGET: RateLimitConfig = { burst: 10, perSecond: 10 / 86_400 };
+
+/**
+ * Drop the passwords and sessions a user had before proving the address
+ * (`afterEmailVerification`). Sign-up no longer takes a password, so this
+ * only finds one set by a sign-up from before that, or by someone else.
+ */
+async function revokeUnprovenAccess(userId: string, database: Database): Promise<void> {
+  await database
+    .delete(authSchema.account)
+    .where(and(eq(authSchema.account.userId, userId), eq(authSchema.account.providerId, 'credential')));
+  await database.delete(authSchema.session).where(eq(authSchema.session.userId, userId));
+}
+
 type RequestReset = (body: { email: string; redirectTo: string }) => Promise<unknown>;
 
 /**
@@ -140,6 +164,7 @@ async function mailRegistered(email: string, database: Database, requestReset: R
     await requestReset({ email, redirectTo: setPasswordPath(email) });
     return;
   }
+  if (!(await authMailBudget(email))) return;
   await sendMail({
     to: email,
     subject: 'You already have an acceptodds account',
@@ -161,27 +186,18 @@ export function createAuth(database: Database) {
       enabled: true,
       requireEmailVerification: true,
       minPasswordLength: 12,
-      // With verification required, signing up with a taken address answers
-      // exactly like a fresh sign-up (Better Auth's guard against email
-      // enumeration) and creates nothing. The person is on `/confirm` waiting
-      // for a code, so mail the address rather than leave them there: a fresh
-      // code and link if it was never confirmed, else a note to sign in. Only
-      // the inbox's owner learns the address is taken, and the password typed
-      // here is ignored.
-      onExistingUserSignUp: async ({ user }, request) => {
-        if (!user.emailVerified) {
-          const body = (await request?.json().catch(() => null)) as { callbackURL?: unknown } | null;
-          const callbackURL = typeof body?.callbackURL === 'string' ? safeReturnTo(body.callbackURL) : undefined;
-          await auth.api.sendVerificationEmail({ body: { email: user.email, callbackURL } });
-          return;
-        }
-        await mailRegistered(user.email, database, (body) => auth.api.requestPasswordReset({ body }));
-      },
+      // A reset proves the inbox, and ends every other session, so a reset
+      // after a stolen session actually locks the thief out (the person is
+      // signed in afresh by `/set-password`).
+      revokeSessionsOnPasswordReset: true,
       // An account with no password yet (made by onboarding) is told so, and
       // gets a code as well as the link: it may be on a page asking for one
       // (`/welcome`'s last step), where the code leads to `/set-password`
       // too. Each mail rotates the code. Either way it sets the first password.
       sendResetPassword: async ({ user, url }) => {
+        // Silently, over budget: saying so would tell anyone which addresses
+        // have accounts (Better Auth answers the same for an unknown one).
+        if (!(await authMailBudget(user.email))) return;
         if (await hasPassword(user.id, database)) {
           await sendMail({
             to: user.email,
@@ -202,12 +218,17 @@ export function createAuth(database: Database) {
       },
     },
     emailVerification: {
-      sendOnSignUp: true,
-      // Signing in unconfirmed (right password only) sends a fresh code + link.
+      // Signing in unconfirmed with the right password — only a user from
+      // before sign-up stopped taking passwords can — sends a fresh code and
+      // link. Confirming then drops that password (below), and
+      // `/signin/continue` asks for one.
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
       expiresIn: CONFIRMATION_TTL_SECONDS,
       sendVerificationEmail: async ({ user, url }) => {
+        // Silently over budget, as above: before a code is minted, so a
+        // spent budget also stops handing out fresh guesses.
+        if (!(await authMailBudget(user.email))) return;
         // Each mail rotates the code: only the newest one works.
         const code = await auth.api.createVerificationOTP({ body: { email: user.email, type: 'email-verification' } });
         await sendMail({
@@ -221,7 +242,15 @@ export function createAuth(database: Database) {
       // Confirmation is the institutional verification: it creates the trader
       // account, grants the starting balance and sets `verified_at`, once.
       // `server/auth.ts` repeats this lazily, so a failure here costs a retry.
+      //
+      // First it drops every password and session the user had before the
+      // address was proven. Whoever set them may not be whoever owns the inbox:
+      // otherwise someone could sign up with your address and their password,
+      // and wait for you to confirm it. Better Auth does this itself for a
+      // sign-in link, but not for confirmation. Runs before the confirmation's
+      // own session is made, so that one survives.
       afterEmailVerification: async (user) => {
+        await revokeUnprovenAccess(user.id, database);
         await ensureAccountForUser({ id: user.id, name: user.name, email: user.email }, database);
       },
     },
@@ -252,7 +281,9 @@ export function createAuth(database: Database) {
       },
     },
 
-    disabledPaths: DISABLED_OTP_PATHS,
+    // Sign-up is ours (`server/signup.ts`, `POST /signup`): it takes no
+    // password, so Better Auth's, which does, is off.
+    disabledPaths: ['/sign-up/email', ...DISABLED_OTP_PATHS],
 
     advanced: {
       // Better Auth skips its origin/CSRF check when NODE_ENV=test. Pin it on,

@@ -58,6 +58,7 @@ export type EventKind =
   | 'share.opened'
   | 'badge.read'
   | 'onboarding.started'
+  | 'signup.started'
   | 'password.set';
 
 export function log(

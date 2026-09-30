@@ -7,6 +7,7 @@ import { getDb } from '@/db';
 import { account as authAccount, user } from '@/db/auth-schema';
 import { accounts, ledgerEntries } from '@/db/schema';
 import { ensureAccountForUser } from '@/server/accounts';
+import { getAuth, missingFromUser } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { api, authCall, cookieFrom, ORIGIN, signUp, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
@@ -29,9 +30,25 @@ afterAll(async () => {
   await closePool();
 });
 
-/** Sign up without clicking the link. */
-async function signUpUnconfirmed(email: string, name = 'Pending Person'): Promise<Response> {
-  return authCall('POST', '/sign-up/email', { body: { email, password: 'correct horse battery', name } });
+/** Sign up (`POST /signup`) without clicking the link. */
+async function signUpUnconfirmed(email: string, name = 'Pending Person', next?: string) {
+  return api('POST', '/signup', { body: { email, name, ...(next ? { next } : {}) } });
+}
+
+/**
+ * An unconfirmed user holding a password, as Better Auth's own sign-up used
+ * to make — or as someone else could have, with your address.
+ */
+async function unconfirmedWithPassword(email: string, password = 'correct horse battery') {
+  const ctx = await getAuth().$context;
+  const u = await ctx.internalAdapter.createUser({ email, name: 'Pending Person', emailVerified: false }, { method: 'email' });
+  await ctx.internalAdapter.linkAccount({
+    userId: u.id,
+    providerId: 'credential',
+    accountId: u.id,
+    password: await ctx.password.hash(password),
+  });
+  return u;
 }
 
 async function accountsFor(email: string) {
@@ -57,7 +74,7 @@ const order = (outcomeId: string) => ({ outcomeId, sharesMicro: '1000000', maxCo
 // sign-up
 // ---------------------------------------------------------------------------
 
-describe('sign-up with email and password', () => {
+describe('sign-up', () => {
   it('confirming the email creates a verified trader with the starting balance, and a session', async () => {
     const cookie = await signUp('ada@example.org', 'Ada Lovelace');
 
@@ -107,23 +124,41 @@ describe('sign-up with email and password', () => {
     expect(grants).toHaveLength(1);
   });
 
-  it('refuses to sign in before the email is confirmed', async () => {
-    const up = await authCall('POST', '/sign-up/email', {
+  it('takes no password: Better Auth\'s own sign-up is off, and nothing signs in before confirming', async () => {
+    const off = await authCall('POST', '/sign-up/email', {
       body: { email: 'slow@example.org', password: 'correct horse battery', name: 'Slow' },
     });
-    expect(up.status).toBe(200);
-    expect(cookieFrom(up)).not.toContain('session_token=');
+    expect(off.status).toBe(404);
 
+    expect((await signUpUnconfirmed('slow@example.org')).status).toBe(200);
     const inRes = await authCall('POST', '/sign-in/email', {
       body: { email: 'slow@example.org', password: 'correct horse battery' },
     });
-    expect(inRes.status).toBe(403);
+    expect(inRes.status).toBe(401); // there is no password to sign in with
     expect(cookieFrom(inRes)).not.toContain('session_token=');
   });
 
+  it('confirming drops a password set before the address was proven, and every session with it', async () => {
+    // Someone signed up with your address and their password, before sign-up stopped taking one.
+    await unconfirmedWithPassword('owner@example.org', 'the attacker password');
+    expect((await signUpUnconfirmed('owner@example.org')).status).toBe(200);
+    const code = codeFrom(devOutbox().findLast((m) => m.to === 'owner@example.org')!.text);
+
+    const confirmed = await confirmWithCode('owner@example.org', code);
+    const cookie = cookieFrom(confirmed);
+    expect(cookie).toContain('session_token=');
+    expect((await api('GET', '/me', { cookie })).status).toBe(200); // the confirmer's own session survives
+
+    const attacker = await authCall('POST', '/sign-in/email', {
+      body: { email: 'owner@example.org', password: 'the attacker password' },
+    });
+    expect(attacker.status).toBe(401);
+    const [u] = await db.select().from(user).where(eq(user.email, 'owner@example.org'));
+    expect(await missingFromUser(u.id)).toEqual({ name: false, password: true });
+  });
+
   it('signing in unconfirmed with the right password sends a fresh code and link; a wrong one sends nothing', async () => {
-    await signUpUnconfirmed('again@example.org');
-    clearDevOutbox();
+    await unconfirmedWithPassword('again@example.org');
     const wrong = await authCall('POST', '/sign-in/email', { body: { email: 'again@example.org', password: 'not the password' } });
     expect(wrong.status).toBe(401);
     expect(devOutbox()).toHaveLength(0);
@@ -138,29 +173,28 @@ describe('sign-up with email and password', () => {
   it('signing up again with an unconfirmed address resends the code and link, and creates nothing', async () => {
     await signUpUnconfirmed('twice@example.org');
     clearDevOutbox();
-    const again = await authCall('POST', '/sign-up/email', {
-      body: { email: 'twice@example.org', password: 'another password entirely', name: 'Twice', callbackURL: '/papers/x' },
-    });
+    const again = await signUpUnconfirmed('twice@example.org', 'Twice', '/papers/x');
     expect(again.status).toBe(200); // indistinguishable from a fresh sign-up
     expect(await db.select().from(user).where(eq(user.email, 'twice@example.org'))).toHaveLength(1);
 
     const mail = devOutbox().find((m) => m.to === 'twice@example.org')!;
     const otp = codeFrom(mail.text);
-    expect(mail.text).toContain(encodeURIComponent('/papers/x'));
+    // The link returns via /signin/continue, which asks for the password, then to /papers/x.
+    expect(mail.text).toContain(encodeURIComponent('/signin/continue?next=%2Fpapers%2Fx'));
     expect((await confirmWithCode('twice@example.org', otp)).status).toBe(200);
-    // The first password still stands; the second was ignored.
-    const inRes = await authCall('POST', '/sign-in/email', { body: { email: 'twice@example.org', password: 'correct horse battery' } });
-    expect(inRes.status).toBe(200);
+  });
+
+  it('refuses a `next` off the site', async () => {
+    await signUpUnconfirmed('away@example.org', 'Away', 'https://evil.example/');
+    const mail = devOutbox().find((m) => m.to === 'away@example.org')!;
+    expect(mail.text).not.toContain('evil.example');
   });
 
   it('signing up again with a confirmed address mails its owner to sign in, and changes nothing', async () => {
     await signUp('taken@example.org', 'Taken');
     clearDevOutbox();
-    const again = await authCall('POST', '/sign-up/email', {
-      body: { email: 'taken@example.org', password: 'another password entirely', name: 'Impostor' },
-    });
+    const again = await signUpUnconfirmed('taken@example.org', 'Impostor');
     expect(again.status).toBe(200);
-    expect(cookieFrom(again)).not.toContain('session_token=');
     expect(devOutbox()).toEqual([
       expect.objectContaining({ to: 'taken@example.org', subject: 'You already have an acceptodds account', text: expect.stringContaining('/signin') }),
     ]);
@@ -227,6 +261,15 @@ describe('confirming with the code from the mail', () => {
     expect(res.status).toBe(400);
     expect(cookieFrom(res)).not.toContain('session_token=');
     expect(await accountsFor('guess@example.org')).toEqual([]);
+  });
+
+  it('mails one address at most ten auth mails a day, silently', async () => {
+    await signUpUnconfirmed('flood@example.org'); // the first
+    for (let i = 0; i < 12; i += 1) {
+      const res = await authCall('POST', '/send-verification-email', { body: { email: 'flood@example.org' } });
+      expect(res.status).toBe(200); // the same answer as for an address with no account
+    }
+    expect(devOutbox().filter((m) => m.to === 'flood@example.org')).toHaveLength(10);
   });
 
   it('a resend replaces the code: only the newest one works', async () => {
@@ -302,7 +345,8 @@ describe('a session on /api/v1', () => {
   });
 
   it('is rate limited per user', async () => {
-    process.env.API_RATE_LIMIT_BURST = '2';
+    // Three: sign-up's own POST /me/password spends the first.
+    process.env.API_RATE_LIMIT_BURST = '3';
     process.env.API_RATE_LIMIT_PER_SECOND = '0.001';
     const cookie = await signUp('busy@example.org');
     expect((await api('GET', '/me', { cookie })).status).toBe(200);
@@ -349,7 +393,7 @@ describe('the institution allowlist', () => {
     for (const email of ['me@gmail.com', 'me@notethz.ch', 'me@ethz.ch.evil.com', 'me@oxford.uk']) {
       const res = await signUpUnconfirmed(email);
       expect(res.status).toBe(422);
-      expect((await res.json()).code).toBe('EMAIL_DOMAIN_NOT_ALLOWED');
+      expect(res.body.error.code).toBe('email_domain_not_allowed');
     }
     expect(await db.select().from(user)).toEqual([]);
     expect(devOutbox()).toEqual([]);
@@ -465,10 +509,10 @@ describe('token management', () => {
 
 describe('Better Auth configuration', () => {
   it('trusts only our own origin for its own endpoints', async () => {
-    const req = new Request(new URL('/api/auth/sign-up/email', ORIGIN), {
+    const req = new Request(new URL('/api/auth/sign-in/email', ORIGIN), {
       method: 'POST',
       headers: { origin: 'https://evil.example', 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'x@example.org', password: 'correct horse battery', name: 'X' }),
+      body: JSON.stringify({ email: 'x@example.org', password: 'correct horse battery' }),
     });
     const { POST } = await import('@/app/api/auth/[...all]/route');
     const res = await POST(req);

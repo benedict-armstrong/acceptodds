@@ -19,12 +19,13 @@ describe('institution allowlist', () => {
 });
 
 describe('handleFrom', () => {
-  it('slugs a name, then an email, then falls back', () => {
-    expect(handleFrom('Ada Lovelace', 'x@y.z')).toBe('ada-lovelace');
-    expect(handleFrom('Émile Borel', 'x@y.z')).toBe('emile-borel');
-    expect(handleFrom('李', 'grace.hopper@navy.mil')).toBe('grace-hopper');
-    expect(handleFrom('', 'a@b.c')).toBe('trader');
-    expect(handleFrom('House', 'h@b.c')).toBe('house-trader');
-    expect(handleFrom('x'.repeat(50), 'a@b.c')).toHaveLength(30);
+  it('slugs a name, else falls back, and never reads the email', () => {
+    expect(handleFrom('Ada Lovelace')).toBe('ada-lovelace');
+    expect(handleFrom('Émile Borel')).toBe('emile-borel');
+    expect(handleFrom('李')).toBe('trader');
+    expect(handleFrom('')).toBe('trader');
+    expect(handleFrom(null)).toBe('trader');
+    expect(handleFrom('House')).toBe('house-trader');
+    expect(handleFrom('x'.repeat(50))).toHaveLength(30);
   });
 });

@@ -59,10 +59,16 @@ describe('sign-in links', () => {
     const u = await userRow('ada@example.org');
     expect(await missingFromUser(u.id)).toEqual({ name: true, password: true });
 
+    // No name yet: a placeholder handle, never the email's local part.
+    expect(me.body.handle).toMatch(/^trader-[a-z0-9]{4}$/);
+
     const named = await api('PATCH', '/me', { cookie, body: { displayName: '  Ada Lovelace ' } });
     expect(named.status).toBe(200);
     expect(named.body.displayName).toBe('Ada Lovelace');
-    expect((await userRow('ada@example.org')).name).toBe('Ada Lovelace');
+    expect(named.body.handle).toBe('ada-lovelace'); // the first name makes the handle, once
+    const renamed = await api('PATCH', '/me', { cookie, body: { displayName: 'Augusta Ada King' } });
+    expect(renamed.body.handle).toBe('ada-lovelace');
+    expect((await userRow('ada@example.org')).name).toBe('Augusta Ada King');
     expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(200);
     expect(await missingFromUser(u.id)).toEqual({ name: false, password: false });
 
@@ -99,6 +105,19 @@ describe('sign-in links', () => {
     for (let i = 0; i < 5; i += 1) expect((await requestLink('ada@example.org')).status).toBe(200);
     expect((await requestLink('ada@example.org')).status).toBe(429);
     expect(devOutbox()).toHaveLength(5);
+  });
+});
+
+describe('a password reset', () => {
+  it('signs out every other session', async () => {
+    const elsewhere = await signUp('ada@example.org', 'Ada');
+    expect((await api('GET', '/me', { cookie: elsewhere })).status).toBe(200);
+    clearDevOutbox();
+    await getAuth().api.requestPasswordReset({ body: { email: 'ada@example.org', redirectTo: '/set-password' } });
+    const link = /https?:\/\/\S+/.exec(devOutbox()[0].text)![0];
+    const token = /reset-password\/([^?]+)/.exec(link)![1];
+    expect((await authCall('POST', '/reset-password', { body: { newPassword: 'a new horse battery', token } })).status).toBe(200);
+    expect((await api('GET', '/me', { cookie: elsewhere })).status).toBe(401);
   });
 });
 
