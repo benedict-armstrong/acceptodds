@@ -6,6 +6,7 @@ import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { SignOut } from '@/components/SignOut';
 import { TraderHeader } from '@/components/TraderHeader';
+import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { WorthTable } from '@/components/WorthTable';
 import { minMovePp, movePp } from '@/lib/digest';
@@ -36,6 +37,8 @@ export default async function ProfilePage() {
   const ahead = row ? standingOf(field, a.id, 'net_worth')?.percentAhead ?? null : null;
   const snapshot = await fieldSnapshot();
   const affiliations = (await listAffiliations(a.id)).map(presentAffiliation);
+  // Tables are numbered by hand in page order: worth, then affiliations (not for bots), then follows.
+  const followsTable = 1 + (v ? 1 : 0) + (a.isBot ? 0 : 1);
   events.log('me.read', { accountId: a.id });
 
   return (
@@ -74,38 +77,62 @@ export default async function ProfilePage() {
             Star a paper to follow it: <span className="not-italic">☆</span> on its page or in the list.
           </div>
         )}
-        {follows.map((f) => {
-          const pp = f.move ? Math.round(movePp(f.move)) : 0;
-          return (
-            <div
-              key={f.view.listing.id}
-              className="grid grid-cols-[18px_1fr_auto] items-baseline gap-x-2.5 border-b border-dotted border-rule-strong py-1.5"
-            >
-              <FollowStar listingId={f.view.listing.id} following />
-              <Link
-                href={`/papers/${encodeURIComponent(f.view.listing.slug)}`}
-                className="line-clamp-2 leading-[1.35]"
-                title={f.view.listing.title}
-              >
-                <MathText text={f.view.listing.title} />
-              </Link>
-              <span className="text-right font-mono text-[13px] whitespace-nowrap" title="price now; change over 24 hours">
-                {f.move && f.main ? (
-                  <>
-                    <span className="font-serif text-sm">accept </span>
-                    {pct(f.move.now)}{' '}
-                    <span className={pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'}>
-                      {pp > 0 ? '+' : pp < 0 ? '−' : '±'}
-                      {Math.abs(pp)} pp
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-muted">—</span>
-                )}
-              </span>
-            </div>
-          );
-        })}
+        {follows.length > 0 && (
+          <>
+            <table className={ui.table}>
+              <caption className={ui.tableCaption}>
+                <b>Table {followsTable}.</b> Papers you follow, most recently followed first.
+              </caption>
+              <thead>
+                <tr>
+                  <th className={ui.th()} />
+                  <th className={ui.th()}>Paper</th>
+                  <th className={ui.th(true)}>
+                    Accept<sup className={ui.mark}>a</sup>
+                  </th>
+                  <th className={ui.th(true)}>
+                    24h<sup className={ui.mark}>b</sup>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {follows.map((f) => {
+                  const pp = f.move ? Math.round(movePp(f.move)) : 0;
+                  return (
+                    <tr key={f.view.listing.id} className="align-baseline">
+                      <td className={`${ui.td} w-[18px]`}>
+                        <FollowStar listingId={f.view.listing.id} following />
+                      </td>
+                      <td className={ui.td}>
+                        <Link
+                          href={`/papers/${encodeURIComponent(f.view.listing.slug)}`}
+                          className="line-clamp-2 leading-[1.35]"
+                          title={f.view.listing.title}
+                        >
+                          <MathText text={f.view.listing.title} />
+                        </Link>
+                      </td>
+                      <td className={`${ui.td} ${ui.num}`}>{f.move && f.main ? pct(f.move.now) : '—'}</td>
+                      <td
+                        className={`${ui.td} ${ui.num} whitespace-nowrap ${
+                          pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'
+                        }`}
+                      >
+                        {f.move && f.main ? `${pp > 0 ? '+' : pp < 0 ? '−' : '±'}${Math.abs(pp)} pp` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <TableNotes
+              notes={[
+                ['a', 'The chance, on its main market, that the paper is accepted in any form.'],
+                ['b', 'The change in that chance over the last 24 hours, in percentage points.'],
+              ]}
+            />
+          </>
+        )}
         {follows.length > 0 && (
           <div className="mt-2 font-sans text-sm">
             <Link href="/?following=1&kind=all&status=all">followed papers on the home page →</Link>
