@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { Pager } from '@/components/Pager';
 import { FieldCurve } from '@/components/FieldCurve';
 import { TableNotes } from '@/components/TableNotes';
+import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { rep, signedRep } from '@/lib/format';
 import { leaderboardSegments } from '@/lib/leaderboard';
@@ -93,8 +94,8 @@ export default async function LeaderboardPage({
 
   return (
     <main className={ui.page}>
+      <TitleBlock title="Leaderboard" />
       <div className="flex flex-wrap items-baseline gap-x-4.5">
-        <h2 className={ui.groupHeading}>Leaderboard</h2>
         <span className="flex gap-3 font-sans text-[13px] text-muted">
           {TABS.map((t) => (
             <Link key={t.basis} href={href({ basis: t.basis === 'net_worth' ? null : t.basis })} className={t.basis === basis ? ui.on : ''}>

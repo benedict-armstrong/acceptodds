@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Pager } from '@/components/Pager';
 import { holdingHref, PositionsTable } from '@/components/PositionsTable';
 import { TableNotes } from '@/components/TableNotes';
+import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { WorthTable } from '@/components/WorthTable';
 import { day, rep, REP, shares, signedRep } from '@/lib/format';
@@ -44,8 +45,10 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
 
   return (
     <main className={ui.page}>
-      <h2 className={ui.groupHeading}>Portfolio</h2>
+      <TitleBlock title="Portfolio" byline={`${viewer.account.displayName}, @${viewer.account.handle}`} />
       <WorthTable n={1} caption="Your reputation now." worth={s} />
+
+      <h2 className={ui.groupHeading}>Open positions</h2>
       {p.holdings.length === 0 ? (
         <div className={ui.empty}>No open positions.</div>
       ) : (
