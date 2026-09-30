@@ -8,6 +8,7 @@ import { ui } from '@/components/ui';
 import { rep, signedRep } from '@/lib/format';
 import { leaderboardSegments } from '@/lib/leaderboard';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
+import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { fieldSnapshot } from '@/server/field-snapshot';
@@ -20,11 +21,6 @@ import {
 } from '@/server/views';
 
 export const dynamic = 'force-dynamic';
-
-const TABS: { basis: LeaderboardBasis; label: string }[] = [
-  { basis: 'net_worth', label: 'net worth' },
-  { basis: 'settled_pnl', label: 'settled profit' },
-];
 
 /** Traders per page when paging through the whole board or a search. */
 const PAGE = 50;
@@ -46,7 +42,8 @@ function one(v: string | string[] | undefined): string | undefined {
  * Opens compact: the top ten, then the viewer (or `?around=<handle>`, where a
  * people search leads) with two either side, then a pager into the whole
  * board (`?page=`). `?institution=` ranks one institution among itself;
- * `?q=` finds traders by name, each at their rank on the board.
+ * `?q=` finds traders by name and `institution:` (`lib/trader-query.ts`),
+ * each at their rank on the board.
  */
 export default async function LeaderboardPage({
   searchParams,
@@ -64,7 +61,8 @@ export default async function LeaderboardPage({
   const field = await leaderboardStandings({ basis, institution });
   // The whole field's shape, shared by every viewer: only on the unfiltered net-worth board it describes.
   const snapshot = basis === 'net_worth' && institution === null ? await fieldSnapshot() : null;
-  const matches = await matchingTraders(field, q);
+  const search = q === null ? null : parseTraderSearch(q);
+  const matches = (await matchingTraders(field, search?.name)).filter((r) => search === null || institutionsMatch(r.institutions, search));
   events.log('leaderboard.read', { accountId: viewer?.account.id ?? null });
 
   const me = viewer?.account.id ?? null;
@@ -97,30 +95,7 @@ export default async function LeaderboardPage({
   return (
     <main className={ui.page}>
       <TitleBlock title="Leaderboard" />
-      <div className="flex flex-wrap items-baseline gap-x-4.5">
-        <span className="flex gap-3 font-sans text-[13px] text-muted">
-          {TABS.map((t) => (
-            <Link key={t.basis} href={href({ basis: t.basis === 'net_worth' ? null : t.basis })} className={t.basis === basis ? ui.on : ''}>
-              {t.label}
-            </Link>
-          ))}
-        </span>
-        <span className="flex-1" />
-        {(institution || viewer?.account.institutions.length) && (
-          <span className="flex gap-3 font-sans text-[13px] text-muted">
-            <Link href={href({ institution: null, around: null })} className={institution === null ? ui.on : ''}>
-              everyone
-            </Link>
-            {[...new Set([...(viewer?.account.institutions ?? []), institution])].filter((i): i is string => !!i).map((i) => (
-              <Link key={i} href={href({ institution: i, around: null })} className={i === institution ? ui.on : ''}>
-                {i}
-              </Link>
-            ))}
-          </span>
-        )}
-      </div>
-
-      <form action="/leaderboard" method="get" role="search" className="mt-2 flex gap-2">
+      <form action="/leaderboard" method="get" role="search" className="flex gap-2">
         {basis !== 'net_worth' && <input type="hidden" name="basis" value={basis} />}
         {institution && <input type="hidden" name="institution" value={institution} />}
         <input
@@ -129,13 +104,17 @@ export default async function LeaderboardPage({
           defaultValue={q ?? ''}
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search traders"
-          placeholder="Find a trader by name or handle"
+          placeholder="Find a trader by name, or institution:eth"
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
         />
         <button type="submit" className="cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink">
           Search
         </button>
       </form>
+
+      {search && search.errors.length > 0 && (
+        <div className="mt-2 font-sans text-[13px] text-down">Ignored: {search.errors.join('; ')}</div>
+      )}
 
       <div className="mt-2 flex flex-col gap-0.5 font-sans text-[13px] text-muted">
         {mine >= 0 ? (

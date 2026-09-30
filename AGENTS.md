@@ -818,7 +818,11 @@ unpaginated, and 5 s for that search.
 - **A rank is always a rank in the field.** `leaderboardStandings` ranks
   the whole board (after `institution`, which ranks one institution among
   itself); a name search (`?q=`) then only *filters* it, so every row keeps
-  its real rank. `fieldSize` in the API is the denominator. Institution is
+  its real rank. `fieldSize` in the API is the denominator. The page's
+  `?q=` also takes `institution:x` (`inst:`, `i:`, `-` or `!=` to
+  exclude; `lib/trader-query.ts`), a case-insensitive substring of any of
+  a trader's institutions — a filter like the name, not `?institution=`'s
+  ranking among itself. The API's `?q=` is still only a name. Institution is
   matched exactly against any of a trader's `institutions`, so a trader
   with two affiliations is ranked at both.
 - **The page opens compact**: the top 10, a "…", the viewer (or
