@@ -46,6 +46,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   return (
     <main className={ui.page}>
       <TitleBlock title="Portfolio" byline={`${viewer.account.displayName}, @${viewer.account.handle}`} />
+      <h2 className={ui.groupHeading}>Summary</h2>
       <p className="mt-1 mb-2 text-[15px] text-subtle">
         Your cash, what your positions would sell for now, and what you have made or lost so far.
       </p>
