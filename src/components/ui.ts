@@ -5,9 +5,6 @@
  * by class order. A variant is a parameter instead.
  */
 
-/** The small-caps sans label over a stat, field or table column. */
-const label = 'font-sans text-xs font-semibold uppercase tracking-[.06em] text-muted';
-
 /** Headings are set like an ICLR paper's: serif small caps, not bold. */
 const sectionLook = 'font-serif text-lg leading-snug font-normal [font-variant-caps:small-caps] text-ink';
 const subsectionLook = 'font-serif text-[15px] leading-snug font-normal [font-variant-caps:small-caps] text-ink';
@@ -22,8 +19,6 @@ const section = `${sectionLook} sec-num`;
 const subsection = `${subsectionLook} subsec-num`;
 
 export const ui = {
-  /** The bare label, for a place that sets its own spacing. */
-  label,
   /** The bare section and subsection headings, for a place that sets its own spacing. */
   section,
   subsection,

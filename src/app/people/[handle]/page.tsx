@@ -7,6 +7,7 @@ import { DetailsTable } from '@/components/DetailsTable';
 import { FieldCurve } from '@/components/FieldCurve';
 import { TraderHeader } from '@/components/TraderHeader';
 import { ui } from '@/components/ui';
+import { WORTH_NOTES } from '@/components/WorthTable';
 import { ApiError } from '@/server/api/errors';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
@@ -78,7 +79,7 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
 
       <DetailsTable
         n={1}
-        caption={<>Standing of @{a.handle}. Net worth is cash plus what selling every holding now would pay.</>}
+        caption={<>Standing of @{a.handle}.</>}
         rows={[
           [
             'Rank by net worth',
@@ -91,10 +92,15 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
               '—'
             ),
           ],
-          ['Net worth', row ? <Amount key="nw" micro={row.netWorthMicro} /> : '—'],
-          ['Unrealized P&L', row ? <Amount key="u" micro={row.unrealizedPnlMicro} signed /> : '—'],
-          ['Settled P&L', <Amount key="s" micro={settledPnlMicro} signed />],
+          ['Net worth', row ? <Amount key="nw" micro={row.netWorthMicro} /> : '—', 'a'],
+          ['Unrealized P&L', row ? <Amount key="u" micro={row.unrealizedPnlMicro} signed /> : '—', 'b'],
+          ['Settled P&L', <Amount key="s" micro={settledPnlMicro} signed />, 'c'],
           ['Settled markets', settledMarkets.toLocaleString('en')],
+        ]}
+        notes={[
+          ['a', WORTH_NOTES.netWorth],
+          ['b', WORTH_NOTES.unrealized],
+          ['c', WORTH_NOTES.realized],
         ]}
       />
       <div className="mt-3 font-sans text-sm">

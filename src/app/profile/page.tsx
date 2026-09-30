@@ -1,14 +1,13 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { Amount } from '@/components/Amount';
-import { DetailsTable } from '@/components/DetailsTable';
 import { FieldCurve } from '@/components/FieldCurve';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { SignOut } from '@/components/SignOut';
 import { TraderHeader } from '@/components/TraderHeader';
 import { ui } from '@/components/ui';
+import { WorthTable } from '@/components/WorthTable';
 import { minMovePp, movePp } from '@/lib/digest';
 import { pct } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
@@ -54,16 +53,7 @@ export default async function ProfilePage() {
       />
 
       {v && (
-        <DetailsTable
-          n={1}
-          caption="Your reputation. Net worth is cash plus what selling every holding now would pay."
-          rows={[
-            ['Cash', <Amount key="cash" micro={v.cashMicro} />],
-            ['Net worth', <Amount key="nw" micro={v.netWorthMicro} />],
-            ['Unrealized P&L', <Amount key="u" micro={v.unrealizedPnlMicro} signed />],
-            ['Realized P&L', <Amount key="r" micro={v.realizedPnlMicro} signed />],
-          ]}
-        />
+        <WorthTable n={1} caption="Your reputation." worth={v} />
       )}
       <div className="mt-3 flex gap-4.5 font-sans text-sm">
         <Link href="/portfolio">portfolio →</Link>

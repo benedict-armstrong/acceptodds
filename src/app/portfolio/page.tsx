@@ -3,9 +3,9 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Pager } from '@/components/Pager';
 import { holdingHref, PositionsTable } from '@/components/PositionsTable';
-import { Stat } from '@/components/Stat';
 import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
+import { WorthTable } from '@/components/WorthTable';
 import { day, rep, REP, shares, signedRep } from '@/lib/format';
 import { presentPortfolio } from '@/server/api/present';
 import { closedPositions, getPortfolio } from '@/server/accounts';
@@ -45,22 +45,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   return (
     <main className={ui.page}>
       <h2 className={ui.groupHeading}>Portfolio</h2>
-      <div className="mt-2 flex flex-wrap gap-x-9 gap-y-2">
-        <Stat label="Cash" value={rep(s.cashMicro)} />
-        <Stat label="Net worth" value={rep(s.netWorthMicro)} title="Cash plus what selling every holding now would pay" />
-        <Stat
-          label="Unrealized P&L"
-          value={signedRep(s.unrealizedPnlMicro)}
-          tone={ui.pnl(s.unrealizedPnlMicro)}
-          title="What selling everything now would make on markets not yet settled"
-        />
-        <Stat
-          label="Realized P&L"
-          value={signedRep(s.realizedPnlMicro)}
-          tone={ui.pnl(s.realizedPnlMicro)}
-          title="Profit on settled markets"
-        />
-      </div>
+      <WorthTable n={1} caption="Your reputation now." worth={s} />
       {p.holdings.length === 0 ? (
         <div className={ui.empty}>No open positions.</div>
       ) : (
@@ -68,7 +53,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           holdings={presentPortfolio(p).holdings}
           caption={
             <>
-              <b>Table 1.</b> Your open positions, one row per outcome held.
+              <b>Table 2.</b> Your open positions, one row per outcome held.
             </>
           }
           showMarket
@@ -83,7 +68,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
         <>
           <table className={ui.table}>
             <caption className={ui.tableCaption}>
-              <b>{p.holdings.length === 0 ? 'Table 1.' : 'Table 2.'}</b> Outcomes you traded and no longer hold, over all their fills, newest first.
+              <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Outcomes you traded and no longer hold, over all their fills, newest first.
             </caption>
             <thead>
               <tr>
