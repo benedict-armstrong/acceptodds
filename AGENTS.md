@@ -391,7 +391,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   one) resends (`sendOnSignIn`) and goes to `/confirm`. Sign-in, sign-up
   and the mail's link return to the page the person came from (`?next=`,
   `callbackURL`), only ever a same-site path (`lib/return-to.ts`), by way
-  of `/signin/continue`, which first asks for anything the account lacks. While a
+  of `/signin/continue`, which first asks for anything the account lacks. A
+  viewer already signed in never sees `/signin` or `/signup`: they go
+  straight to `next`, or to `/profile` when there is none. While a
   code is outstanding a banner follows them round the site, from this
   browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
   nothing. There is still no user session, account or reputation before

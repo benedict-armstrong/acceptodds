@@ -143,7 +143,7 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
 
   if (bet && auto === 'auto') {
     return (
-      <OnboardingCard of={1} title="Placing your bet">
+      <OnboardingCard title="Placing your bet">
         <BetSummary bet={bet} label={label} />
         <div className="text-muted">…</div>
       </OnboardingCard>
@@ -151,7 +151,7 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
   }
 
   return (
-    <OnboardingCard of={1} title={bet && !placed ? 'Place your bet' : 'Choose a password'}>
+    <OnboardingCard title={bet && !placed ? 'Place your bet' : 'Choose a password'}>
       <form onSubmit={submit}>
         {bet && <BetSummary bet={bet} label={label} />}
         {placed && <div className={`${ui.note(true)} mb-4`}>Placed: {placed}</div>}

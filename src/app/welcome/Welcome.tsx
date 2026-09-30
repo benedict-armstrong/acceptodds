@@ -119,14 +119,10 @@ export function Welcome({
     return () => window.removeEventListener('popstate', onPop);
   });
 
-  const numbered: Step[] = steps.filter((s) => s !== 'intro');
   const card = (title: React.ReactNode, body: React.ReactNode) => {
-    const i = numbered.indexOf(step);
     const at = steps.indexOf(step);
     return (
       <OnboardingCard
-        step={i < 0 ? undefined : i + 1}
-        of={numbered.length}
         title={title}
         // The first of `CHOSEN` goes back to the market's page it came from.
         onBack={(at > 0 || chosen) && step !== 'confirm' ? () => window.history.back() : undefined}
