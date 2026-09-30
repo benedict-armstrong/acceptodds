@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CodeInput } from '@/components/CodeInput';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
+import { setPasswordPath } from '@/lib/links';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
 import { authHref } from '@/lib/return-to';
 
@@ -16,6 +17,9 @@ const field = 'w-full border border-rule-strong bg-white p-[7px] font-sans text-
  * Confirming creates the trader and signs in (Better Auth's
  * `autoSignInAfterVerification`), then returns to `next`. The link in the
  * same mail does the same from any browser.
+ *
+ * A code from the "choose a password" mail (an account confirmed before, with
+ * no password yet) works here too: it goes on to `/set-password` with it.
  */
 export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: string; next: string; resent: boolean }) {
   const router = useRouter();
@@ -36,7 +40,23 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
     if (busy || code.length !== 6 || !email.trim()) return;
     setBusy(true);
     setNote(null);
-    const { error } = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp: code.trim() });
+    const address = email.trim();
+    const { error } = await authClient.emailOtp.verifyEmail({ email: address, otp: code });
+    // Not a confirmation code: an account that is already confirmed but has
+    // no password is mailed a code to choose one (`sendResetPassword`). The
+    // page it was typed on cannot tell, so try that too.
+    if (error?.code === 'INVALID_OTP') {
+      const { error: notPassword } = await authClient.emailOtp.checkVerificationOtp({
+        email: address,
+        type: 'forget-password',
+        otp: code,
+      });
+      if (!notPassword) {
+        clearPending();
+        router.push(setPasswordPath(address, code));
+        return;
+      }
+    }
     if (error) {
       setBusy(false);
       setCode(''); // ready for the next attempt, typed or pasted

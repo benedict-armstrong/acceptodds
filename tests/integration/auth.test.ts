@@ -241,15 +241,13 @@ describe('confirming with the code from the mail', () => {
     expect((await confirmWithCode('resend@example.org', second)).status).toBe(200);
   });
 
-  it('keeps every other email-OTP route off', async () => {
+  it('keeps every email-OTP route that sends a code, signs in or changes the address off', async () => {
     await signUpUnconfirmed('off@example.org');
     for (const path of [
       '/email-otp/send-verification-otp',
-      '/email-otp/check-verification-otp',
       '/sign-in/email-otp',
       '/email-otp/request-password-reset',
       '/forget-password/email-otp',
-      '/email-otp/reset-password',
       '/email-otp/request-email-change',
       '/email-otp/change-email',
     ]) {

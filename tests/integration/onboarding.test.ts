@@ -131,7 +131,8 @@ describe('onboarding', () => {
 
     expect((await start('ada@example.org')).status).toBe(200);
     const [mail] = devOutbox();
-    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('choose a password') });
+    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('sign-in code') });
+    expect(mail.text).toContain('no password yet');
     expect(mail.text).not.toContain('/signin');
 
     // The link redirects to /set-password with the address and a token.
@@ -153,6 +154,43 @@ describe('onboarding', () => {
     clearDevOutbox();
     await start('ada@example.org');
     expect(devOutbox()).toEqual([expect.objectContaining({ subject: expect.stringContaining('already have'), text: expect.stringContaining('/signin') })]);
+  });
+
+  it('the same mail carries a code, which is no confirmation code but sets the password, once', async () => {
+    await start('ada@example.org');
+    await clickLink('ada@example.org');
+    clearDevOutbox();
+    await start('ada@example.org');
+    const [mail] = devOutbox();
+    const otp = /code (\d{6})/.exec(mail.text)![1];
+    expect(mail.subject).toContain(otp);
+
+    // What ConfirmForm does: not a confirmation code, but a password one.
+    const asConfirm = await authCall('POST', '/email-otp/verify-email', { body: { email: 'ada@example.org', otp } });
+    expect(asConfirm.status).toBe(400);
+    const check = await authCall('POST', '/email-otp/check-verification-otp', {
+      body: { email: 'ada@example.org', type: 'forget-password', otp },
+    });
+    expect(check.status).toBe(200);
+    expect(
+      (
+        await authCall('POST', '/email-otp/check-verification-otp', {
+          body: { email: 'ada@example.org', type: 'forget-password', otp: otp === '000000' ? '111111' : '000000' },
+        })
+      ).status,
+    ).toBe(400);
+
+    // What /set-password does with it.
+    const set = await authCall('POST', '/email-otp/reset-password', {
+      body: { email: 'ada@example.org', otp, password: 'correct horse battery' },
+    });
+    expect(set.status).toBe(200);
+    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    expect(signIn.status).toBe(200);
+    const again = await authCall('POST', '/email-otp/reset-password', {
+      body: { email: 'ada@example.org', otp, password: 'another horse battery' },
+    });
+    expect(again.status).toBe(400);
   });
 
   it('replaces the bet of an address not yet confirmed, and resends', async () => {

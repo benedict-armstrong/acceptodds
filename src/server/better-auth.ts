@@ -54,19 +54,21 @@ export const EMAIL_DOMAIN_NOT_ALLOWED = 'EMAIL_DOMAIN_NOT_ALLOWED';
 const CONFIRMATION_TTL_SECONDS = 60 * 60;
 
 /**
- * The email-OTP plugin's routes, all but the one that confirms an address.
- * It is here for the code in the confirmation mail only: sign-in by code
- * (which would also sign up, past the password), password reset by code and
- * email change stay off, and codes are only ever sent with the link, by
- * `sendVerificationEmail` below — so there is one resend path, not two.
+ * The email-OTP plugin's routes that stay off. It is here for the codes in
+ * two mails: the confirmation mail, and the "choose a password" mail to an
+ * account that has none (`sendResetPassword`). Both are only ever sent with
+ * their link, from those two callbacks, so every route that *sends* a code
+ * is off — there is one resend path per mail, not two. Sign-in by code
+ * (which would also sign up, past the password) and email change are off
+ * too. What stays on: confirming by code, checking a password code (to go
+ * on to `/set-password` with it) and setting the password with it. Every
+ * code is hashed, an hour, three wrong guesses.
  */
 const DISABLED_OTP_PATHS = [
   '/email-otp/send-verification-otp',
-  '/email-otp/check-verification-otp',
   '/sign-in/email-otp',
   '/email-otp/request-password-reset',
   '/forget-password/email-otp',
-  '/email-otp/reset-password',
   '/email-otp/request-email-change',
   '/email-otp/change-email',
 ];
@@ -136,24 +138,28 @@ export function createAuth(database: Database) {
         }
         await mailRegistered(user.email, database, (body) => auth.api.requestPasswordReset({ body }));
       },
-      // An account with no password yet (made by onboarding) is told so: the
-      // link sets its first one. Either way it lands on `/set-password`.
+      // An account with no password yet (made by onboarding) is told so, and
+      // gets a code as well as the link: it may be on a page asking for one
+      // (`/welcome`'s last step), where the code leads to `/set-password`
+      // too. Each mail rotates the code. Either way it sets the first password.
       sendResetPassword: async ({ user, url }) => {
-        await sendMail(
-          (await hasPassword(user.id, database))
-            ? {
-                to: user.email,
-                subject: 'Reset your acceptodds password',
-                text: `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
-              }
-            : {
-                to: user.email,
-                subject: 'Sign in to acceptodds: choose a password',
-                text:
-                  `You already have an acceptodds account, but no password yet. Choose one here, and you are signed in:\n\n` +
-                  `${url}\n\nThe link works once, for an hour. If you did not ask for this, ignore it; nothing has changed.`,
-              },
-        );
+        if (await hasPassword(user.id, database)) {
+          await sendMail({
+            to: user.email,
+            subject: 'Reset your acceptodds password',
+            text: `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
+          });
+          return;
+        }
+        const code = await auth.api.createVerificationOTP({ body: { email: user.email, type: 'forget-password' } });
+        await sendMail({
+          to: user.email,
+          subject: `${code} is your acceptodds sign-in code`,
+          text:
+            `You already have an acceptodds account, but no password yet. Enter the code ${code} where you were asked ` +
+            `for one, or open this link, to choose a password and sign in:\n\n${url}\n\n` +
+            `Each works once, for an hour. If you did not ask for this, ignore it; nothing has changed.`,
+        });
       },
     },
     emailVerification: {

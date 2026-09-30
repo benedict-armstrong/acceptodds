@@ -8,26 +8,37 @@ import { authClient } from '@/lib/auth-client';
 import { setPasswordPath } from '@/lib/links';
 
 /**
- * Set the password with the link's token, then sign in with it. A link
- * works once, for an hour; a dead one offers a fresh one to the same
- * address, which Better Auth mails only if it has an account.
+ * Set the password with the link's token or the mail's code, then sign in
+ * with it. Each works once, for an hour; a dead one offers a fresh mail to
+ * the same address, which Better Auth sends only if it has an account.
  */
-export function SetPasswordForm({ token, email }: { token: string | null; email: string | null }) {
+export function SetPasswordForm({
+  proof,
+  email,
+}: {
+  proof: { token: string } | { code: string } | null;
+  email: string | null;
+}) {
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [dead, setDead] = useState(token === null);
+  const [dead, setDead] = useState(proof === null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!token) return;
+    if (!proof) return;
     setBusy(true);
     setNote(null);
-    const reset = await authClient.resetPassword({ newPassword: password, token });
+    const reset =
+      'token' in proof
+        ? await authClient.resetPassword({ newPassword: password, token: proof.token })
+        : await authClient.emailOtp.resetPassword({ email: email!, otp: proof.code, password });
     if (reset.error) {
       setBusy(false);
-      if (reset.error.code === 'INVALID_TOKEN') return setDead(true);
+      if (['INVALID_TOKEN', 'INVALID_OTP', 'OTP_EXPIRED', 'TOO_MANY_ATTEMPTS'].includes(reset.error.code ?? '')) {
+        return setDead(true);
+      }
       return setNote({ ok: false, text: reset.error.message ?? 'Could not set the password.' });
     }
     const signIn = email ? await authClient.signIn.email({ email, password }) : null;
@@ -48,7 +59,7 @@ export function SetPasswordForm({ token, email }: { token: string | null; email:
   if (dead) {
     return (
       <>
-        <p className="mb-3">This link has expired or was already used.</p>
+        <p className="mb-3">This {proof && 'code' in proof ? 'code' : 'link'} has expired or was already used.</p>
         {email ? (
           <button type="button" className={ui.btn()} disabled={busy} onClick={resend}>
             Send a new link to {email}

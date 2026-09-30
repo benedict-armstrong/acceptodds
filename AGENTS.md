@@ -381,10 +381,12 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   email-OTP plugin's server-only `createVerificationOTP`, hashed, rotated on
   every send, an hour like the link). The person types it at `/confirm`, in
   the tab they signed up in; `POST /email-otp/verify-email` runs the same
-  `afterEmailVerification` and signs in. Every other email-OTP route is in
-  `disabledPaths` — sign-in by code would also sign up past the password —
-  so the only way to get a code is a confirmation mail, and the only resend
-  is `/send-verification-email`. Signing in unconfirmed with the right
+  `afterEmailVerification` and signs in. Every email-OTP route that sends
+  a code, signs in or changes the address is in `disabledPaths` — sign-in
+  by code would also sign up past the password — so the only ways to get a
+  code are a confirmation mail and the "choose a password" mail (below), and
+  the only resends are `/send-verification-email` and
+  `/request-password-reset`. Signing in unconfirmed with the right
   password resends (`sendOnSignIn`) and goes to `/confirm`. Sign-in, sign-up
   and the mail's link return to the page the person came from (`?next=`,
   `callbackURL`), only ever a same-site path (`lib/return-to.ts`). While a
@@ -407,6 +409,15 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   password with the token (Better Auth creates the missing credential) and
   signs in. `sendResetPassword` words its mail by whether a password
   exists. A dead link offers a new one to the same address.
+  The passwordless mail also carries a 6-digit `forget-password` code
+  (minted with `createVerificationOTP`, like the confirmation code), because
+  it may reach someone on `/welcome`'s confirm step, which asks for one.
+  `ConfirmForm` tries a code as a confirmation code first and, on
+  `INVALID_OTP`, checks it as a password code
+  (`/email-otp/check-verification-otp`), going on to
+  `/set-password?email=…&code=…`, which sets it with
+  `/email-otp/reset-password`. Those two email-OTP routes are therefore on;
+  every route that *sends* a code stays off.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is

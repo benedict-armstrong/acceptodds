@@ -11,8 +11,11 @@ export function marketHref(m: { marketSlug: string; listingSlug: string | null }
 
 /**
  * Where a password-reset link lands (`app/set-password`): the address rides
- * along so the page can sign in once the password is set.
+ * along so the page can sign in once the password is set. With `code`, the
+ * page sets it with that code from the mail instead of the link's token.
  */
-export function setPasswordPath(email: string): string {
-  return `/set-password?email=${encodeURIComponent(email)}`;
+export function setPasswordPath(email: string, code?: string): string {
+  const q = new URLSearchParams({ email });
+  if (code) q.set('code', code);
+  return `/set-password?${q}`;
 }
