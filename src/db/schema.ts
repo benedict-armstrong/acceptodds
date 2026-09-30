@@ -72,7 +72,13 @@ export const accounts = pgTable(
     displayName: text('display_name').notNull(),
     orcid: text('orcid'),
     rorId: text('ror_id'),
-    institutionName: text('institution_name'),
+    /**
+     * Cache of the institutions of this account's **confirmed** `affiliations`,
+     * the sign-up address's first, then by confirmation time; distinct. Written
+     * in the same transaction as the affiliation, always (`server/affiliations.ts`).
+     */
+    institutions: text('institutions').array().notNull().default(sql`'{}'::text[]`),
+    /** When the account's first institutional address was confirmed; `null` once none is. Gates trading. */
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
     /** Cache of `sum(ledger_entries.delta_micro)`. Written in the same transaction, always. */
     balanceMicro: money('balance_micro').notNull().default(sql`0`),
@@ -491,6 +497,48 @@ export const commentBackings = pgTable(
 );
 
 /**
+ * An institutional email address an account is affiliated through
+ * (`server/affiliations.ts`). The sign-up address is one, `is_primary`, made
+ * confirmed when the account is created. Others are added from `/profile` and
+ * confirmed by a 6-digit code mailed to them: until then `verified_at` is
+ * null and the row counts for nothing. Only an address on the institution
+ * allowlist can be one; `institution_name` is its entry's name at the time.
+ *
+ * A confirmed address belongs to one account at most (the partial unique
+ * index). `accounts.institutions` and `accounts.verified_at` cache what the
+ * confirmed rows say, written in the same transaction.
+ */
+export const affiliations = pgTable(
+  'affiliations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    /** Lower-cased. */
+    email: text('email').notNull(),
+    institutionName: text('institution_name').notNull(),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    /** SHA-256 of the outstanding code, hex; null once confirmed. */
+    codeHash: text('code_hash'),
+    codeExpiresAt: timestamp('code_expires_at', { withTimezone: true, mode: 'date' }),
+    /** Wrong codes against the outstanding one; a new code resets it. */
+    codeAttempts: integer('code_attempts').notNull().default(0),
+    verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('affiliations_account_email_key').on(t.accountId, t.email),
+    uniqueIndex('affiliations_verified_email_key')
+      .on(t.email)
+      .where(sql`verified_at is not null`),
+    uniqueIndex('affiliations_primary_key')
+      .on(t.accountId)
+      .where(sql`is_primary`),
+  ],
+);
+
+/**
  * Who follows (stars) which listing. Listings only: a market with no listing
  * cannot be followed. A preference, not market state and not money: written
  * by `server/follows.ts` in its own statement, never by the engine.
@@ -558,6 +606,7 @@ export type Outcome = typeof outcomes.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type CommentBacking = typeof commentBackings.$inferSelect;
+export type Affiliation = typeof affiliations.$inferSelect;
 /** What an API credential may do. Stored as the API-key plugin's permissions, `{ api: [...] }`. */
 export const TOKEN_SCOPES = ['read', 'trade', 'admin'] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];

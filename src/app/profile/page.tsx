@@ -1,17 +1,25 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { Amount } from '@/components/Amount';
+import { DetailsTable } from '@/components/DetailsTable';
+import { FieldCurve } from '@/components/FieldCurve';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { SignOut } from '@/components/SignOut';
-import { Stat } from '@/components/Stat';
+import { TraderHeader } from '@/components/TraderHeader';
 import { ui } from '@/components/ui';
 import { minMovePp, movePp } from '@/lib/digest';
-import { day, pct, rep, signedRep } from '@/lib/format';
+import { pct } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
+import { fieldSnapshot } from '@/server/field-snapshot';
 import { followedListings } from '@/server/follows';
 import { valuation } from '@/server/valuation';
+import { leaderboardStandings, standingOf } from '@/server/views';
+import { presentAffiliation } from '@/server/api/present';
+import { listAffiliations } from '@/server/affiliations';
+import { Affiliations } from './Affiliations';
 import { DigestToggle } from './DigestToggle';
 
 export const dynamic = 'force-dynamic';
@@ -23,57 +31,54 @@ export default async function ProfilePage() {
   const a = viewer.account;
   const v = await valuation(a.id);
   const follows = await followedListings(a.id);
+  // Placed on the field by the board's own figure, as the leaderboard places them.
+  const field = await leaderboardStandings({ basis: 'net_worth' });
+  const row = field.find((r) => r.accountId === a.id) ?? null;
+  const ahead = row ? standingOf(field, a.id, 'net_worth')?.percentAhead ?? null : null;
+  const snapshot = await fieldSnapshot();
+  const affiliations = (await listAffiliations(a.id)).map(presentAffiliation);
   events.log('me.read', { accountId: a.id });
 
   return (
     <main className={`${ui.page} max-w-[560px]`}>
-      <h2 className={ui.groupHeading}>Profile</h2>
-      <h1 className="mt-1 text-[26px] leading-tight font-normal">
-        {a.displayName}
-        {a.isBot && <span className={ui.badge}>bot</span>}
-      </h1>
-      <div className={`${ui.mono} text-muted`}>@{a.handle}</div>
+      <TraderHeader
+        account={a}
+        email={viewer.email}
+        admin={viewer.isAdmin}
+      />
 
-      <div className="mt-4 space-y-1 font-sans text-sm">
-        <div className={ui.kv}>
-          <span>Email</span>
-          <span>{viewer.email}</span>
-        </div>
-        <div className={ui.kv}>
-          <span>Institution</span>
-          <span>{a.institutionName ?? '—'}</span>
-        </div>
-        <div className={ui.kv}>
-          <span>Verified</span>
-          <span className={a.verifiedAt ? 'text-up' : 'text-muted'}>
-            {a.verifiedAt ? `yes, ${day(a.verifiedAt)}` : 'no — you may browse but not trade'}
-          </span>
-        </div>
-        <div className={ui.kv}>
-          <span>Account type</span>
-          <span>{a.isBot ? 'bot' : 'person'}{viewer.isAdmin ? ' · admin' : ''}</span>
-        </div>
-        <div className={ui.kv}>
-          <span>Joined</span>
-          <span>{day(a.createdAt)}</span>
-        </div>
-      </div>
+      <FieldCurve
+        field={snapshot}
+        you={row?.netWorthMicro ?? null}
+        label={row ? (ahead === null ? 'you' : `you · ahead of ${ahead}%`) : null}
+      />
 
       {v && (
-        <div className="mt-5 flex flex-wrap gap-x-9 gap-y-2">
-          <Stat label="Cash" value={rep(v.cashMicro)} />
-          <Stat label="Net worth" value={rep(v.netWorthMicro)} title="Cash plus what selling every holding now would pay" />
-          <Stat label="Unrealized P&L" value={signedRep(v.unrealizedPnlMicro)} tone={ui.pnl(v.unrealizedPnlMicro)} />
-          <Stat label="Realized P&L" value={signedRep(v.realizedPnlMicro)} tone={ui.pnl(v.realizedPnlMicro)} />
-        </div>
+        <DetailsTable
+          n={1}
+          caption="Your reputation. Net worth is cash plus what selling every holding now would pay."
+          rows={[
+            ['Cash', <Amount key="cash" micro={v.cashMicro} />],
+            ['Net worth', <Amount key="nw" micro={v.netWorthMicro} />],
+            ['Unrealized P&L', <Amount key="u" micro={v.unrealizedPnlMicro} signed />],
+            ['Realized P&L', <Amount key="r" micro={v.realizedPnlMicro} signed />],
+          ]}
+        />
       )}
       <div className="mt-3 flex gap-4.5 font-sans text-sm">
         <Link href="/portfolio">portfolio →</Link>
         <Link href="/leaderboard">leaderboard →</Link>
       </div>
 
-      <section className="mt-7">
-        <h3 className={ui.sectionHeading}>Following</h3>
+      {!a.isBot && (
+        <section id="affiliations">
+          <h2 className={ui.groupHeading}>Affiliations</h2>
+          <Affiliations initial={affiliations} n={v ? 2 : 1} />
+        </section>
+      )}
+
+      <section>
+        <h2 className={ui.groupHeading}>Following</h2>
         {follows.length === 0 && (
           <div className="py-2 text-[15px] text-muted italic">
             Star a paper to follow it: <span className="not-italic">☆</span> on its page or in the list.
@@ -118,13 +123,23 @@ export default async function ProfilePage() {
         )}
       </section>
 
-      <section id="email" className="mt-7">
-        <h3 className={ui.sectionHeading}>Email</h3>
+      <section id="email">
+        <h2 className={ui.groupHeading}>Email</h2>
         <DigestToggle optIn={a.digestOptIn} minMovePp={minMovePp()} />
       </section>
 
       <hr className="my-6 border-rule-soft" />
-      <SignOut className={ui.btn({ ghost: true })} />
+      <div className="flex justify-end gap-2">
+        <Link
+          href={`/people/${encodeURIComponent(a.handle)}`}
+          className={ui.btn({ ghost: true, inline: true, flush: true })}
+          title="Your page as everyone else sees it"
+        >
+          view public page
+        </Link>
+        <SignOut className={ui.btn({ ghost: true, inline: true, flush: true })} />
+      </div>
     </main>
   );
 }
+

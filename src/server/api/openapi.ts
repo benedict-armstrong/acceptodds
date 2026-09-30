@@ -33,7 +33,7 @@ function op(
   config: Omit<RouteConfig, 'responses'> & {
     ok: { status: 200 | 201; schema: z.ZodType; description: string };
     scope?: Scope;
-    errors?: Partial<Record<400 | 401 | 403 | 404 | 409 | 429, string>>;
+    errors?: Partial<Record<400 | 401 | 403 | 404 | 409 | 422 | 429, string>>;
   },
 ): RouteConfig {
   const { ok, scope, errors = {}, ...rest } = config;
@@ -427,6 +427,73 @@ export function buildRegistry(): OpenAPIRegistry {
   delete revoke.responses[200];
   revoke.responses[204] = { description: 'Revoked. The token stops working immediately.' };
   r.registerPath(revoke);
+
+  const affiliationIdParam = z.object({ id: S.AffiliationId });
+
+  r.registerPath(
+    sessionOnly({
+      method: 'get',
+      path: '/me/affiliations',
+      tags: ['me'],
+      summary: 'List your affiliations',
+      description:
+        'Your institutional email addresses, confirmed and pending: the one you signed up with first. The institutions of the confirmed ones are your `institutions`.',
+      ok: { status: 200, schema: S.AffiliationList, description: 'Your affiliations.' },
+    }),
+  );
+
+  r.registerPath(
+    sessionOnly({
+      method: 'post',
+      path: '/me/affiliations',
+      tags: ['me'],
+      summary: 'Add an affiliation',
+      description:
+        'Mails a 6-digit code to an address at an approved institution; confirm it with `POST /me/affiliations/{id}/verify` within an hour. Adding a pending address again sends a fresh code, and only the newest works. Each call costs one of 10 affiliation emails a day. An address another account has confirmed answers the same, but its owner is told instead and no code is sent.',
+      request: { body: { content: { 'application/json': { schema: S.AddAffiliationRequest } } } },
+      ok: { status: 201, schema: S.Affiliation, description: 'The pending affiliation.' },
+      errors: {
+        409: `already_affiliated: the address is already one of yours | too_many_pending: at most 5 unconfirmed at once.`,
+        422: 'email_domain_not_allowed: the domain is not on the institution allowlist.',
+        429: 'rate_limited: your bucket is empty, or you have used your 10 affiliation emails (one back every 2.4 hours). See Retry-After.',
+      },
+    }),
+  );
+
+  r.registerPath(
+    sessionOnly({
+      method: 'post',
+      path: '/me/affiliations/{id}/verify',
+      tags: ['me'],
+      summary: 'Confirm an affiliation',
+      description:
+        'With the code mailed to the address. Confirming one already confirmed returns it. After five wrong codes only a fresh code works.',
+      request: {
+        params: affiliationIdParam,
+        body: { content: { 'application/json': { schema: S.VerifyAffiliationRequest } } },
+      },
+      ok: { status: 200, schema: S.Affiliation, description: 'The confirmed affiliation.' },
+      errors: {
+        404: 'not_found',
+        409: 'affiliation_taken: another account confirmed this address first.',
+        422: 'invalid_code: wrong, expired, or too many attempts (`details.reason`) | email_domain_not_allowed: the domain has left the allowlist.',
+      },
+    }),
+  );
+
+  const unaffiliate = sessionOnly({
+    method: 'delete',
+    path: '/me/affiliations/{id}',
+    tags: ['me'],
+    summary: 'Remove an affiliation',
+    description: 'Pending or confirmed; never the address you signed up with. Removing your last confirmed one stops you trading.',
+    request: { params: affiliationIdParam },
+    ok: { status: 200, schema: S.AffiliationList, description: 'unused' },
+    errors: { 404: 'not_found', 409: 'primary_affiliation: the address you signed up with.' },
+  });
+  delete unaffiliate.responses[200];
+  unaffiliate.responses[204] = { description: 'Removed.' };
+  r.registerPath(unaffiliate);
 
   // -- admin ----------------------------------------------------------------
 

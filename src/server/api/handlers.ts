@@ -8,6 +8,7 @@ import { getComment, listComments, postComment } from '../comments';
 import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
 import { upsertListing } from '../listings';
 import { listTokens, mintToken, revokeToken } from '../tokens';
+import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
 import {
   accountOrders,
   leaderboard as leaderboardView,
@@ -28,6 +29,7 @@ import {
   presentFollowed,
   presentListing,
   presentMarket,
+  presentAffiliation,
   presentMe,
   presentMyOrder,
   presentPortfolio,
@@ -146,7 +148,7 @@ export const getLeaderboard = route(async (req) => {
         handle: r.handle,
         displayName: r.displayName,
         isBot: r.isBot,
-        institutionName: r.institutionName,
+        institutions: [...r.institutions],
         settledPnlMicro: r.settledPnlMicro.toString(),
         settledMarkets: r.settledMarkets,
         netWorthMicro: r.netWorthMicro.toString(),
@@ -169,7 +171,7 @@ export const getAccount = route(async (req, params) => {
       handle: account.handle,
       displayName: account.displayName,
       isBot: account.isBot,
-      institutionName: account.institutionName,
+      institutions: account.institutions,
       rorId: account.rorId,
       verifiedAt: toIsoOrNull(account.verifiedAt),
       createdAt: toIso(account.createdAt),
@@ -370,6 +372,42 @@ export const deleteMyToken = route(async (req, params) => {
   if (!(await revokeToken(userIdOf(principal), id))) {
     throw new ApiError(404, 'not_found', `no token ${id}`);
   }
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+});
+
+/**
+ * Affiliations: more institutional addresses, each confirmed by a code mailed
+ * to it (`server/affiliations.ts`). **Session only**, like tokens: they decide
+ * who may trade, so a leaked token must not be able to change them.
+ */
+export const getMyAffiliations = route(async (req) => {
+  const principal = await requireSession(req);
+  const rows = await listAffiliations(principal.account.id);
+  return respond(S.AffiliationList, { affiliations: rows.map(presentAffiliation) }, { principal });
+});
+
+export const postMyAffiliation = route(async (req) => {
+  const principal = await requireSession(req);
+  const body = await parseBody(req, S.AddAffiliationRequest);
+  const row = await addAffiliation({ account: principal.account, email: body.email });
+  events.log('affiliation.requested', { accountId: principal.account.id });
+  return respond(S.Affiliation, presentAffiliation(row), { status: 201, principal });
+});
+
+export const postMyAffiliationVerify = route(async (req, params) => {
+  const principal = await requireSession(req);
+  const id = parseParam(params.id, S.AffiliationId, 'id');
+  const body = await parseBody(req, S.VerifyAffiliationRequest);
+  const row = await verifyAffiliation({ accountId: principal.account.id, id, code: body.code });
+  events.log('affiliation.confirmed', { accountId: principal.account.id });
+  return respond(S.Affiliation, presentAffiliation(row), { principal });
+});
+
+export const deleteMyAffiliation = route(async (req, params) => {
+  const principal = await requireSession(req);
+  const id = parseParam(params.id, S.AffiliationId, 'id');
+  await removeAffiliation({ accountId: principal.account.id, id });
+  events.log('affiliation.removed', { accountId: principal.account.id });
   return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 });
 

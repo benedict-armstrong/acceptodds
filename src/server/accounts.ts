@@ -2,13 +2,14 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import * as schema from '@/db/schema';
-import { accounts, ledgerEntries, listings, markets, orders, outcomes, positions } from '@/db/schema';
+import { accounts, affiliations, ledgerEntries, listings, markets, orders, outcomes, positions } from '@/db/schema';
 import { costBasis, type Fill } from '@/lib/cost-basis';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { creditAccount, HOUSE_HANDLE, quote } from './engine';
 import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
+import { normalizeEmail, syncAccount } from './affiliations';
 import { institutionForEmail } from './institution-domains';
 import { invalidateStandings } from './standings-cache';
 import { tradeFlows } from './valuation';
@@ -25,8 +26,14 @@ export interface CreateAccountInput {
   userId?: string | null;
   isBot?: boolean;
   isHouse?: boolean;
-  /** Set together, for an account whose institutional address is confirmed. */
-  institutionName?: string | null;
+  /**
+   * The confirmed sign-up address, which becomes the primary affiliation and
+   * verifies the account — unless another account has already confirmed it,
+   * when the account is created unverified (`server/affiliations.ts`).
+   */
+  primaryAffiliation?: { email: string; institutionName: string } | null;
+  /** Set directly, without an affiliation row: seeds and tests only. */
+  institutions?: string[];
   verifiedAt?: Date | null;
   /** Defaults to `STARTING_BALANCE_MICRO`. Pass `0n` for an unfunded account. */
   grantMicro?: bigint;
@@ -53,11 +60,27 @@ export async function createAccount(
         userId: input.userId ?? null,
         isBot: input.isBot ?? false,
         isHouse: input.isHouse ?? false,
-        institutionName: input.institutionName ?? null,
+        institutions: input.institutions ?? [],
         verifiedAt: input.verifiedAt ?? null,
         balanceMicro: 0n,
       })
       .returning();
+
+    if (input.primaryAffiliation) {
+      // Any conflict here is the confirmed-address index (the account is new).
+      const [primary] = await tx
+        .insert(affiliations)
+        .values({
+          accountId: account.id,
+          email: normalizeEmail(input.primaryAffiliation.email),
+          institutionName: input.primaryAffiliation.institutionName,
+          isPrimary: true,
+          verifiedAt: sql`clock_timestamp()`,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (primary) await syncAccount(tx, account.id);
+    }
 
     if (grant !== 0n) {
       await creditAccount(tx, account.id, grant, 'signup');
@@ -439,8 +462,7 @@ export async function ensureAccountForUser(
           handle,
           displayName: user.name?.trim() || handle,
           userId: user.id,
-          institutionName: institution?.name ?? null,
-          verifiedAt: institution ? new Date() : null,
+          primaryAffiliation: institution ? { email: user.email, institutionName: institution.name } : null,
         },
         database,
       );

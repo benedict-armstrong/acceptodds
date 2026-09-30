@@ -30,6 +30,12 @@ export const API_ERROR_CODES = [
   'not_verified',
   'insufficient_stake',
   'own_comment',
+  'email_domain_not_allowed',
+  'already_affiliated',
+  'too_many_pending',
+  'invalid_code',
+  'affiliation_taken',
+  'primary_affiliation',
   'method_not_allowed',
   'internal_error',
 ] as const;

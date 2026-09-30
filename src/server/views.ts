@@ -668,7 +668,8 @@ export interface PersonRow {
   handle: string;
   displayName: string;
   isBot: boolean;
-  institutionName: string | null;
+  /** `accounts.institutions`: confirmed affiliations, the sign-up address's first. */
+  institutions: readonly string[];
 }
 
 /**
@@ -691,9 +692,9 @@ export async function searchPeople(
     handle: string;
     display_name: string;
     is_bot: boolean;
-    institution_name: string | null;
+    institutions: string[];
   }>(sql`
-    select a.id, a.handle, a.display_name, a.is_bot, a.institution_name
+    select a.id, a.handle, a.display_name, a.is_bot, a.institutions
       from accounts a
      where not a.is_house and (${doc} ilike ${pattern} or ${text}::text <% ${doc})
      order by (${doc} ilike ${pattern}) desc, word_similarity(${text}::text, ${doc}) desc, a.handle
@@ -704,7 +705,7 @@ export async function searchPeople(
     handle: r.handle,
     displayName: r.display_name,
     isBot: r.is_bot,
-    institutionName: r.institution_name,
+    institutions: r.institutions,
   }));
 }
 
@@ -713,7 +714,7 @@ export interface LeaderboardRow {
   handle: string;
   displayName: string;
   isBot: boolean;
-  institutionName: string | null;
+  institutions: readonly string[];
   /** Σ `trade` + `settlement` rows on settled markets. */
   settledPnlMicro: bigint;
   settledMarkets: number;
@@ -738,8 +739,8 @@ export interface LeaderboardRow {
  * Either way house accounts are excluded, and ties share a rank (SQL
  * `rank()`: 1, 2, 2, 4).
  *
- * `institution` narrows the field to one `institution_name` and ranks within
- * it. `q` then keeps only the traders a people search finds
+ * `institution` narrows the field to the traders with a confirmed
+ * affiliation there (any of `accounts.institutions`) and ranks within it. `q` then keeps only the traders a people search finds
  * (`searchPeople`), each keeping their rank in the field; `fieldSize` is the
  * field before `q`, the denominator of a rank.
  */
@@ -826,9 +827,10 @@ export async function leaderboardStandings(
 ): Promise<readonly LeaderboardRow[]> {
   const basis = q.basis ?? 'settled_pnl';
   const field = await rankedField(basis, database);
-  if (q.institution == null) return field;
+  const institution = q.institution;
+  if (institution == null) return field;
   return ranked(
-    field.filter((r) => r.institutionName === q.institution),
+    field.filter((r) => r.institutions.includes(institution)),
     basis,
   );
 }
@@ -869,7 +871,7 @@ async function computeField(basis: LeaderboardBasis, database: Database): Promis
       handle: v.account.handle,
       displayName: v.account.displayName,
       isBot: v.account.isBot,
-      institutionName: v.account.institutionName,
+      institutions: v.account.institutions,
       settledPnlMicro: v.realizedPnlMicro,
       settledMarkets: v.settledMarkets,
       netWorthMicro: v.netWorthMicro,
@@ -893,7 +895,7 @@ async function computeField(basis: LeaderboardBasis, database: Database): Promis
         handle: v.account.handle,
         displayName: v.account.displayName,
         isBot: v.account.isBot,
-        institutionName: v.account.institutionName,
+        institutions: v.account.institutions,
         settledPnlMicro: BigInt(r.pnl),
         settledMarkets: r.markets,
         netWorthMicro: v.netWorthMicro,

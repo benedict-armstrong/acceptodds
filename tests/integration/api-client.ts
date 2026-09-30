@@ -28,6 +28,9 @@ import * as portfolioRoute from '@/app/api/v1/me/portfolio/route';
 import * as myOrdersRoute from '@/app/api/v1/me/orders/route';
 import * as tokensRoute from '@/app/api/v1/me/tokens/route';
 import * as tokenRoute from '@/app/api/v1/me/tokens/[id]/route';
+import * as affiliationsRoute from '@/app/api/v1/me/affiliations/route';
+import * as affiliationRoute from '@/app/api/v1/me/affiliations/[id]/route';
+import * as affiliationVerifyRoute from '@/app/api/v1/me/affiliations/[id]/verify/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
 import * as fallbackRoute from '@/app/api/v1/[...rest]/route';
 import { STARTING_MICRO } from './helpers';
@@ -62,6 +65,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/follows', myFollowsRoute],
   ['/me/tokens', tokensRoute],
   ['/me/tokens/[id]', tokenRoute],
+  ['/me/affiliations', affiliationsRoute],
+  ['/me/affiliations/[id]', affiliationRoute],
+  ['/me/affiliations/[id]/verify', affiliationVerifyRoute],
 ];
 
 export const ROUTE_PATTERNS = ROUTES.map(([p]) => p);
@@ -200,7 +206,7 @@ export async function trader(
         userId,
         ...(opts.verified === false
           ? {}
-          : { verifiedAt: new Date(), institutionName: 'Test University' }),
+          : { verifiedAt: new Date(), institutions: ['Test University'] }),
       })
       .where(eq(accounts.id, account.id))
       .returning();

@@ -32,8 +32,8 @@ beforeAll(async () => {
     ['bengio', 'Yoshua Bengio', null, 300n],
     ['botty', 'Bot 100%_sure', null, 300n, true],
   ];
-  for (const [handle, displayName, institutionName, grant, isBot] of people) {
-    await createAccount({ handle, displayName, institutionName, grantMicro: grant * UNIT, isBot });
+  for (const [handle, displayName, institution, grant, isBot] of people) {
+    await createAccount({ handle, displayName, institutions: institution ? [institution] : [], grantMicro: grant * UNIT, isBot });
   }
 }, 60_000);
 

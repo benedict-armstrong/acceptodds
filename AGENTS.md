@@ -335,13 +335,36 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   address would bypass the allowlist.
 - **No account, and no reputation, before the email is confirmed.**
   `ensureAccountForUser()` creates the trader row, the `signup` grant and
-  `verified_at` + `institution_name` together, from Better Auth's
+  the primary affiliation (below) together, from Better Auth's
   `emailVerification.afterEmailVerification`, and again lazily on every
   session request (which `server/auth.ts` only accepts for a confirmed email),
   so a failed callback costs a retry and never leaves a signed-in user
   without a trader. The unique index on `accounts.user_id` decides a race, so
   there is exactly one grant. A domain dropped from the list between sign-up
-  and confirmation gets a funded account that is not verified and cannot trade.
+  and confirmation gets a funded account that is not verified and cannot trade
+  — until it confirms another address.
+- **An account may have several affiliations, each confirmed by its own
+  mail** (`affiliations`, written only by `server/affiliations.ts`). The
+  sign-up address is the primary one, confirmed with the account and never
+  removable. More are added at `/profile` (`/me/affiliations*`,
+  session-only like tokens: they decide who may trade): only allowlisted
+  domains, re-checked at confirmation; a hashed 6-digit code, an hour,
+  five wrong guesses, re-adding rotates it; at most 5 pending; every add
+  spends one of 10 mails a day from the account's own bucket
+  (`affiliation-mail:<id>`), without which re-adding is unlimited guessing
+  at someone else's code. A confirmed
+  address belongs to one account (partial unique index; the first to
+  confirm wins, `409 affiliation_taken`). Adding an address another
+  account has confirmed answers like a free one and mails its owner a note
+  with no code, so nobody learns which addresses have accounts. Signing up
+  with an address another account has confirmed gives an unverified
+  account: one address vouches for one account.
+  `accounts.institutions` (distinct names, primary's first) and
+  `accounts.verified_at` (earliest confirmation, null when none is left)
+  are **caches** of the confirmed rows, rewritten by `syncAccount` in the
+  same transaction with the account row locked first, and every change
+  bumps the standings cache. `email_verified` on Better Auth's
+  `user` is still only the login address.
 - **Confirming is a link or a 6-digit code, never a dead end** (#15). One
   mail carries both (`sendVerificationEmail` mints the code with the
   email-OTP plugin's server-only `createVerificationOTP`, hashed, rotated on
@@ -381,8 +404,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 
 ### UI (M6)
 
-- **Style is mockup J, "arXiv digest"**: serif for reading, monospace for
-  numbers, one maroon accent. No component library. No invented ids or
+- **Style is mockup J, "arXiv digest"**: every page should read like a
+  research paper. When designing something new, ask how a paper would set
+  it (title block, author line, abstract, numbered sections, booktabs
+  tables, captioned figures) and borrow that before inventing a widget.
+  Serif for reading, monospace for numbers, one maroon accent. No component library. No invented ids or
   numbers on screen: everything shown comes from the database. Reputation
   is shown as `1,000.00 $rep` (#21): write the unit as `REP` from
   `lib/format.ts`, never the literal. The API is unchanged (`…Micro`).
@@ -400,7 +426,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   properties it doesn't set, never override one it does — Tailwind picks
   the winner by stylesheet order, not class order — so a variant is a
   parameter (`ui.btn({ ghost: true })`). Shared behaviour is a component in
-  `components/`: `CopyButton`, and `Popover` (Radix, the primitive shadcn
+  `components/`: `CopyButton`, `DetailsTable` (label–value rows as a
+  booktabs table), and `Popover` (Radix, the primitive shadcn
   wraps, in our tokens) for anything that floats over the page, and
   `Modal` (Radix Dialog, likewise) for anything that takes it over — reuse
   them rather than hand-roll another. Preflight is on: headings, `p` and
@@ -450,9 +477,21 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   field snapshot (#10 section), never a per-viewer valuation of the field;
   the viewer is placed on it by their own live net worth (`placeIn`),
   hence "about #N". Beside it, a `profile` link.
-  `/profile` has the account details, the
-  same cash / net worth / unrealized / realized row as `/portfolio`, and
-  sign-out at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
+  `/profile` opens with `components/TraderHeader`, a paper's title block
+  (name as title, `@handle, Institution` as the author line, the email,
+  then a one-paragraph abstract of the account), then Figure 1, the leaderboard's field curve
+  (`components/FieldCurve`) with the viewer placed on it by the board's
+  own figure, then Table 1: cash, net worth, unrealized and realized P&L. Sign-out is at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
+- **`/people/<handle>` is a trader's public page**: what
+  `GET /accounts/{handle}` and the net-worth leaderboard already publish
+  (details, rank, net worth at liquidation value, unrealized and settled
+  P&L) and nothing more. **Never holdings, closed positions or follows**:
+  comments show the author's stake, so a public list of someone's
+  positions would unmask their comments. It opens with the same
+  `TraderHeader`, never passed the email or admin flag, then the same
+  Figure 1 with that trader dashed and the viewer shaded, as the
+  leaderboard's `?around=` draws them, then its own Table 1 of standing. House accounts 404. Every
+  trader's name in a list links there; `/profile` has a button to it.
 - **`/portfolio` lists closed positions** (#22, `accounts.closedPositions`):
   every outcome the viewer traded and now holds none of, one row over all
   its fills, newest first, 50 a page. Read from `orders` alone — positions
@@ -682,7 +721,8 @@ unpaginated, and 5 s for that search.
   the whole board (after `institution`, which ranks one institution among
   itself); a name search (`?q=`) then only *filters* it, so every row keeps
   its real rank. `fieldSize` in the API is the denominator. Institution is
-  matched exactly on `institution_name`.
+  matched exactly against any of a trader's `institutions`, so a trader
+  with two affiliations is ranked at both.
 - **The page opens compact**: the top 10, a "…", the viewer (or
   `?around=<handle>`, where people results link) with 2 either side, and a
   pager into the whole board (`?page=`, 50 a page). `lib/leaderboard.ts`
@@ -721,9 +761,8 @@ unpaginated, and 5 s for that search.
   maths in `lib/distribution.ts` — a Gaussian kernel density of every
   trader's liquidation net worth (never a mark), a rug of one tick per
   trader, and for a signed-in viewer the part below them shaded and a line
-  at their exact figure from the board. Its table twin's quantiles are
-  nearest-rank: real traders' exact figures. Floats there are for plotting
-  only.
+  at their exact figure from the board; the `?around=` trader, when not
+  the viewer, a dashed line, unshaded. Floats there are for plotting only.
 - **The ranked field is cached in process** (`views.rankedField`, per
   basis, frozen rows — never mutate them): the leaderboard and its API need
   exact live ranks, so it is invalidated, not aged. `server/standings-cache.ts`

@@ -1,15 +1,14 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Pager } from '@/components/Pager';
-import { StandingChart } from '@/components/StandingChart';
+import { FieldCurve } from '@/components/FieldCurve';
 import { ui } from '@/components/ui';
-import { ago, rep, REP, signedRep } from '@/lib/format';
+import { rep, signedRep } from '@/lib/format';
 import { leaderboardSegments } from '@/lib/leaderboard';
-import { microToFloat } from '@/lib/money';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
-import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
+import { fieldSnapshot } from '@/server/field-snapshot';
 import {
   leaderboardStandings,
   matchingTraders,
@@ -103,12 +102,12 @@ export default async function LeaderboardPage({
           ))}
         </span>
         <span className="flex-1" />
-        {(institution || viewer?.account.institutionName) && (
+        {(institution || viewer?.account.institutions.length) && (
           <span className="flex gap-3 font-sans text-[13px] text-muted">
             <Link href={href({ institution: null, around: null })} className={institution === null ? ui.on : ''}>
               everyone
             </Link>
-            {[...new Set([viewer?.account.institutionName, institution])].filter((i): i is string => !!i).map((i) => (
+            {[...new Set([...(viewer?.account.institutions ?? []), institution])].filter((i): i is string => !!i).map((i) => (
               <Link key={i} href={href({ institution: i, around: null })} className={i === institution ? ui.on : ''}>
                 {i}
               </Link>
@@ -149,7 +148,7 @@ export default async function LeaderboardPage({
           </span>
         ) : viewer ? (
           <span>
-            {institution && viewer.account.institutionName !== institution
+            {institution && !viewer.account.institutions.includes(institution)
               ? `You are not at ${institution}.`
               : basis === 'settled_pnl'
                 ? 'You are not on this board yet: it counts settled markets only.'
@@ -182,6 +181,15 @@ export default async function LeaderboardPage({
           field={snapshot}
           you={mine >= 0 ? field[mine].netWorthMicro : null}
           label={mine >= 0 ? (standing(mine) === null ? 'you' : `you · ahead of ${standing(mine)}%`) : null}
+          other={
+            focus >= 0 && focus !== mine
+              ? {
+                handle: field[focus].handle,
+                worth: field[focus].netWorthMicro,
+                label: `@${field[focus].handle}${standing(focus) === null ? '' : ` · ahead of ${standing(focus)}%`}`,
+              }
+              : null
+          }
         />
       )}
 
@@ -207,7 +215,7 @@ export default async function LeaderboardPage({
             <tr>
               <th className={ui.th()}>#</th>
               <th className={ui.th()}>Trader</th>
-              <th className={`${ui.th()} narrow:hidden`}>Institution</th>
+              <th className={`${ui.th()} narrow:hidden`}>Institutions</th>
               <th className={ui.th(true)} title="Cash plus what selling every open holding now would pay">
                 Net worth
               </th>
@@ -281,16 +289,21 @@ function Segment({
           <tr key={r.accountId} id={r.accountId === focus ? 'focus' : undefined} className={highlight ? 'bg-highlight' : ''}>
             <td className={`${ui.td} font-mono text-[13px]`}>{r.rank}</td>
             <td className={ui.td}>
-              {r.displayName}
+              <Link href={`/people/${encodeURIComponent(r.handle)}`} className="text-ink">
+                {r.displayName}
+              </Link>
               {r.isBot && <span className={ui.badge}>bot</span>}
               {r.accountId === me && <span className="ml-1 font-sans text-xs text-muted">(you)</span>}
             </td>
             <td className={`${ui.td} text-muted narrow:hidden`}>
-              {r.institutionName && (
-                <Link href={institutionHref(r.institutionName)} className="text-muted" title={`Rank ${r.institutionName} among itself`}>
-                  {r.institutionName}
-                </Link>
-              )}
+              {r.institutions.map((name, i) => (
+                <span key={name}>
+                  {i > 0 && '; '}
+                  <Link href={institutionHref(name)} className="text-muted" title={`Rank ${name} among itself`}>
+                    {name}
+                  </Link>
+                </span>
+              ))}
             </td>
             <td className={`${ui.td} ${ui.num}`}>{rep(r.netWorthMicro)}</td>
             <td className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)}`}>{signedRep(r.unrealizedPnlMicro)}</td>
@@ -299,70 +312,5 @@ function Segment({
         );
       })}
     </>
-  );
-}
-
-/** Micro-units as whole units, for plotting only: the chart never feeds back into money. */
-const toUnits = (micro: bigint) => microToFloat(micro) / 1_000_000;
-
-/**
- * The field's shape: the shared snapshot of every trader's net worth at
- * liquidation value (never a mark, §1.2) as a curve (`StandingChart`), the
- * viewer on it by their exact figure from this board, and the same figures
- * as a table. The snapshot may be a few minutes old and says so. Nothing for
- * a field of one.
- */
-function FieldCurve({ field, you, label }: { field: FieldSnapshot; you: bigint | null; label: string | null }) {
-  const worths = field.worthsMicro;
-  if (worths.length < 2) return null;
-  // Nearest-rank quantiles: real traders' figures, exact, never interpolated money.
-  const at = (q: number) => worths[Math.round((worths.length - 1) * q)];
-  const rows: [string, bigint][] = [
-    ['Lowest', worths[0]],
-    ['25th percentile', at(0.25)],
-    ['Median', at(0.5)],
-    ['75th percentile', at(0.75)],
-    ['Highest', worths[worths.length - 1]],
-  ];
-  return (
-    <section aria-label="The field" className="mt-4">
-      <StandingChart
-        curve={field.curve}
-        domain={field.domain}
-        values={worths.map(toUnits)}
-        you={you === null ? null : toUnits(you)}
-        label={label}
-      />
-      <p className={ui.caption}>
-        <b>Figure 1.</b> Net worth of all {worths.length.toLocaleString('en')} traders, if each sold everything now, as
-        of {ago(field.computedAt)} ago.{you !== null && ' The shaded part is everyone below you.'}
-      </p>
-      <details className="mt-1 font-sans text-xs text-muted">
-        <summary className="cursor-pointer">the numbers</summary>
-        <table className="mt-1 border-y-[1.5px] border-ink">
-          <caption className={ui.tableCaption}>
-            <b>Table 2.</b> The figures behind Figure 1.
-          </caption>
-          <tbody>
-            {rows.map(([name, v]) => (
-              <tr key={name}>
-                <td className="pr-4">{name}</td>
-                <td className="text-right font-mono text-ink">
-                  {rep(v)} {REP}
-                </td>
-              </tr>
-            ))}
-            {you !== null && (
-              <tr>
-                <td className="border-t border-ink pr-4 font-semibold text-ink">You</td>
-                <td className="border-t border-ink text-right font-mono font-semibold text-ink">
-                  {rep(you)} {REP}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </details>
-    </section>
   );
 }
