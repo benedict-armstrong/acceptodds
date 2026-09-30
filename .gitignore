@@ -44,3 +44,6 @@ next-env.d.ts
 
 # downloaded sources for scripts/build-institution-domains.ts
 /.cache/
+
+# Claude Code local state and worktrees
+.claude/
