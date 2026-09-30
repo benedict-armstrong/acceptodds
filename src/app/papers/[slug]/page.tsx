@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
+import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { marketHeadline, shareTitleLine } from '@/lib/headline';
@@ -19,7 +20,6 @@ import { shareSubject, siteName, siteUrl } from '@/server/share';
 import { listingView, resolveListing, type MarketView } from '@/server/views';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
-import { Abstract } from './Abstract';
 import { SharePanel } from './SharePanel';
 
 export const dynamic = 'force-dynamic';
@@ -79,38 +79,37 @@ export default async function PaperPage({
 
   return (
     <main className={ui.page}>
-      {listing.kind && <div className="mt-4.5 text-center font-mono text-[13px] text-muted">{listing.kind}</div>}
-      <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">
-        <MathText text={listing.title} />
-      </h1>
-      {listing.authors.length > 0 && (
-        <div className="mx-auto max-w-[680px] text-center text-[15px] text-subtle">{listing.authors.join(', ')}</div>
-      )}
-      {listing.links.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 font-sans text-[13px]">
-          {listing.links.map((l) => (
-            <a key={l.url} href={l.url} className="text-accent" rel="noopener noreferrer" target="_blank">
-              [{l.label}]
-            </a>
-          ))}
+      <TitleBlock
+        above={listing.kind}
+        title={<MathText text={listing.title} />}
+        byline={listing.authors.length > 0 ? listing.authors.join(', ') : null}
+        abstract={listing.summary}
+      >
+        {listing.links.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 font-sans text-[13px]">
+            {listing.links.map((l) => (
+              <a key={l.url} href={l.url} className="text-accent" rel="noopener noreferrer" target="_blank">
+                [{l.label}]
+              </a>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex items-center justify-center gap-4">
+          {viewer && (
+            <FollowStar listingId={listing.id} following={following} followers={followers} showCount className="text-[15px]" />
+          )}
+          {markets[0] && (
+            <SharePanel
+              title={listing.title}
+              kind={listing.kind ?? markets[0].market.kind}
+              shareUrl={`${siteUrl()}/s/${encodeURIComponent(listing.slug)}`}
+              badgeUrl={`${siteUrl()}/badge/${encodeURIComponent(listing.slug)}.svg`}
+              initial={presentMarket(markets[0]) as z.output<typeof S.Market>}
+              signedIn={viewer !== null}
+            />
+          )}
         </div>
-      )}
-      <div className="mt-2 flex items-center justify-center gap-4">
-        {viewer && (
-          <FollowStar listingId={listing.id} following={following} followers={followers} showCount className="text-[15px]" />
-        )}
-        {markets[0] && (
-          <SharePanel
-            title={listing.title}
-            kind={listing.kind ?? markets[0].market.kind}
-            shareUrl={`${siteUrl()}/s/${encodeURIComponent(listing.slug)}`}
-            badgeUrl={`${siteUrl()}/badge/${encodeURIComponent(listing.slug)}.svg`}
-            initial={presentMarket(markets[0]) as z.output<typeof S.Market>}
-            signedIn={viewer !== null}
-          />
-        )}
-      </div>
-      {listing.summary && <Abstract text={listing.summary} />}
+      </TitleBlock>
 
       {/* One market per paper is the default; the list is only for a paper with more. */}
       {markets.length === 0 && <div className={ui.empty}>No markets on this paper yet.</div>}

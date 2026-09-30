@@ -2,13 +2,14 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { Account } from '@/db/schema';
 import { day } from '@/lib/format';
+import { TitleBlock } from './TitleBlock';
 import { ui } from './ui';
 
 /**
- * A trader's name set like a paper's title block: the name as the title,
- * then an author line (`@handle, Institution; Institution`, one per confirmed
- * affiliation, as a paper lists them) and a one-paragraph
- * abstract of who they are, spaced like a paper's first page. `/profile` and `/people/<handle>` both open with
+ * A trader's name set as a paper's title block (`TitleBlock`): the name as
+ * the title, then an author line (`@handle, Institution; Institution`, one
+ * per confirmed affiliation, as a paper lists them) and a one-paragraph
+ * abstract of who they are. `/profile` and `/people/<handle>` both open with
  * it; only the profile passes `email` and `admin`, which are not public.
  * `children` go between the author line and the abstract.
  */
@@ -24,27 +25,31 @@ export function TraderHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="mt-8 pb-5 text-center">
-      <h1 className="mb-4 text-[30px] leading-tight font-normal">
-        {a.displayName}
-        {a.isBot && <span className={ui.badge}>bot</span>}
-      </h1>
-      <div className="text-[15px] text-subtle">
-        @{a.handle}
-        {a.institutions.map((name, i) => (
-          <span key={name}>
-            {i === 0 ? ', ' : '; '}
-            <Link href={`/leaderboard?institution=${encodeURIComponent(name)}`}>
-              <i>{name}</i>
-            </Link>
-          </span>
-        ))}
-      </div>
+    <TitleBlock
+      title={
+        <>
+          {a.displayName}
+          {a.isBot && <span className={ui.badge}>bot</span>}
+        </>
+      }
+      byline={
+        <>
+          @{a.handle}
+          {a.institutions.map((name, i) => (
+            <span key={name}>
+              {i === 0 ? ', ' : '; '}
+              <Link href={`/leaderboard?institution=${encodeURIComponent(name)}`}>
+                <i>{name}</i>
+              </Link>
+            </span>
+          ))}
+        </>
+      }
+      abstract={abstract(a, admin)}
+    >
       {email && <div className="mt-1 font-mono text-[13px] text-subtle">{email}</div>}
       {children}
-      {/* Inset from the text width, as a paper's abstract is. */}
-      <p className="mx-auto mt-7 max-w-[460px] text-left text-[14px] leading-[1.55]">{abstract(a, admin)}</p>
-    </header>
+    </TitleBlock>
   );
 }
 

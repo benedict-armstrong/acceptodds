@@ -31,6 +31,8 @@ export const ui = {
   boxHeading: `mb-2 ${subsectionLook}`,
   page: 'mx-auto max-w-[880px] px-6 pt-3 pb-15',
   groupHeading: `mt-7 mb-1.5 ${section}`,
+  /** An unnumbered section, for back matter such as References. */
+  backHeading: `mt-7 mb-1.5 ${sectionLook}`,
   sectionHeading: `mb-2 ${subsection}`,
   empty: 'py-7.5 italic text-muted',
   /** A figure's caption, under it: "<b>Figure N.</b> …", numbered by hand in page order. */
