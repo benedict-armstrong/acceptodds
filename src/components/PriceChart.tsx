@@ -157,12 +157,12 @@ export function PriceChart({
         )}
       </div>
       {lines.length > 1 && (
-        <div className={ui.caption}>
+        <div className={`${ui.caption} text-right`}>
           {lines.map((i) => (
             <span
               key={i}
               tabIndex={0}
-              className={`mr-3.5 cursor-default transition-opacity ${faded(i) ? 'opacity-40' : ''} ${focus === i ? 'text-ink' : ''}`}
+              className={`ml-3.5 cursor-default transition-opacity ${faded(i) ? 'opacity-40' : ''} ${focus === i ? 'text-ink' : ''}`}
               onPointerEnter={() => setFocus(i)}
               onPointerLeave={() => setFocus(null)}
               onFocus={() => setFocus(i)}

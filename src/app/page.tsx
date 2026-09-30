@@ -297,10 +297,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           className="group mt-3.5"
           summary={
             <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-              <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
+Following <span className="font-normal">({followed.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
                 ›
               </span>
-              Following <span className="font-normal">({followed.total})</span>
             </summary>
           }
         >
@@ -319,10 +318,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           className="group mt-3.5"
           summary={
             <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-              <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
+My positions <span className="font-normal">({held.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
                 ›
               </span>
-              My positions <span className="font-normal">({held.total})</span>
             </summary>
           }
         >

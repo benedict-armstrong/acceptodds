@@ -116,7 +116,7 @@ export default async function PaperPage({
       {markets.length === 0 && <div className={ui.empty}>No markets on this paper yet.</div>}
       {markets.length > 1 && (
         <section className="mt-6">
-          <h3 className={ui.sectionHeading}>Markets</h3>
+          <h3 className={`${ui.section} mb-2`}>Markets</h3>
           {markets.map((m) => {
             const on = m.market.id === selected?.market.id;
             const look = likelihoodClass(marketLikelihood({ ...m.market, outcomes: m.outcomes }));

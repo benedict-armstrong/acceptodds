@@ -12,8 +12,8 @@ export function Abstract({ text }: { text: string }) {
   const [open, setOpen] = useState(!long);
   return (
     <div className="mx-auto mt-3 max-w-[680px] text-[14px] leading-[1.55]">
-      <span className="font-sans text-xs font-semibold uppercase tracking-[.06em] text-muted">Abstract </span>
-      <p className={`inline whitespace-pre-line ${open ? '' : 'line-clamp-3'}`}>{text}</p>
+      <h3 className={`${ui.boxHeading} text-center`}>Abstract</h3>
+      <p className={`whitespace-pre-line ${open ? '' : 'line-clamp-3'}`}>{text}</p>
       {long && (
         <button
           type="button"

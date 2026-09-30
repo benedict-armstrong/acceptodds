@@ -80,6 +80,9 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
   const n = market.outcomes.length;
   const barred = n > 2 && n <= MAX_BAR_OUTCOMES && (market.status === 'open' || market.status === 'closed');
   const headline = marketHeadline(market);
+  // On a paper's page the question and the headline read as one sentence,
+  // with the venue (`kind`) named once, in it.
+  const sentence = embedded && barred && headline !== null;
 
   // A fill can trim the viewer's comment backings (a sell), so comments refresh too.
   const [commentsVersion, setCommentsVersion] = useState(0);
@@ -93,9 +96,13 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
   return (
     <>
       <div className="mt-4.5 text-center font-mono text-[13px] text-muted">
-        {market.kind} · {statusLine(market)}
+        {sentence ? statusLine(market) : `${market.kind} · ${statusLine(market)}`}
       </div>
-      {embedded ? (
+      {sentence ? (
+        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal">
+          <b className={lead}>{pct(headline)}</b> chance this paper gets accepted at {market.kind}.
+        </h2>
+      ) : embedded ? (
         <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal">{market.question}</h2>
       ) : (
         <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">{market.question}</h1>
@@ -104,12 +111,14 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
 
       {barred && headline !== null ? (
         <div className="mx-auto my-4.5 max-w-[560px]">
-          <div className="text-center text-[22px]">
-            <span className={lead}>
-              <b>{pct(headline)}</b> {headlineLabel(labels, embedded)}
-            </span>
-          </div>
-          <OutcomeBar prices={market.outcomes.map((o) => o.price)} labels={labels} className="mt-2 h-2.5 w-full" />
+          {!sentence && (
+            <div className="mb-2 text-center text-[22px]">
+              <span className={lead}>
+                <b>{pct(headline)}</b> {headlineLabel(labels, embedded)}
+              </span>
+            </div>
+          )}
+          <OutcomeBar prices={market.outcomes.map((o) => o.price)} labels={labels} className="h-2.5 w-full" />
           <div className="mt-1.5 flex flex-wrap justify-between gap-x-4 font-sans text-[13px] text-subtle">
             {barOrder(n).map((i) => (
               <span key={i} className="whitespace-nowrap">
@@ -130,7 +139,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
         </div>
       )}
 
-      <div className="border-y border-rule py-2.5">
+      <div className="py-2.5">
         {points.length > 1 ? (
           <>
             <PriceChart points={points} labels={labels} />
@@ -148,7 +157,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
 
       {holdings.length > 0 && (
         <div className="mt-5.5">
-          <h3 className={ui.sectionHeading}>Your positions</h3>
+          <h3 className={`${ui.section} mb-2`}>Your positions</h3>
           <PositionsTable
             holdings={holdings}
             sellable={tradable && initial.viewer.canTrade ? [market.id] : []}
@@ -159,7 +168,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
 
       <div className="mt-5.5 grid grid-cols-2 gap-8 narrow:grid-cols-1">
         <div>
-          <h3 className={ui.sectionHeading}>Recent trades</h3>
+          <h3 className={`${ui.section} mb-2`}>Recent trades</h3>
           <div className="font-mono text-[13px] whitespace-nowrap [&>div]:py-0.5">
             {tape.orders.length === 0 && <div className="text-muted">—</div>}
             {tape.orders.map((o) => {
@@ -191,7 +200,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
             />
           ) : (
             <div className={ui.box}>
-              <h3 className={ui.sectionHeading}>{market.status === 'settled' ? 'Resolved' : 'Trading closed'}</h3>
+              <h3 className={ui.boxHeading}>{market.status === 'settled' ? 'Resolved' : 'Trading closed'}</h3>
               {market.status === 'settled' ? (
                 <div>
                   <b>{label(market.resolvedOutcomeId ?? '')}</b>
