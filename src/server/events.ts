@@ -56,7 +56,9 @@ export type EventKind =
   | 'me.updated'
   | 'digest.sent'
   | 'share.opened'
-  | 'badge.read';
+  | 'badge.read'
+  | 'onboarding.started'
+  | 'password.set';
 
 export function log(
   kind: EventKind,

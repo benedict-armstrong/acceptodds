@@ -495,6 +495,51 @@ export function buildRegistry(): OpenAPIRegistry {
   unaffiliate.responses[204] = { description: 'Removed.' };
   r.registerPath(unaffiliate);
 
+  r.registerPath(
+    sessionOnly({
+      method: 'post',
+      path: '/me/password',
+      tags: ['me'],
+      summary: 'Set your first password',
+      description:
+        'For an account made by onboarding (`POST /onboarding`), which has none. To change a password, reset it from the sign-in page.',
+      request: { body: { content: { 'application/json': { schema: S.SetPasswordRequest } } } },
+      ok: { status: 200, schema: S.PasswordSet, description: 'Set. Sign in with it from now on.' },
+      errors: { 409: 'password_already_set' },
+    }),
+  );
+
+  const dropPendingBet = sessionOnly({
+    method: 'delete',
+    path: '/me/pending-bet',
+    tags: ['me'],
+    summary: 'Drop your onboarding bet',
+    description: 'The bet chosen during onboarding, once placed through `POST /markets/{id}/orders` or declined. Idempotent.',
+    ok: { status: 200, schema: S.PasswordSet, description: 'unused' },
+  });
+  delete dropPendingBet.responses[200];
+  dropPendingBet.responses[204] = { description: 'Dropped (or there was none).' };
+  r.registerPath(dropPendingBet);
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/onboarding',
+      tags: ['onboarding'],
+      summary: 'Sign up by choosing a bet',
+      description:
+        'Makes a password-less sign-up for an address at an approved institution and mails it a confirmation link and code. The bet is stored, not placed: no account exists until the address is confirmed. After confirming, the person sets a password (`POST /me/password`) and places the bet like any order, at the price then. Answers the same whether or not the address already has an account; a confirmed one is mailed a note to sign in instead, and its bet dropped. Five mails a day per address.',
+      request: { body: { content: { 'application/json': { schema: S.OnboardingRequest } } } },
+      ok: { status: 200, schema: S.OnboardingStarted, description: 'The mail is on its way.' },
+      errors: {
+        404: 'not_found: no such market or outcome.',
+        409: 'market_not_open | market_closed',
+        422: 'email_domain_not_allowed: the domain is not on the institution allowlist.',
+        429: 'rate_limited: too many sign-up mails to this address. See Retry-After.',
+      },
+    }),
+  );
+
   // -- admin ----------------------------------------------------------------
 
   r.registerPath(
@@ -581,6 +626,7 @@ export function openApiDocument() {
       { name: 'trading', description: 'Quotes and orders.' },
       { name: 'accounts', description: 'Public profiles and the leaderboard.' },
       { name: 'me', description: 'The authenticated account.' },
+      { name: 'onboarding', description: 'Signing up by choosing a first bet.' },
       { name: 'admin', description: 'Requires the `admin` scope.' },
     ],
   });

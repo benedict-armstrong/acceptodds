@@ -4,12 +4,11 @@ import { useState } from 'react';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { ui } from '@/components/ui';
-import { sharesForCost } from '@/lib/lmsr';
 import { parseUnits } from '@/lib/money';
 import { payoutReturn, pct, rep, REP } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 import { MESSAGES, useOrder } from '@/components/orders';
-import { useQuote } from '@/components/quote';
+import { sharesForStake, useQuote } from '@/components/quote';
 
 type Market = z.output<typeof S.Market>;
 
@@ -28,41 +27,40 @@ function segment(on: boolean): string {
  *
  * What it shows is what the engine charges: the order is sent with the
  * quote it showed as `maxCostMicro` (`useOrder`).
+ *
+ * With `onChoose`, it sends nothing: its button hands the choice back, for a
+ * visitor who has no account yet (onboarding, `/welcome`). `cashMicro` is
+ * then the balance they will start with.
  */
 export function TradeBox({
   market,
   cashMicro,
   viewer,
   onFilled,
+  onChoose,
 }: {
   market: Market;
   /** The viewer's cash, from their polled portfolio; `null` when signed out. */
   cashMicro: bigint | null;
   viewer: { signedIn: boolean; canTrade: boolean };
-  onFilled: () => void;
+  /** After a fill: the outcome bought and the stake entered. */
+  onFilled: (choice: { outcomeId: string; stakeMicro: bigint }) => void;
+  /** Instead of placing the order: the outcome and the stake. */
+  onChoose?: (choice: { outcomeId: string; stakeMicro: bigint }) => void;
 }) {
   const [idx, setIdx] = useState(0);
   const [stake, setStake] = useState('100');
-  const { send, busy, note } = useOrder(market.id, onFilled);
+  // Called after the fill, with this render's choice: the one the order was sent from.
+  const { send, busy, note } = useOrder(market.id, () =>
+    onFilled({ outcomeId: outcome.id, stakeMicro: budget ?? 0n }),
+  );
 
   const outcome = market.outcomes[idx];
   const budget = parseUnits(stake);
   // The shares the stake buys on the board as last polled, rounded down. The
   // engine only takes a share count; the quote then prices it on the live
   // board, and that quote, not the stake, is what is shown and bounds the order.
-  const size =
-    budget && budget > 0n
-      ? BigInt(
-        Math.floor(
-          sharesForCost(
-            market.outcomes.map((o) => Number(o.sharesMicro)),
-            idx,
-            Number(budget),
-            market.b,
-          ),
-        ),
-      )
-      : null;
+  const size = budget && budget > 0n ? sharesForStake(market, idx, budget) : null;
   const signed = size && size > 0n ? size : null;
   const current = useQuote(market.id, outcome.id, signed, market.outcomes);
   const cost = current ? BigInt(current.costMicro) : null;
@@ -128,7 +126,15 @@ export function TradeBox({
         </div>
       )}
 
-      {!viewer.signedIn ? (
+      {onChoose ? (
+        <button
+          className={ui.btn()}
+          disabled={budget === null || budget <= 0n || short}
+          onClick={() => budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget })}
+        >
+          Stake {budget ? rep(budget) : ''} {REP} on {outcome.label}
+        </button>
+      ) : !viewer.signedIn ? (
         <SignInLink className={ui.btn()}>Sign in to trade</SignInLink>
       ) : !viewer.canTrade ? (
         <div className={ui.note(false)}>{MESSAGES.not_verified}</div>
@@ -141,7 +147,7 @@ export function TradeBox({
           {busy ? '…' : `Stake ${cost !== null ? rep(cost) : ''} ${REP} on ${outcome.label}`}
         </button>
       )}
-      {cost !== null && <div className={ui.fine}>Refused if the price moves against you before it fills.</div>}
+      {cost !== null && !onChoose && <div className={ui.fine}>Refused if the price moves against you before it fills.</div>}
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
     </div>
   );

@@ -796,3 +796,34 @@ unpaginated, and 5 s for that search.
   is served at once and one background refresh starts; only a missing row
   makes a reader wait. An older computation never overwrites a newer row.
   A cache, not a source of truth: no foreign keys, and ranks never read it.
+
+### Onboarding (`/welcome`)
+
+- **One question at a time**, each in `components/OnboardingCard`, the step
+  in `?step=` so back works: which paper (search in `DEFAULT_MARKET_KIND`,
+  the most traded open ones before anything is typed), the bet (the market's
+  own `TradeBox`), an optional justification, then name and email. A
+  signed-in viewer's bet and comment go straight through the API and the
+  flow ends at the paper. What the steps collect is client state; a reload
+  falls back to the search.
+- **A visitor's bet is stored, never placed, until they confirm**
+  (`pending_bets`, one per Better Auth user, `server/onboarding.ts`).
+  `POST /onboarding` makes a Better Auth user **with no credential** and
+  mails the usual link and code back to `/welcome?step=finish`. Confirming
+  creates the account and grant exactly as sign-up does; there is still no
+  account or reputation before it. `Finish` then asks for a password
+  (`POST /me/password`, Better Auth's server-only `setPassword`; forgot
+  password also works for a user without one) and places the bet as an
+  ordinary order: **the stake is kept, not the share count**, sized on the
+  board then and bounded by its quote. Then the comment, then
+  `DELETE /me/pending-bet`. It is shown before it is placed, so another
+  onboarding with the same unconfirmed address may replace it.
+- **Same answer whether or not the address is taken**, as for sign-up: a
+  confirmed address is mailed "sign in instead" and its bet is dropped,
+  never added to that account. Five mails per address a day
+  (`onboarding-mail:<email>`), since the route is anonymous.
+- **`/welcome` comes first, once per browser.** `/signin` and `/signup`
+  redirect to it (keeping `?next=`) until the `welcomed` cookie is set,
+  which `/welcome` sets when shown; its intro links to both. The cookie is
+  a preference, not a credential, and is not `localStorage` because the
+  server has to read it to redirect.

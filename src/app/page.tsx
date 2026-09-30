@@ -7,7 +7,9 @@ import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { Sparkline } from '@/components/Sparkline';
+import { Abstract } from '@/components/Abstract';
 import { ui } from '@/components/ui';
+import { defaultMarketKind } from '@/lib/venue';
 import { pct, rep, REP } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
@@ -46,15 +48,16 @@ const POSITIONS_COOKIE = 'home_positions_open';
 /** Traders shown above the papers when a search reads like a name. */
 const PEOPLE = 5;
 
+/** What the site is, above the search; hidden while searching. */
+const ABSTRACT =
+  'A prediction market on peer review. Each paper has a market on its decision (oral, spotlight, poster or reject), ' +
+  'priced by researchers who stake $rep, a play currency, on what they expect. Prices are probabilities, and ' +
+  'every market settles when the venue publishes its decisions.';
+
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
 const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
 /** Sort keys shown under another name. The venue's `likelihood` is the headline (`lib/headline.ts`). */
 const SORT_LABEL: Partial<Record<BrowseSort, string>> = { likelihood: 'acceptance' };
-
-/** The venue shown first. Opaque to the platform: it is a `kind` string. */
-function defaultKind(): string {
-  return process.env.DEFAULT_MARKET_KIND ?? 'ICLR 2027';
-}
 
 function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -85,7 +88,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   // ?kind=all shows every venue; otherwise the requested one, else the default
   // venue if it has markets, else everything.
   const kind =
-    wanted === 'all' ? null : wanted ?? (kinds.some((k) => k.kind === defaultKind()) ? defaultKind() : null);
+    wanted === 'all' ? null : wanted ?? (kinds.some((k) => k.kind === defaultMarketKind()) ? defaultMarketKind() : null);
   const status: Status = (STATUSES as readonly string[]).includes(one(sp.status) ?? '') ? (one(sp.status) as Status) : 'open';
   // A search keeps the venue and status filters (the form carries them) and
   // sorts by relevance unless another sort is asked for.
@@ -167,6 +170,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <main className={ui.page}>
+      {!q && <Abstract text={ABSTRACT} />}
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-3.5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />

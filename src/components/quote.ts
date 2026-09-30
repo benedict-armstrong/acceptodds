@@ -2,9 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
+import { sharesForCost } from '@/lib/lmsr';
 import type * as S from '@/server/api/schemas';
 
 type Quote = z.output<typeof S.Quote>;
+type Market = z.output<typeof S.Market>;
+
+/**
+ * The shares `stakeMicro` buys of outcome `idx` on the board as given,
+ * rounded down. The engine only takes a share count; quote it on the live
+ * board, and send that quote, not the stake, as the order's bound.
+ */
+export function sharesForStake(market: Market, idx: number, stakeMicro: bigint): bigint {
+  return BigInt(
+    Math.floor(
+      sharesForCost(
+        market.outcomes.map((o) => Number(o.sharesMicro)),
+        idx,
+        Number(stakeMicro),
+        market.b,
+      ),
+    ),
+  );
+}
 
 /**
  * The engine's quote for trading `sharesMicro` (negative sells) of one

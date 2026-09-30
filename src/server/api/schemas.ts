@@ -753,3 +753,32 @@ export const CommentBackingRequest = z
   .meta({ id: 'CommentBackingRequest' });
 
 export const CommentId = Id.meta({ description: 'A comment id.' });
+
+// ---------------------------------------------------------------------------
+// onboarding
+// ---------------------------------------------------------------------------
+
+export const OnboardingRequest = z
+  .object({
+    email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
+    name: z.string().trim().min(1).max(100),
+    marketId: Id,
+    outcomeId: Id,
+    stakeMicro: MicroInput.meta({ description: 'What to spend, at most the starting balance. Not a share count.' }),
+    comment: z.string().trim().max(2000).nullable().optional().meta({
+      description: 'A justification, posted as a comment once the bet is placed.',
+    }),
+  })
+  .strict()
+  .meta({ id: 'OnboardingRequest' });
+
+export const OnboardingStarted = z
+  .object({ email: z.string().meta({ description: 'Where the confirmation mail went.' }) })
+  .meta({ id: 'OnboardingStarted' });
+
+export const SetPasswordRequest = z
+  .object({ password: z.string().min(12).max(128) })
+  .strict()
+  .meta({ id: 'SetPasswordRequest' });
+
+export const PasswordSet = z.object({ ok: z.literal(true) }).meta({ id: 'PasswordSet' });

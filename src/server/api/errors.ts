@@ -36,6 +36,7 @@ export const API_ERROR_CODES = [
   'invalid_code',
   'affiliation_taken',
   'primary_affiliation',
+  'password_already_set',
   'method_not_allowed',
   'internal_error',
 ] as const;

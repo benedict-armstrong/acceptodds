@@ -69,6 +69,20 @@ const DISABLED_OTP_PATHS = [
   '/email-otp/change-email',
 ];
 
+/**
+ * To an address that already has a confirmed account and was just used to
+ * sign up again: only the inbox's owner learns it is taken.
+ */
+export async function mailAlreadyRegistered(email: string): Promise<void> {
+  await sendMail({
+    to: email,
+    subject: 'You already have an acceptodds account',
+    text:
+      `Someone tried to sign up with this address, which already has an account. If it was you, sign in instead:\n\n` +
+      `${siteUrl()}/signin\n\nIf not, ignore this; nothing has changed.`,
+  });
+}
+
 export function createAuth(database: Database) {
   const auth = betterAuth({
     appName: 'acceptodds',
@@ -95,13 +109,7 @@ export function createAuth(database: Database) {
           await auth.api.sendVerificationEmail({ body: { email: user.email, callbackURL } });
           return;
         }
-        await sendMail({
-          to: user.email,
-          subject: 'You already have an acceptodds account',
-          text:
-            `Someone tried to sign up with this address, which already has an account. If it was you, sign in instead:\n\n` +
-            `${siteUrl()}/signin\n\nIf not, ignore this; nothing has changed.`,
-        });
+        await mailAlreadyRegistered(user.email);
       },
       sendResetPassword: async ({ user, url }) => {
         await sendMail({

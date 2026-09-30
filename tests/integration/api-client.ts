@@ -31,6 +31,9 @@ import * as tokenRoute from '@/app/api/v1/me/tokens/[id]/route';
 import * as affiliationsRoute from '@/app/api/v1/me/affiliations/route';
 import * as affiliationRoute from '@/app/api/v1/me/affiliations/[id]/route';
 import * as affiliationVerifyRoute from '@/app/api/v1/me/affiliations/[id]/verify/route';
+import * as myPasswordRoute from '@/app/api/v1/me/password/route';
+import * as myPendingBetRoute from '@/app/api/v1/me/pending-bet/route';
+import * as onboardingRoute from '@/app/api/v1/onboarding/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
 import * as fallbackRoute from '@/app/api/v1/[...rest]/route';
 import { STARTING_MICRO } from './helpers';
@@ -68,6 +71,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/affiliations', affiliationsRoute],
   ['/me/affiliations/[id]', affiliationRoute],
   ['/me/affiliations/[id]/verify', affiliationVerifyRoute],
+  ['/me/password', myPasswordRoute],
+  ['/me/pending-bet', myPendingBetRoute],
+  ['/onboarding', onboardingRoute],
 ];
 
 export const ROUTE_PATTERNS = ROUTES.map(([p]) => p);

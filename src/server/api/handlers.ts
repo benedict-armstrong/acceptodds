@@ -9,6 +9,7 @@ import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
 import { upsertListing } from '../listings';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
+import { clearPendingBet, setFirstPassword, startOnboarding } from '../onboarding';
 import {
   accountOrders,
   leaderboard as leaderboardView,
@@ -408,6 +409,38 @@ export const deleteMyAffiliation = route(async (req, params) => {
   const id = parseParam(params.id, S.AffiliationId, 'id');
   await removeAffiliation({ accountId: principal.account.id, id });
   events.log('affiliation.removed', { accountId: principal.account.id });
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+});
+
+// ---------------------------------------------------------------------------
+// onboarding
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign up by betting (`server/onboarding.ts`): no password, no account yet.
+ * Answers the same whether or not the address is taken.
+ */
+export const postOnboarding = route(async (req) => {
+  const principal = await authenticate(req);
+  const body = await parseBody(req, S.OnboardingRequest);
+  await startOnboarding({ ...body, comment: body.comment ?? null });
+  events.log('onboarding.started', { accountId: null, marketId: body.marketId });
+  return respond(S.OnboardingStarted, { email: body.email }, { principal });
+});
+
+/** The first password of an account made by onboarding. Session only. */
+export const postMyPassword = route(async (req) => {
+  const principal = await requireSession(req);
+  const body = await parseBody(req, S.SetPasswordRequest);
+  await setFirstPassword(req.headers, body.password);
+  events.log('password.set', { accountId: principal.account.id });
+  return respond(S.PasswordSet, { ok: true }, { principal });
+});
+
+/** Drop the bet chosen during onboarding, once placed or declined. Idempotent. */
+export const deleteMyPendingBet = route(async (req) => {
+  const principal = await requireSession(req);
+  await clearPendingBet(userIdOf(principal));
   return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 });
 

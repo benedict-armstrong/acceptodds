@@ -578,6 +578,34 @@ export const digestSends = pgTable(
 );
 
 /**
+ * A bet chosen during onboarding (`/welcome`) by someone who has no account
+ * yet: one per Better Auth user, written by `server/onboarding.ts` when the
+ * sign-up mail goes out. **Not an order and not money**: nothing is reserved,
+ * no price is held. After confirming, the person places it themselves, through
+ * the API like any order, at the price then — the stake is what is kept, not
+ * the share count — and the row is deleted.
+ */
+export const pendingBets = pgTable(
+  'pending_bets',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    marketId: uuid('market_id')
+      .notNull()
+      .references(() => markets.id, { onDelete: 'cascade' }),
+    outcomeId: uuid('outcome_id')
+      .notNull()
+      .references(() => outcomes.id, { onDelete: 'cascade' }),
+    stakeMicro: money('stake_micro').notNull(),
+    /** The justification, posted as a comment once the bet is placed. */
+    comment: text('comment'),
+    createdAt: createdAt(),
+  },
+  (t) => [check('pending_bets_stake_positive', sql`${t.stakeMicro} > 0`)],
+);
+
+/**
  * A snapshot of the whole field's net worth at liquidation value, for the
  * "where you stand" curves (navbar, portfolio): the same for every viewer,
  * so computed once and shared, recomputed at most every few minutes by
@@ -607,6 +635,7 @@ export type Order = typeof orders.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type CommentBacking = typeof commentBackings.$inferSelect;
 export type Affiliation = typeof affiliations.$inferSelect;
+export type PendingBet = typeof pendingBets.$inferSelect;
 /** What an API credential may do. Stored as the API-key plugin's permissions, `{ api: [...] }`. */
 export const TOKEN_SCOPES = ['read', 'trade', 'admin'] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];

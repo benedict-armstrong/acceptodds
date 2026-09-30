@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { Markdown } from '@/components/Markdown';
+import { MARKDOWN_HINT, MarkdownEditor } from '@/components/MarkdownEditor';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { ui } from '@/components/ui';
 import { ago, rep, REP, shares } from '@/lib/format';
@@ -126,19 +127,9 @@ export function Comments({
 
       {viewer.canTrade ? (
         <div>
-          {preview ? (
-            <div className="min-h-[70px] border border-dashed border-rule bg-card p-2">
-              {body.trim() ? <Markdown>{body}</Markdown> : <span className="text-muted italic">Nothing to preview.</span>}
-            </div>
-          ) : (
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} placeholder="Add a comment"
-              className="min-h-[70px] w-full border border-rule bg-white p-2 font-sans text-sm narrow:text-base"
-            />
-          )}
+          <MarkdownEditor value={body} onChange={setBody} preview={preview} placeholder="Add a comment" />
           <div className="flex items-center justify-between gap-3">
-            <span className={ui.fine}>
-              Shown anonymously, with your position in this market. Markdown and TeX math ($…$, $$…$$) supported.
-            </span>
+            <span className={ui.fine}>Shown anonymously, with your position in this market. {MARKDOWN_HINT}</span>
             <span className="flex gap-2">
               <button className={ui.btn({ inline: true, ghost: true })} disabled={body.trim().length === 0 && !preview}
                 onClick={() => setPreview((p) => !p)}>
