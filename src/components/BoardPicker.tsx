@@ -75,10 +75,9 @@ export function BoardPicker({
         setActive(0);
       }}
     >
-      {/* Set in the title's own type: the board's name, underlined as something to click. */}
-      <PopoverTrigger className="cursor-pointer text-ink underline decoration-rule decoration-dotted decoration-1 underline-offset-[6px] hover:decoration-ink">
+      {/* In the title's own type, marked as a field the way the trade box's stake is: a dashed rule, solid on hover or focus. */}
+      <PopoverTrigger className="cursor-pointer border-0 border-b-2 border-dashed border-rule-strong text-accent outline-none hover:border-solid hover:border-accent focus-visible:border-solid focus-visible:border-accent data-[state=open]:border-solid data-[state=open]:border-accent">
         {current.label}
-        <span className="ml-1 align-middle text-[0.5em] text-muted">▾</span>
       </PopoverTrigger>
       <PopoverContent className="flex max-h-[60vh] flex-col text-[13px]">
         <input
