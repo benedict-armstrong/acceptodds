@@ -27,10 +27,10 @@ export const ui = {
   /** A run-in heading, set in a line of other text: who wrote a comment, as OpenReview heads one. */
   runIn: subsectionLook,
   page: 'mx-auto max-w-[880px] px-6 pt-3 pb-15 narrow:px-4',
-  groupHeading: `mt-7 mb-1.5 ${section}`,
+  groupHeading: `mt-10 mb-2 ${section}`,
   /** An unnumbered section, for back matter such as References. */
-  backHeading: `mt-7 mb-1.5 ${sectionLook}`,
-  sectionHeading: `mb-2 ${subsection}`,
+  backHeading: `mt-10 mb-2 ${sectionLook}`,
+  sectionHeading: `mb-3 ${subsection}`,
   empty: 'py-7.5 italic text-muted',
   /** A figure's caption, under it: "<b>Figure N.</b> …", numbered by hand in page order. */
   caption: 'mt-1 text-[13px] text-subtle',

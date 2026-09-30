@@ -115,8 +115,8 @@ export default async function PaperPage({
       {/* One market per paper is the default; the list is only for a paper with more. */}
       {markets.length === 0 && <div className={ui.empty}>No markets on this paper yet.</div>}
       {markets.length > 1 && (
-        <section className="mt-6">
-          <h2 className={`${ui.section} mb-2`}>Markets</h2>
+        <section className="mt-10">
+          <h2 className={`${ui.section} mb-3`}>Markets</h2>
           <table className={ui.table}>
             <caption className={ui.tableCaption}>
               <b>Table 1.</b> The markets on this paper, main market first. The one shown below is highlighted.

@@ -107,7 +107,7 @@ export function MarketLive({
 
   return (
     <>
-      <div className="mt-4.5 text-center font-mono text-[13px] text-muted">
+      <div className="mt-6 text-center font-mono text-[13px] text-muted">
         {sentence ? statusLine(market) : `${market.kind} · ${statusLine(market)}`}
       </div>
       {sentence ? (
@@ -122,7 +122,7 @@ export function MarketLive({
       {market.description && <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>}
 
       {barred && headline !== null ? (
-        <div className="mx-auto my-4.5 max-w-[560px]">
+        <div className="mx-auto my-7 max-w-[560px]">
           {!sentence && (
             <div className="mb-2 text-center text-[22px]">
               <span className={lead}>
@@ -141,7 +141,7 @@ export function MarketLive({
           </div>
         </div>
       ) : (
-        <div className="my-4.5 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">
+        <div className="my-7 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">
           {sorted.map((o, i) => (
             <span key={o.id} className={i === 0 ? lead : 'text-muted'}>
               <b>{pct(o.price)}</b> {o.label}
@@ -151,7 +151,7 @@ export function MarketLive({
         </div>
       )}
 
-      <div className="py-2.5">
+      <div className="py-4">
         {points.length > 1 ? (
           <>
             <PriceChart points={points} labels={labels} />
@@ -168,8 +168,8 @@ export function MarketLive({
       </div>
 
       {holdings.length > 0 && (
-        <div className="mt-5.5">
-          <h3 className={`${ui.section} mb-2`}>Your positions</h3>
+        <div className="mt-10">
+          <h3 className={`${ui.section} mb-3`}>Your positions</h3>
           <PositionsTable
             holdings={holdings}
             caption={
@@ -183,9 +183,9 @@ export function MarketLive({
         </div>
       )}
 
-      <div className="mt-5.5 grid grid-cols-2 gap-8 narrow:grid-cols-1">
+      <div className="mt-10 grid grid-cols-2 gap-10 narrow:grid-cols-1">
         <div>
-          <h3 className={`${ui.section} mb-2`}>Recent trades</h3>
+          <h3 className={`${ui.section} mb-3`}>Recent trades</h3>
           <div className="overflow-x-auto">
             <TapeTable market={market} tape={tape} n={firstTable + (holdings.length > 0 ? 1 : 0)} />
           </div>

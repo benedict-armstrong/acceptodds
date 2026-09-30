@@ -107,7 +107,7 @@ export function Comments({
   };
 
   return (
-    <section className="mt-9">
+    <section className="mt-12">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className={ui.section}>
           Discussion ({data.comments.length}

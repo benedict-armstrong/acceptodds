@@ -29,7 +29,7 @@ export function FieldCurve({
   const worths = field.worthsMicro;
   if (worths.length < 2) return null;
   return (
-    <section aria-label="The field" className="mt-4">
+    <section aria-label="The field" className="mt-7">
       <StandingChart
         curve={field.curve}
         domain={field.domain}

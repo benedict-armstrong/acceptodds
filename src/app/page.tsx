@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
 import { MathText } from '@/components/MathText';
-import { MoreIcon } from '@/components/icons';
+import { FilterIcon, MoreIcon } from '@/components/icons';
 import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
@@ -172,7 +172,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
     <main className={ui.page}>
       {!q && <Abstract text={ABSTRACT} />}
       {/* A plain GET form, so search works without JavaScript. */}
-      <form action="/" method="get" role="search" className="mt-3.5 flex gap-2">
+      <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />
         <input type="hidden" name="status" value={status} />
         {onlyFollowed && <input type="hidden" name="following" value="1" />}
@@ -192,6 +192,74 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           Search
         </button>
         <SearchHelp />
+        {/* On a phone the filters fold into this one menu, with the search syntax. */}
+        <Popover>
+          <PopoverTrigger
+            type="button"
+            title="Filters and search syntax"
+            aria-label="Filters and search syntax"
+            className="relative hidden cursor-pointer px-2.5 text-muted hover:text-accent narrow:flex narrow:items-center"
+          >
+            <FilterIcon className="size-5" />
+            {activeFilters && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent" />}
+          </PopoverTrigger>
+          <PopoverContent align="end" className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto text-[13px]">
+            <div>
+              <h3 className={ui.boxHeading}>Venue</h3>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {kinds.map((k) => (
+                  <PopoverClose key={k.kind} asChild>
+                    <Link href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
+                      {k.kind}
+                    </Link>
+                  </PopoverClose>
+                ))}
+                <PopoverClose asChild>
+                  <Link href={href({ kind: 'all' })} className={kind === null ? ON : ''}>
+                    all venues
+                  </Link>
+                </PopoverClose>
+              </div>
+            </div>
+            <div>
+              <h3 className={ui.boxHeading}>Sort</h3>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {sorts.map((s) => (
+                  <PopoverClose key={s} asChild>
+                    <Link href={href({ sort: s })} className={s === sort ? ON : ''}>
+                      {SORT_LABEL[s] ?? s}
+                    </Link>
+                  </PopoverClose>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className={ui.boxHeading}>Status</h3>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {STATUSES.map((s) => (
+                  <PopoverClose key={s} asChild>
+                    <Link href={href({ status: s })} className={s === status ? ON : ''}>
+                      {s}
+                    </Link>
+                  </PopoverClose>
+                ))}
+              </div>
+            </div>
+            {viewer && (
+              <PopoverClose asChild>
+                <Link href={href({ following: onlyFollowed ? '0' : '1' })} className={onlyFollowed ? ON : ''}>
+                  ★ following only
+                </Link>
+              </PopoverClose>
+            )}
+            <details className="border-t border-rule pt-2.5">
+              <summary className={`${ui.runIn} cursor-pointer`}>Search syntax</summary>
+              <div className="mt-2 text-xs leading-normal text-muted">
+                <SearchSyntax />
+              </div>
+            </details>
+          </PopoverContent>
+        </Popover>
       </form>
 
       {parsed && parsed.errors.length > 0 && (
@@ -234,8 +302,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </section>
       )}
 
-      <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted">
-        {/* Each group wraps on its own; on a phone, venues take one line and sort the next. */}
+      <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted narrow:hidden">
         <span className="flex flex-wrap gap-x-3 gap-y-1">
           {kinds.map((k) => (
             <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
@@ -246,7 +313,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             all venues
           </Link>
         </span>
-        <span className="flex-1 narrow:hidden" />
+        <span className="flex-1" />
         <span className="flex flex-wrap gap-x-3 gap-y-1">
           sort:
           {sorts.map((s) => (
@@ -259,7 +326,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         <Popover>
           {/* Not a flex box: an icon alone gives a flex item no text baseline, and the row aligns on
               baselines. Inline, `align-middle` centres the dots on the text's x-height. */}
-          <PopoverTrigger title="More filters: status, following" className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent narrow:px-2">
+          <PopoverTrigger title="More filters: status, following" className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent">
             {activeFilters}
             <MoreIcon className={`inline-block size-5 align-middle ${activeFilters ? 'ml-1' : ''}`} />
           </PopoverTrigger>
@@ -367,40 +434,49 @@ function SearchHelp() {
         type="button"
         title="Search syntax"
         aria-label="Search syntax"
-        className="cursor-pointer px-1 font-sans text-sm text-muted hover:text-accent narrow:px-2.5"
+        className="cursor-pointer px-1 font-sans text-sm text-muted hover:text-accent narrow:hidden"
       >
         ?
       </PopoverTrigger>
       <PopoverContent align="end" className="text-xs leading-normal text-muted">
-        <p>
-          Words search titles, authors and abstracts; the last one may be half-typed. <code>&quot;a phrase&quot;</code>{' '}
-          matches in order, <code>-word</code> excludes. Words alone also find people. Terms are ANDed; use{' '}
-          <code>OR</code> and <code>( )</code> to group, and <code>-</code> before a filter or group to negate it.
-        </p>
-        <table className={ui.table}>
-          <thead>
-            <tr>
-              <th className={ui.th()}>Filter</th>
-              <th className={ui.th()}>Means</th>
-              <th className={`${ui.th()} narrow:hidden`}>Also</th>
-            </tr>
-          </thead>
-          <tbody>
-            {FIELD_HELP.map((f) => (
-              <tr key={f.field}>
-                <td className={`${ui.td} font-mono text-ink`}>{f.example}</td>
-                <td className={ui.td}>{f.means}</td>
-                <td className={`${ui.td} text-faint narrow:hidden`}>{f.aliases.map((a) => `${a}:`).join(' ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-1.5">
-          Numbers take <code>: = != &gt; &lt; &gt;= &lt;=</code>; text filters take <code>:</code> and <code>!=</code>. Quote a
-          value with spaces. For example: <code>(venue:iclr OR venue:neurips) diffusion accept&gt;=60 -status:settled</code>
-        </p>
+        <SearchSyntax />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** The search syntax, for the desktop `?` and the phone's filter menu. */
+function SearchSyntax() {
+  return (
+    <>
+      <p>
+        Words search titles, authors and abstracts; the last one may be half-typed. <code>&quot;a phrase&quot;</code>{' '}
+        matches in order, <code>-word</code> excludes. Words alone also find people. Terms are ANDed; use{' '}
+        <code>OR</code> and <code>( )</code> to group, and <code>-</code> before a filter or group to negate it.
+      </p>
+      <table className={ui.table}>
+        <thead>
+          <tr>
+            <th className={ui.th()}>Filter</th>
+            <th className={ui.th()}>Means</th>
+            <th className={`${ui.th()} narrow:hidden`}>Also</th>
+          </tr>
+        </thead>
+        <tbody>
+          {FIELD_HELP.map((f) => (
+            <tr key={f.field}>
+              <td className={`${ui.td} font-mono text-ink`}>{f.example}</td>
+              <td className={ui.td}>{f.means}</td>
+              <td className={`${ui.td} text-faint narrow:hidden`}>{f.aliases.map((a) => `${a}:`).join(' ')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-1.5">
+        Numbers take <code>: = != &gt; &lt; &gt;= &lt;=</code>; text filters take <code>:</code> and <code>!=</code>. Quote a
+        value with spaces. For example: <code>(venue:iclr OR venue:neurips) diffusion accept&gt;=60 -status:settled</code>
+      </p>
+    </>
   );
 }
 

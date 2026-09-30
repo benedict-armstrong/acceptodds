@@ -49,3 +49,20 @@ export function StarIcon({ filled = false, className = 'size-[1em]' }: { filled?
     </svg>
   );
 }
+
+/** Filter: a funnel. */
+export function FilterIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M2 3h12l-4.5 5.5V13l-3 1.5v-6z" />
+    </svg>
+  );
+}

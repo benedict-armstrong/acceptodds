@@ -21,7 +21,7 @@ export function TitleBlock({
   children?: ReactNode;
 }) {
   return (
-    <header className="mt-6 pb-3 text-center">
+    <header className="mt-8 pb-5 text-center">
       {above && <div className="font-mono text-[13px] text-muted">{above}</div>}
       <h1 className="mt-2 mb-1.5 text-[30px] leading-tight font-normal narrow:text-2xl">{title}</h1>
       {byline && <div className="mx-auto max-w-[680px] text-[15px] text-subtle">{byline}</div>}

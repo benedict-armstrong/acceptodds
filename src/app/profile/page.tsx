@@ -145,7 +145,7 @@ export default async function ProfilePage() {
         <DigestToggle optIn={a.digestOptIn} minMovePp={minMovePp()} />
       </section>
 
-      <hr className="my-6 border-rule-soft" />
+      <hr className="my-10 border-rule-soft" />
       <div className="flex justify-end gap-2">
         <Link
           href={`/people/${encodeURIComponent(a.handle)}`}
