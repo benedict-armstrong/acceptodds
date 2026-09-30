@@ -97,8 +97,10 @@ function GroupForm({
 /** "New group": makes one with the viewer as admin, then opens its board. */
 export function NewGroupButton({ className = ui.linkBtn }: { className?: string }) {
   const router = useRouter();
+  // Controlled: the new board is the same page with another `?group=`, so nothing unmounts the modal for us.
+  const [open, setOpen] = useState(false);
   return (
-    <Modal>
+    <Modal open={open} onOpenChange={setOpen}>
       <ModalTrigger className={className}>+ New group</ModalTrigger>
       <ModalContent title="New group">
         <p className="mb-3 text-muted">
@@ -110,6 +112,7 @@ export function NewGroupButton({ className = ui.linkBtn }: { className?: string 
           submit="Make group"
           onSubmit={async (v) => {
             const group = await call('POST', '/groups', v);
+            setOpen(false);
             router.push(groupPath(group!.id!));
           }}
         />
