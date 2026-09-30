@@ -49,6 +49,9 @@ export default async function ProfilePage() {
         admin={viewer.isAdmin}
       />
 
+      <p className="mt-1 mb-2 text-[15px] text-subtle">
+        Where you stand among all traders, by net worth: your cash plus what your positions would sell for now.
+      </p>
       <FieldCurve
         field={snapshot}
         you={row?.netWorthMicro ?? null}
@@ -66,12 +69,19 @@ export default async function ProfilePage() {
       {!a.isBot && (
         <section id="affiliations">
           <h2 className={ui.groupHeading}>Affiliations</h2>
+          <p className="mt-1 mb-2 text-[15px] text-subtle">
+            The institutional email addresses that verify you. A confirmed address lets you trade, and its
+            institution appears next to your name.
+          </p>
           <Affiliations initial={affiliations} n={v ? 2 : 1} />
         </section>
       )}
 
       <section>
         <h2 className={ui.groupHeading}>Following</h2>
+        <p className="mt-1 mb-2 text-[15px] text-subtle">
+          Papers you have starred, so you can keep an eye on how their odds move.
+        </p>
         {follows.length === 0 && (
           <div className="py-2 text-[15px] text-muted italic">
             Star a paper to follow it: <span className="not-italic">☆</span> on its page or in the list.
@@ -142,6 +152,7 @@ export default async function ProfilePage() {
 
       <section id="email">
         <h2 className={ui.groupHeading}>Email</h2>
+        <p className="mt-1 mb-2 text-[15px] text-subtle">What we may email you, besides sign-in and confirmation mails.</p>
         <DigestToggle optIn={a.digestOptIn} minMovePp={minMovePp()} />
       </section>
 
