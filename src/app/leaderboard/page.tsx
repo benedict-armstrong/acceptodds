@@ -52,9 +52,10 @@ function one(v: string | string[] | undefined): string | undefined {
  * `?group=` one group (#25); either opens like a paper, its members as the
  * author line, with its own Figure 1. `?q=` finds traders by name and
  * `institution:` (`lib/trader-query.ts`), each at their rank on the board.
- * Under the title, a find box over the boards (`BoardPicker`): everyone,
- * the viewer's institutions and groups, and any institution by name; "+ New
- * group" on the right.
+ * The title names the board — "Global leaderboard" — and its name is a
+ * find box over the boards (`BoardPicker`): global, the viewer's
+ * institutions and groups, and any institution by name. "+ New group" sits
+ * under the search.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -119,12 +120,48 @@ export default async function LeaderboardPage({
   // The best figure in each column over the whole board, set in bold as a results table sets it.
   const best = bestOf(field);
 
+  // The title names the board, and is how another is chosen.
+  const picker = (
+    <BoardPicker
+      current={{
+        label: boardName ?? 'Global',
+        href: group ? groupPath(group.id) : institution ? institutionPath(institution) : '/leaderboard',
+      }}
+      mine={[
+        { section: null, options: [{ key: 'everyone', label: 'Global', href: '/leaderboard' }] },
+        {
+          section: 'Your institutions',
+          options: (viewer?.account.institutions ?? []).map((name) => ({
+            key: `i:${name}`,
+            label: name,
+            href: institutionPath(name),
+          })),
+        },
+        {
+          section: 'Your groups',
+          options: myGroups.map((g) => ({
+            key: `g:${g.group.id}`,
+            label: g.group.name,
+            href: groupPath(g.group.id),
+            note: String(g.memberCount),
+          })),
+        },
+      ]}
+      institutions={allInstitutions.map((i) => ({
+        key: `i:${i.name}`,
+        label: i.name,
+        href: institutionPath(i.name),
+        note: String(i.traders),
+      }))}
+    />
+  );
+
   return (
     <main className={ui.page}>
       {board ? (
         <TitleBlock
-          above={group ? 'Leaderboard · group' : 'Leaderboard · institution'}
-          title={boardName}
+          above={group ? 'Group' : 'Institution'}
+          title={<>{picker} leaderboard</>}
           byline={
             <Authors
               authors={(group
@@ -155,46 +192,8 @@ export default async function LeaderboardPage({
           )}
         </TitleBlock>
       ) : (
-        <TitleBlock title="Leaderboard" />
+        <TitleBlock title={<>{picker} leaderboard</>} />
       )}
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 font-sans text-[13px] text-muted">
-        <div className="flex items-baseline gap-1.5">
-          <span id="board-label">Board:</span>
-          <BoardPicker
-            current={{
-              label: boardName ?? 'Everyone',
-              href: group ? groupPath(group.id) : institution ? institutionPath(institution) : '/leaderboard',
-            }}
-            mine={[
-              { section: null, options: [{ key: 'everyone', label: 'Everyone', href: '/leaderboard' }] },
-              {
-                section: 'Your institutions',
-                options: (viewer?.account.institutions ?? []).map((name) => ({
-                  key: `i:${name}`,
-                  label: name,
-                  href: institutionPath(name),
-                })),
-              },
-              {
-                section: 'Your groups',
-                options: myGroups.map((g) => ({
-                  key: `g:${g.group.id}`,
-                  label: g.group.name,
-                  href: groupPath(g.group.id),
-                  note: String(g.memberCount),
-                })),
-              },
-            ]}
-            institutions={allInstitutions.map((i) => ({
-              key: `i:${i.name}`,
-              label: i.name,
-              href: institutionPath(i.name),
-              note: String(i.traders),
-            }))}
-          />
-        </div>
-        {viewer && <NewGroupButton />}
-      </div>
       <form action="/leaderboard" method="get" role="search" className="flex gap-2">
         {basis !== 'net_worth' && <input type="hidden" name="basis" value={basis} />}
         {institution && <input type="hidden" name="institution" value={institution} />}
@@ -212,6 +211,11 @@ export default async function LeaderboardPage({
           Search
         </button>
       </form>
+      {viewer && (
+        <div className="mt-1.5 text-right font-sans text-[13px]">
+          <NewGroupButton />
+        </div>
+      )}
 
       {search && search.errors.length > 0 && (
         <div className="mt-2 font-sans text-[13px] text-down">Ignored: {search.errors.join('; ')}</div>

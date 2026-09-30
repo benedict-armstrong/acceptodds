@@ -922,10 +922,11 @@ unpaginated, and 5 s for that search.
   line (`components/Authors`, affiliations numbered by first appearance,
   `lib/authors.ts`), the description as the abstract, then Figure 1 of the
   members' net worths (`field-snapshot.shapeOf`, live, uncached) and
-  Table 1. Under the title, `components/BoardPicker`, a find box over the
-  boards (everyone, the viewer's institutions and groups, and once typed
-  any institution with traders, `views.traderInstitutions`; never a group
-  the viewer is not in), and "+ New group" on the right.
+  Table 1. The title is "<board> leaderboard" ("Global leaderboard"), and
+  the board's name is `components/BoardPicker`, a find box over the boards
+  (global, the viewer's institutions and groups, and once typed any
+  institution with traders, `views.traderInstitutions`; never a group the
+  viewer is not in). "+ New group" sits under the search.
 - **Institutions are derived groups**: never a row, always
   `accounts.institutions`, so they cannot drift from the affiliations and
   nobody joins or leaves one by hand. Lab groups were deferred on the

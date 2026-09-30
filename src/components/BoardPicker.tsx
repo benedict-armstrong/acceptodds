@@ -14,9 +14,10 @@ export interface BoardOption {
 }
 
 /**
- * The leaderboard's board selector: a button naming the board on screen,
- * opening a find box over the boards — everyone, the viewer's institutions
- * and groups, and, once something is typed, every institution with traders.
+ * The leaderboard's board selector, set in its title ("Global leaderboard"):
+ * the board's name is a button opening a find box over the boards — global,
+ * the viewer's institutions and groups, and, once something is typed, every
+ * institution with traders.
  * Arrow keys move, Enter opens. Groups the viewer is not in are never listed.
  */
 export function BoardPicker({
@@ -74,10 +75,12 @@ export function BoardPicker({
         setActive(0);
       }}
     >
-      <PopoverTrigger className="cursor-pointer border border-rule bg-card px-2 py-1 font-sans text-[13px] text-ink">
-        {current.label} <span className="text-muted">▾</span>
+      {/* Set in the title's own type: the board's name, underlined as something to click. */}
+      <PopoverTrigger className="cursor-pointer text-ink underline decoration-rule decoration-dotted decoration-1 underline-offset-[6px] hover:decoration-ink">
+        {current.label}
+        <span className="ml-1 align-middle text-[0.5em] text-muted">▾</span>
       </PopoverTrigger>
-      <PopoverContent align="start" className="flex max-h-[60vh] flex-col text-[13px]">
+      <PopoverContent className="flex max-h-[60vh] flex-col text-[13px]">
         <input
           type="search"
           autoFocus
