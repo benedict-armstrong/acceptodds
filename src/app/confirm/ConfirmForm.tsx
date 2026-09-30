@@ -109,7 +109,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className={field} />
         </label>
       )}
-      <div className="mt-2.5 font-sans text-[13px] text-muted">Code</div>
+      <div className="mt-2.5 text-center font-sans text-[13px] text-muted">Code</div>
       {/* A pasted or autofilled code confirms by itself; typed, the last digit does too. */}
       <CodeInput
         value={code}

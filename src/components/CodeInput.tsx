@@ -41,7 +41,7 @@ export function CodeInput({
       autoFocus={autoFocus}
       disabled={disabled}
       aria-label={ariaLabel}
-      containerClassName="my-2 flex items-center has-disabled:opacity-50"
+      containerClassName="my-2 flex items-center justify-center has-disabled:opacity-50"
       render={({ slots }) => (
         <div className="flex">
           {slots.map((slot, i) => (
