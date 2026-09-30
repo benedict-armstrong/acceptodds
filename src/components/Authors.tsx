@@ -3,6 +3,9 @@ import { Fragment } from 'react';
 import { numberAffiliations } from '@/lib/authors';
 import { ui } from './ui';
 
+/** Authors named before "et al." on a list over its limit. */
+const ET_AL_SHOWN = 3;
+
 export interface Author {
   name: string;
   href: string;
@@ -14,20 +17,21 @@ export interface Author {
  * An author line as a paper sets one: names, each with the small numbers of
  * its affiliations, then the affiliations themselves, numbered, underneath
  * (`lib/authors.ts`). A group's board uses it for its members. Past `limit`
- * authors the line ends "and N others", and only the shown are numbered.
+ * authors (a university's board) the line stops at the first few and "et
+ * al.", as a citation would, and only the shown are numbered.
  */
 export function Authors({
   authors,
-  limit = 60,
+  limit = 12,
   affiliationHref,
 }: {
   authors: readonly Author[];
   limit?: number;
   affiliationHref?: (name: string) => string;
 }) {
-  const shown = authors.slice(0, limit);
+  // Over the limit, the first few and "et al.", never most of a long list.
+  const shown = authors.length > limit ? authors.slice(0, ET_AL_SHOWN) : authors;
   const { affiliations, marks } = numberAffiliations(shown);
-  const more = authors.length - shown.length;
   return (
     <>
       <div>
@@ -43,7 +47,7 @@ export function Authors({
             </span>
           </Fragment>
         ))}
-        {more > 0 && ` and ${more.toLocaleString('en')} ${more === 1 ? 'other' : 'others'}`}
+        {shown.length < authors.length && <i> et al.</i>}
       </div>
       {affiliations.length > 0 && (
         <div className="mt-1 text-[13px] text-muted">
