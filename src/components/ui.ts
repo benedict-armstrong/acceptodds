@@ -58,7 +58,8 @@ export const ui = {
     `border-b border-ink py-1.5 pr-2 font-serif text-sm font-semibold text-ink ${numeric ? 'text-right' : 'text-left'}`,
   td: 'py-[5px] pr-2',
   num: 'text-right font-mono text-[13px]',
-  table: 'mt-3 w-full border-collapse border-y-[1.5px] border-ink',
+  /** A body row is highlighted on hover, as the home list's rows are. */
+  table: 'mt-3 w-full border-collapse border-y-[1.5px] border-ink [&>tbody>tr:hover]:bg-highlight',
   /** Around a table, so one too wide for a phone scrolls sideways rather than the page. */
   tableScroll: 'overflow-x-auto',
   /** A table note's mark on a column heading, "Net worth<sup>a</sup>": an italic letter, as threeparttable sets it. */

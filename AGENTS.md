@@ -498,7 +498,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   is shown as `1,000.00 $rep` (#21): write the unit as `REP` from
   `lib/format.ts`, never the literal. The API is unchanged (`…Micro`).
   Tables are booktabs (`ui.table`/`th`/`td`: heavy top and bottom rules, a
-  light one under the header, nothing vertical or between rows) with a
+  light one under the header, nothing vertical or between rows; a body
+  row highlights on hover) with a
   `<caption className={ui.tableCaption}>` "**Table N.**" above, and what a
   column means in `TableNotes` under it, keyed by an italic letter on the
   heading (`ui.mark`) — never a `title` tooltip; charts get
