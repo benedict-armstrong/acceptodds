@@ -18,10 +18,17 @@ export function OnboardingCard({
 }) {
   return (
     <main className="mx-auto flex min-h-[70vh] w-full max-w-[480px] flex-col justify-center px-4 py-10">
-      <div className="mb-3 flex min-h-4 items-baseline justify-end font-mono text-xs text-faint">
+      {/* Above the question, where it starts: the way back is the first
+          thing on the left, as in any step-by-step flow. The row is kept
+          without it, so the question does not jump between steps. */}
+      <div className="mb-2 min-h-5">
         {onBack && (
-          <button type="button" className="cursor-pointer hover:text-ink" onClick={onBack}>
-            back
+          <button
+            type="button"
+            className="-ml-1 cursor-pointer px-1 font-sans text-sm text-muted hover:text-ink"
+            onClick={onBack}
+          >
+            ← Back
           </button>
         )}
       </div>
