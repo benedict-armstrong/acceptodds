@@ -7,9 +7,11 @@ import { ui } from '@/components/ui';
 const COLLAPSED_LINES = 3;
 
 /**
- * A title block's abstract: headed, inset from the text width and justified,
- * as a paper's is; one shorter than a line is centred. One longer than three lines at the current width starts
- * collapsed to them until clicked; a shorter one has no toggle.
+ * Every title block's abstract (papers, traders, boards, the home page,
+ * `/how-it-works`): headed, inset from the text width and justified, as a
+ * paper's is; one shorter than a line is centred. One longer than three
+ * lines at the current width starts collapsed to them until clicked; a
+ * shorter one has no toggle.
  */
 export function Abstract({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
