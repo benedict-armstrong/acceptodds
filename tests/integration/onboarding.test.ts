@@ -214,6 +214,28 @@ describe('onboarding', () => {
     expect(choseHere(bet, theirNonce)).toBe(true); // theirs, but they never get the owner's session
   });
 
+  it('sends a broken or reused link back where /welcome sends it on to /signin with the reason', async () => {
+    await start('ada@example.org');
+    const mail = devOutbox().findLast((m) => m.to === 'ada@example.org')!;
+    const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+    const path = link.pathname.replace(/^\/api\/auth/, '');
+
+    // Tampered: back to the callback with ?error=, and no session.
+    const bad = new URLSearchParams(link.search);
+    bad.set('token', `${bad.get('token')}x`);
+    const broken = await authCall('GET', `${path}?${bad}`);
+    const brokenAt = new URL(broken.headers.get('location')!, 'http://test.local');
+    expect(`${brokenAt.pathname}?step=${brokenAt.searchParams.get('step')}`).toBe(WELCOME_FINISH);
+    expect(brokenAt.searchParams.get('error')).toBe('INVALID_TOKEN');
+    expect(cookieFrom(broken)).not.toContain('session_token');
+
+    // Opened twice: the second time is a bare redirect with no session (LINK_USED).
+    expect(cookieFrom(await authCall('GET', `${path}${link.search}`))).toContain('session_token');
+    const again = await authCall('GET', `${path}${link.search}`);
+    expect(new URL(again.headers.get('location')!, 'http://test.local').searchParams.get('error')).toBeNull();
+    expect(cookieFrom(again)).not.toContain('session_token');
+  });
+
   it('replaces the bet of an address not yet confirmed, and resends', async () => {
     await start('ada@example.org');
     await start('ada@example.org', { outcomeId: fx.outcomeIds[1] });

@@ -7,7 +7,7 @@ import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { Sparkline } from '@/components/Sparkline';
-import { Abstract } from '@/components/Abstract';
+import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { defaultMarketKind } from '@/lib/venue';
 import { pct, rep, REP } from '@/lib/format';
@@ -171,7 +171,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   return (
     <main className={ui.page}>
       {/* The pitch is for visitors; a signed-in viewer has read it. */}
-      {!q && !viewer && <Abstract text={ABSTRACT} />}
+      <TitleBlock title="Will this paper get accepted to ICLR?" abstract={!q && !viewer ? ABSTRACT : null} />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />

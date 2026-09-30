@@ -2,7 +2,9 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { z } from 'zod';
 import { marketHref } from '@/lib/links';
+import { LINK_USED } from '@/lib/link-errors';
 import { parseChosenBet } from '@/lib/onboarding';
+import { authHref } from '@/lib/return-to';
 import { safeReturnTo } from '@/lib/return-to';
 import { defaultMarketKind } from '@/lib/venue';
 import { startingBalanceMicro } from '@/server/accounts';
@@ -33,10 +35,23 @@ const SUGGESTIONS = 5;
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ step?: string; next?: string; market?: string; outcome?: string; stake?: string; seen?: string }>;
+  searchParams: Promise<{
+    step?: string;
+    next?: string;
+    error?: string;
+    market?: string;
+    outcome?: string;
+    stake?: string;
+    seen?: string;
+  }>;
 }) {
   const params = await searchParams;
+  // The confirmation mail's link returns here. A dead one (`?error=`), or one
+  // opened again (no session: Better Auth confirms once, then only
+  // redirects), goes to sign-in to say so, never back to the start.
+  if (params.error) redirect(authHref('/signin', '/', { error: params.error }));
   const viewer = await viewerFromHeaders(await headers());
+  if (!viewer && params.step === 'finish') redirect(authHref('/signin', '/', { error: LINK_USED }));
   const userId = viewer?.account.userId ?? null;
 
   if (userId) {

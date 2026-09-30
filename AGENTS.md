@@ -393,7 +393,17 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `callbackURL`), only ever a same-site path (`lib/return-to.ts`), by way
   of `/signin/continue`, which first asks for anything the account lacks. A
   viewer already signed in never sees `/signin` or `/signup`: they go
-  straight to `next`, or to `/profile` when there is none. While a
+  straight to `next`, or to `/profile` when there is none.
+- **A broken or used mail link ends on `/signin`, saying why.** Better
+  Auth sends a dead confirmation or sign-in link back to its return
+  address with `?error=` (`INVALID_TOKEN`, `TOKEN_EXPIRED`, …), and one
+  opened a second time back with no error and no session. `/welcome` and
+  `/signin/continue`, the two return addresses, pass either on to
+  `/signin?error=` (`LINK_USED` for the second), never back to the start of
+  onboarding; `/signin` shows `lib/link-errors.ts`'s sentence (never the
+  raw code) above the form, and skips its first-visit detour to `/welcome`
+  so the message survives a fresh browser. The sign-in link under the form
+  is the way out in every case. While a
   code is outstanding a banner follows them round the site, from this
   browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
   nothing. There is still no user session, account or reputation before
