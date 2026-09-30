@@ -23,6 +23,9 @@ import * as listingFollowRoute from '@/app/api/v1/listings/[id]/follow/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
 import * as leaderboardRoute from '@/app/api/v1/leaderboard/route';
 import * as accountRoute from '@/app/api/v1/accounts/[handle]/route';
+import * as accountPositionsRoute from '@/app/api/v1/accounts/[handle]/positions/route';
+import * as publicPositionRoute from '@/app/api/v1/positions/[id]/route';
+import * as myPositionPublicRoute from '@/app/api/v1/me/positions/[outcomeId]/public/route';
 import * as meRoute from '@/app/api/v1/me/route';
 import * as portfolioRoute from '@/app/api/v1/me/portfolio/route';
 import * as myOrdersRoute from '@/app/api/v1/me/orders/route';
@@ -63,6 +66,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/listings/[id]/follow', listingFollowRoute],
   ['/leaderboard', leaderboardRoute],
   ['/accounts/[handle]', accountRoute],
+  ['/accounts/[handle]/positions', accountPositionsRoute],
+  ['/positions/[id]', publicPositionRoute],
+  ['/me/positions/[outcomeId]/public', myPositionPublicRoute],
   ['/me', meRoute],
   ['/me/portfolio', portfolioRoute],
   ['/me/orders', myOrdersRoute],

@@ -6,6 +6,7 @@ import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { PaperName } from '@/components/PaperName';
 import { useOrder, type OrderResult } from '@/components/orders';
 import { SellModal } from '@/components/SellModal';
+import { SharePositionModal } from '@/components/SharePosition';
 import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { pct, rep, REP } from '@/lib/format';
@@ -36,7 +37,8 @@ function formatChange(h: Holding, absolute: boolean): string {
  * what it cost, as a percentage or in `REP` (the header toggles). That
  * comparison is on the real exit quote, never the mark (§1.1), so right
  * after a buy it is honestly a little negative: the round trip's cost. Rows
- * the viewer can sell carry a `SellModal`.
+ * the viewer can sell carry a `SellModal`, and every row a Share button
+ * (`SharePositionModal`, #36) to make that position public.
  *
  * On a market's page (`MarketLive`) it lists that market's holdings; on
  * `/portfolio`, every holding, with `showMarket` adding the market column.
@@ -60,7 +62,6 @@ export function PositionsTable({
   const [absolute, setAbsolute] = useState(false);
   const [note, setNote] = useState<OrderResult | null>(null);
   const canSell = (h: Holding) => sellable.includes(h.marketId);
-  const anySellable = holdings.some(canSell);
 
   return (
     <>
@@ -89,7 +90,7 @@ export function PositionsTable({
                 </button>
                 <sup className={ui.mark}>c</sup>
               </th>
-              {anySellable && <th className={ui.th()} />}
+              <th className={ui.th()} />
             </tr>
           </thead>
           <tbody>
@@ -99,7 +100,6 @@ export function PositionsTable({
                 h={h}
                 showMarket={showMarket}
                 sellable={canSell(h)}
-                sellColumn={anySellable}
                 absolute={absolute}
                 onFilled={onFilled}
                 onResult={setNote}
@@ -131,7 +131,6 @@ function Row({
   h,
   showMarket,
   sellable,
-  sellColumn,
   absolute,
   onFilled,
   onResult,
@@ -139,7 +138,6 @@ function Row({
   h: Holding;
   showMarket: boolean;
   sellable: boolean;
-  sellColumn: boolean;
   absolute: boolean;
   onFilled: () => void;
   onResult: (r: OrderResult) => void;
@@ -168,23 +166,22 @@ function Row({
       >
         {formatChange(h, absolute)}
       </td>
-      {sellColumn && (
-        <td className={`${ui.td} text-right`}>
-          {sellable && (
-            <SellModal
-              marketId={h.marketId}
-              board={h.price}
-              holding={h}
-              busy={busy}
-              onSell={async (sharesMicro, maxCostMicro) => {
-                const r = await send(h.outcomeId, h.outcomeLabel, sharesMicro, maxCostMicro);
-                onResult(r);
-                return r;
-              }}
-            />
-          )}
-        </td>
-      )}
+      <td className={`${ui.td} text-right whitespace-nowrap`}>
+        {sellable && (
+          <SellModal
+            marketId={h.marketId}
+            board={h.price}
+            holding={h}
+            busy={busy}
+            onSell={async (sharesMicro, maxCostMicro) => {
+              const r = await send(h.outcomeId, h.outcomeLabel, sharesMicro, maxCostMicro);
+              onResult(r);
+              return r;
+            }}
+          />
+        )}
+        <SharePositionModal outcomeId={h.outcomeId} outcomeLabel={h.outcomeLabel} publicPositionId={h.publicPositionId} />
+      </td>
     </tr>
   );
 }

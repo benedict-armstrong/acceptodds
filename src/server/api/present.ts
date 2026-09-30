@@ -5,6 +5,7 @@ import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
 import type { CommentView, ViewerStake } from '../comments';
 import type { FollowedListing } from '../follows';
+import type { PublicPositionView } from '../public-positions';
 import type { TokenRecord } from '../tokens';
 import type { ListingView, MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
@@ -170,6 +171,7 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       markMicro: h.markMicro.toString(),
       quotedExitMicro: h.quotedExitMicro.toString(),
       costBasisMicro: h.costBasisMicro.toString(),
+      publicPositionId: h.publicPositionId,
     })),
     unsettledValuation: {
       midMarketNetWorthMicro: p.markedNetWorthMicro.toString(),
@@ -250,5 +252,26 @@ export function presentComments(page: {
           })),
         }
       : null,
+  };
+}
+
+export function presentPublicPosition(p: PublicPositionView): z.input<typeof S.PublicPosition> {
+  return {
+    id: p.id,
+    createdAt: toIso(p.createdAt),
+    trader: p.trader,
+    market: p.market,
+    outcome: p.outcome,
+    price: p.price,
+    state: p.state,
+    sharedSharesMicro: p.sharedSharesMicro.toString(),
+    heldMicro: p.heldMicro.toString(),
+    boughtMicro: p.boughtMicro.toString(),
+    paidMicro: p.paidMicro.toString(),
+    soldMicro: p.soldMicro.toString(),
+    costBasisMicro: p.costBasisMicro.toString(),
+    quotedExitMicro: p.quotedExitMicro?.toString() ?? null,
+    payoutMicro: p.payoutMicro.toString(),
+    pnlMicro: p.pnlMicro.toString(),
   };
 }

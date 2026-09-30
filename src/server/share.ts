@@ -1,5 +1,8 @@
 import { getDb, type Database } from '@/db';
 import type { Listing } from '@/db/schema';
+import { shares } from '@/lib/format';
+import { publicPositionPath } from '@/lib/links';
+import type { PublicPositionView } from './public-positions';
 import { listingView, marketView, resolveListing, resolveMarket, type MarketView } from './views';
 import { ApiError } from './api/errors';
 
@@ -69,4 +72,36 @@ export async function shareSubject(ref: string, database: Database = getDb()): P
 function notFoundAsNull(err: unknown): null {
   if (err instanceof ApiError && err.status === 404) return null;
   throw err;
+}
+
+/**
+ * A public position (#36) as something to share: its own market, which need
+ * not be its paper's main one, under the paper's title.
+ */
+export async function positionSubject(p: PublicPositionView, database: Database = getDb()): Promise<ShareSubject> {
+  const listing = p.market.listingSlug ? await resolveListing(p.market.listingSlug, database) : null;
+  return {
+    listing,
+    main: await marketView(await resolveMarket(p.market.id, database), database),
+    title: listing?.title ?? p.market.question,
+    kind: listing?.kind ?? p.market.kind,
+    path: publicPositionPath(p.id),
+    sharePath: publicPositionPath(p.id),
+  };
+}
+
+/** What a public position says in one line: "@alice holds 120 Oral", "@alice held Oral, sold since", "… : won". */
+export function positionLine(p: PublicPositionView): string {
+  const who = `@${p.trader.handle}`;
+  switch (p.state) {
+    case 'held':
+      return `${who} holds ${shares(p.heldMicro)} ${p.outcome.label}`;
+    case 'sold':
+      return `${who} held ${p.outcome.label}, sold since`;
+    case 'won':
+    case 'lost':
+      return `${who} held ${shares(p.heldMicro)} ${p.outcome.label}: ${p.state}`;
+    case 'void':
+      return `${who} held ${p.outcome.label}: void`;
+  }
 }

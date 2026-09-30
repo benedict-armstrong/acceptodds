@@ -582,7 +582,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **`/people/<handle>` is a trader's public page**: what
   `GET /accounts/{handle}` and the net-worth leaderboard already publish
   (details, rank, net worth at liquidation value, unrealized and settled
-  P&L) and nothing more. **Never holdings, closed positions or follows**:
+  P&L), plus the positions the trader made public (#36, below), and
+  nothing more. **Never other holdings, closed positions or follows**:
   comments show the author's stake, so a public list of someone's
   positions would unmask their comments. It opens with the same
   `TraderHeader`, never passed the email or admin flag, then the same
@@ -683,6 +684,31 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   them — the result line says where and links "search everything" — and
   sorts by `relevance` (listed only while searching) unless another sort is
   picked; every filter link keeps `q`, "clear" drops it.
+
+### Public positions (#36)
+
+- **A trader may make a position public, one at a time, and nothing else
+  about their positions is ever public.** `public_positions` (account +
+  outcome, a random `id` that is the link), written only by
+  `server/public-positions.ts`, in single statements, never the engine.
+  `PUT`/`DELETE /me/positions/{outcomeId}/public`, idempotent, `trade`
+  scope (not `read`: it discloses who holds what). Only a position held now
+  can be made public (`409 insufficient_shares`).
+- **It unmasks the holder's comments on that market**, since a comment's
+  stake is its only mark. That is accepted, per position, and the Share
+  modal (`components/SharePosition`) says so before the switch is made.
+  Never make a position public on the trader's behalf, and never list one
+  they did not choose.
+- **One flag**: public means a link, `/positions/<id>` (page, OG image with
+  `@handle holds N <label>` under the title), *and* a row on
+  `/people/<handle>` (`GET /accounts/{handle}/positions`,
+  `GET /positions/{id}`). Private again: the row is deleted and the link
+  404s; public again is a new link.
+- **Read live, from `orders`**, like closed positions: the net of the fills
+  is what is held now, or what was held into settlement. Only
+  `shared_shares_micro` is stored, so "sold since" shows. Valued by the
+  exit quote while trading and the payout once settled, never the mark
+  (§1.1); P&L is sales + payout + exit − buys.
 
 ### Following and the morning digest (#9)
 

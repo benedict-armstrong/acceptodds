@@ -13,6 +13,7 @@ import { EngineError } from './errors';
 import { normalizeEmail, syncAccount } from './affiliations';
 import { institutionForEmail } from './institution-domains';
 import { invalidateStandings } from './standings-cache';
+import { publicPositionIds } from './public-positions';
 import { tradeFlows } from './valuation';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -155,6 +156,8 @@ export interface Holding {
    * a value, and not what selling pays — that is `quotedExitMicro`.
    */
   costBasisMicro: bigint;
+  /** The link id when the holder has made this position public (#36), else null. */
+  publicPositionId: string | null;
 }
 
 export interface Portfolio {
@@ -230,6 +233,7 @@ export async function getPortfolio(
     fillsByOutcome.set(f.outcomeId, list);
   }
 
+  const published = await publicPositionIds(accountId, database);
   const holdings: Holding[] = [];
   for (const row of rows) {
     const board = await database
@@ -263,6 +267,7 @@ export async function getPortfolio(
       markMicro,
       quotedExitMicro: -exit.costMicro,
       costBasisMicro: costBasis(fillsByOutcome.get(row.outcome.id) ?? []).basisMicro,
+      publicPositionId: published.get(row.outcome.id) ?? null,
     });
   }
 

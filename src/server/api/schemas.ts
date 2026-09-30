@@ -477,8 +477,64 @@ export const Holding = z
       description:
         'What the shares held cost, by the average-cost method: buys add their cost, a sell removes its fraction of the basis. How the position was entered — not a value.',
     }),
+    publicPositionId: Id.nullable().meta({
+      description: 'The id of its public link (`GET /positions/{id}`) when you have made it public, else null.',
+    }),
   })
   .meta({ id: 'Holding' });
+
+export const PublicPosition = z
+  .object({
+    id: Id,
+    createdAt: Timestamp.meta({ description: 'When it was made public.' }),
+    trader: z.object({ handle: z.string(), displayName: z.string(), isBot: z.boolean() }),
+    market: z.object({
+      id: Id,
+      slug: z.string(),
+      question: z.string(),
+      kind: z.string(),
+      status: MarketStatus,
+      listingSlug: z.string().nullable(),
+      listingTitle: z.string().nullable(),
+    }),
+    outcome: z.object({
+      id: Id,
+      label: z.string(),
+      ordinal: z.number().int().nonnegative(),
+      count: z.number().int().positive().meta({ description: 'How many outcomes its market has.' }),
+    }),
+    price: Price.meta({ description: 'The outcome’s price now.' }),
+    state: z.enum(['held', 'sold', 'won', 'lost', 'void']).meta({
+      description:
+        '`held`: shares are held now. `sold`: none are. `won`/`lost`: held into settlement. `void`: the market was voided.',
+    }),
+    sharedSharesMicro: Micro.meta({ description: 'Shares held when it was made public.' }),
+    heldMicro: Micro.meta({ description: 'Shares held now; once settled, those held into settlement.' }),
+    boughtMicro: Micro.meta({ description: 'Σ shares bought, over every fill.' }),
+    paidMicro: Micro.meta({ description: 'Σ cost of the buys.' }),
+    soldMicro: Micro.meta({ description: 'Σ proceeds of the sells.' }),
+    costBasisMicro: Micro.meta({ description: 'What the shares held cost, by average cost. Not a value.' }),
+    quotedExitMicro: Micro.nullable().meta({
+      description:
+        'What selling the shares held would pay now, slippage included; null unless the market trades and shares are held. Never a mark.',
+    }),
+    payoutMicro: Micro.meta({ description: '1 per share held into settlement if this outcome won, else 0.' }),
+    pnlMicro: Micro.meta({ description: 'soldMicro + payoutMicro + quotedExitMicro − paidMicro.' }),
+  })
+  .meta({
+    id: 'PublicPosition',
+    description:
+      'A position its holder chose to make public, read live: it follows the position as it is sold or settled.',
+  });
+
+export const PublicPositionList = z.object({ positions: z.array(PublicPosition) }).meta({ id: 'PublicPositionList' });
+
+export const PublicPositionState = z
+  .object({
+    outcomeId: Id,
+    publicPositionId: Id.nullable().meta({ description: 'The link id while public; null once private.' }),
+  })
+  .meta({ id: 'PublicPositionState' });
 
 export const Portfolio = z
   .object({

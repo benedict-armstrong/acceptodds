@@ -206,6 +206,34 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'get',
+      path: '/accounts/{handle}/positions',
+      tags: ['accounts'],
+      summary: 'Public positions',
+      description:
+        'Only the positions this trader chose to make public, newest first, each read live. Nothing else about anyone’s positions is public.',
+      request: { params: z.object({ handle: S.Handle }) },
+      ok: { status: 200, schema: S.PublicPositionList, description: 'Their public positions.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/positions/{id}',
+      tags: ['accounts'],
+      summary: 'A public position',
+      description:
+        'A position its holder made public, by its link id: held, sold or settled now, with the exit quote while trading (never a mark). 404 once made private.',
+      request: { params: z.object({ id: S.Id }) },
+      ok: { status: 200, schema: S.PublicPosition, description: 'The position, now.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
       path: '/markets/{id}/comments',
       tags: ['markets'],
       summary: 'Comments',
@@ -376,6 +404,25 @@ export function buildRegistry(): OpenAPIRegistry {
         request: { params: listingIdParam },
         ok: { status: 200, schema: S.FollowState, description: 'Whether you now follow it, and its follower count.' },
         errors: { 404: 'not_found' },
+      }),
+    );
+  }
+
+  for (const method of ['put', 'delete'] as const) {
+    r.registerPath(
+      op({
+        method,
+        path: '/me/positions/{outcomeId}/public',
+        tags: ['me'],
+        summary: method === 'put' ? 'Make a position public' : 'Make a position private',
+        description:
+          method === 'put'
+            ? 'Gives your position in this outcome a public link and lists it on your public profile, under your handle. Your comments on that market show your stake, so this links them to you. Only a position you hold. Idempotent: the link stays the same.'
+            : 'Removes it from your profile; its link stops working. Idempotent.',
+        scope: 'trade',
+        request: { params: z.object({ outcomeId: S.Id }) },
+        ok: { status: 200, schema: S.PublicPositionState, description: 'Its link id while public, else null.' },
+        errors: method === 'put' ? { 409: 'insufficient_shares: you hold no shares of this outcome.' } : {},
       }),
     );
   }

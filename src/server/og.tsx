@@ -126,7 +126,8 @@ function Labels({ row, above }: { row: Placed; above: boolean }) {
   );
 }
 
-export async function previewImage(subject: ShareSubject | null): Promise<ImageResponse> {
+/** `holder`: a public position's line (#36), under the title. */
+export async function previewImage(subject: ShareSubject | null, holder?: string): Promise<ImageResponse> {
   const main = subject?.main ?? null;
   const n = main?.outcomes.length ?? 0;
   const status = main?.market.status;
@@ -184,7 +185,7 @@ export async function previewImage(subject: ShareSubject | null): Promise<ImageR
             fontFamily: 'Serif',
             fontSize: titleSize,
             lineHeight: 1.15,
-            maxHeight: 230,
+            maxHeight: holder ? 170 : 230,
             overflow: 'hidden',
           }}
         >
@@ -194,6 +195,10 @@ export async function previewImage(subject: ShareSubject | null): Promise<ImageR
             </div>
           ))}
         </div>
+
+        {holder && (
+          <div style={{ display: 'flex', marginTop: 20, fontSize: 36, color: MUTED }}>{holder}</div>
+        )}
 
         <div style={{ display: 'flex', flex: 1 }} />
 

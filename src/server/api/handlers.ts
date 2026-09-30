@@ -7,6 +7,7 @@ import { backComment, withdrawBacking } from '../backings';
 import { getComment, listComments, postComment } from '../comments';
 import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
 import { upsertListing } from '../listings';
+import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
 import { clearPendingBet, newBrowserNonce, ONBOARDING_BROWSER_COOKIE, setFirstPassword, startOnboarding } from '../onboarding';
@@ -37,6 +38,7 @@ import {
   presentMe,
   presentMyOrder,
   presentPortfolio,
+  presentPublicPosition,
   presentQuote,
   presentTapeEntry,
   presentComment,
@@ -185,6 +187,24 @@ export const getAccount = route(async (req, params) => {
   );
 });
 
+/** A trader's public positions (#36), newest first: only those they chose to make public. */
+export const getAccountPositions = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const handle = parseParam(params.handle, S.Handle, 'handle');
+  const { account } = await publicAccount(handle);
+  const positions = await publicPositionsOf(account.id);
+  events.log('account.read', { accountId: accountIdOf(principal) });
+  return respond(S.PublicPositionList, { positions: positions.map(presentPublicPosition) }, { principal });
+});
+
+/** One public position, by its link id. 404 once its holder has made it private. */
+export const getPublicPosition = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const view = await publicPosition(parseParam(params.id, S.Id, 'id'));
+  events.log('position.read', { accountId: accountIdOf(principal), marketId: view.market.id });
+  return respond(S.PublicPosition, presentPublicPosition(view), { principal });
+});
+
 export const getComments = route(async (req, params) => {
   const principal = await authenticate(req);
   const market = await resolveMarket(parseParam(params.id, S.MarketRef, 'id'));
@@ -327,6 +347,29 @@ async function setFollow(req: Request, id: unknown, on: boolean) {
 
 export const putListingFollow = route((req, params) => setFollow(req, params.id, true));
 export const deleteListingFollow = route((req, params) => setFollow(req, params.id, false));
+
+/**
+ * Make one of your positions public, or private again (#36). Idempotent both
+ * ways. `trade` scope, not `read`: it names you as the holder, which links
+ * you to your comments on that market, so a read-only token must not be
+ * able to do it. Only a position you hold can be made public.
+ */
+async function setPublic(req: Request, outcomeId: unknown, on: boolean) {
+  const principal = await requireAuth(req, 'trade');
+  const id = parseParam(outcomeId, S.Id, 'outcomeId');
+  let publicPositionId: string | null = null;
+  if (on) {
+    const view = await publish(principal.account.id, id);
+    publicPositionId = view.id;
+    events.log('position.published', { accountId: principal.account.id, marketId: view.market.id });
+  } else if (await unpublish(principal.account.id, id)) {
+    events.log('position.unpublished', { accountId: principal.account.id });
+  }
+  return respond(S.PublicPositionState, { outcomeId: id, publicPositionId }, { principal });
+}
+
+export const putMyPositionPublic = route((req, params) => setPublic(req, params.outcomeId, true));
+export const deleteMyPositionPublic = route((req, params) => setPublic(req, params.outcomeId, false));
 
 export const getMyPortfolio = route(async (req) => {
   const principal = await requireAuth(req, 'read');

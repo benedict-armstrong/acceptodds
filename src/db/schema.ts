@@ -561,6 +561,39 @@ export const listingFollows = pgTable(
 );
 
 /**
+ * A position its holder has made public (#36): shared by a link,
+ * `/positions/<id>`, and listed on their `/people/<handle>` page. Opt-in,
+ * one (account, outcome) at a time. It names the holder, so it links them to
+ * their comments on that market, whose stake is otherwise their only mark:
+ * the UI says so before it is made.
+ *
+ * **A pointer, not a copy**: what is shown is read live from `orders`, so the
+ * link keeps following the position as it is sold or settled. Only
+ * `shared_shares_micro` is kept, what was held when it was made public, so a
+ * later reader can see it was sold since. Not money and not market state:
+ * written by `server/public-positions.ts` in single statements, never by the
+ * engine. Deleting the row makes it private again; its link then 404s.
+ */
+export const publicPositions = pgTable(
+  'public_positions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    outcomeId: uuid('outcome_id')
+      .notNull()
+      .references(() => outcomes.id, { onDelete: 'cascade' }),
+    sharedSharesMicro: money('shared_shares_micro').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('public_positions_account_outcome_key').on(t.accountId, t.outcomeId),
+    check('public_positions_shares_positive', sql`${t.sharedSharesMicro} > 0`),
+  ],
+);
+
+/**
  * One row per digest mail, keyed by the account and the digest's calendar
  * day (in `DIGEST_TIMEZONE`). Inserted **before** the mail is sent, so a
  * second run on the same day sends nothing: at most once (`server/digest.ts`).
@@ -648,6 +681,7 @@ export type Position = typeof positions.$inferSelect;
 export type CommentBacking = typeof commentBackings.$inferSelect;
 export type Affiliation = typeof affiliations.$inferSelect;
 export type PendingBet = typeof pendingBets.$inferSelect;
+export type PublicPosition = typeof publicPositions.$inferSelect;
 /** What an API credential may do. Stored as the API-key plugin's permissions, `{ api: [...] }`. */
 export const TOKEN_SCOPES = ['read', 'trade', 'admin'] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];

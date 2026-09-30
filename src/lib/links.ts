@@ -28,3 +28,8 @@ export function setPasswordPath(email: string, code?: string): string {
 export function signInContinueHref(next: string): string {
   return next === '/' ? '/signin/continue' : `/signin/continue?next=${encodeURIComponent(next)}`;
 }
+
+/** A public position's page (#36): the link its holder shares. */
+export function publicPositionPath(id: string): string {
+  return `/positions/${id}`;
+}
