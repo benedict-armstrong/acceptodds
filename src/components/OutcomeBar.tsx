@@ -33,3 +33,17 @@ export function OutcomeBar({
     </span>
   );
 }
+
+/**
+ * The small square in an outcome's tier colour that stands for it in legends,
+ * the tape and position lists. Nothing when the market has no bar.
+ */
+export function OutcomeSwatch({ ordinal, outcomes }: { ordinal: number; outcomes: number }) {
+  if (ordinal < 0 || outcomes < 2 || outcomes > MAX_BAR_OUTCOMES) return null;
+  return (
+    <span
+      className={`mr-1 inline-block size-2.5 rounded-[2px] align-[-1px] ${TIER_BG[paletteSlot(ordinal, outcomes)]}`}
+      aria-hidden
+    />
+  );
+}

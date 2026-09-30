@@ -56,7 +56,28 @@
   body {
     font: 15px/1.5 var(--font-serif);
   }
+  /* On html, not body: KaTeX's CSS sets body's counter-reset, unlayered, and would win. */
+  html {
+    counter-reset: sec sub;
+  }
   a:hover {
     text-decoration: underline;
+  }
+}
+
+/* Section numbers for ui.section / ui.subsection, counted in page order. */
+@utility sec-num {
+  counter-increment: sec;
+  counter-set: sub 0;
+  &::before {
+    content: counter(sec);
+    margin-right: 0.75em;
+  }
+}
+@utility subsec-num {
+  counter-increment: sub;
+  &::before {
+    content: counter(sec) '.' counter(sub);
+    margin-right: 0.75em;
   }
 }

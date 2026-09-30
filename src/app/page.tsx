@@ -110,7 +110,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const me = viewer?.account.id ?? null;
   // Papers the viewer follows, then papers they hold shares in, are pinned
   // above the list: same venue, status and sort, each paged on its own, and
-  // none repeated below. Not while searching, nor when the list is already
+  // none repeated. A paper both followed and held is under My positions. Not while searching, nor when the list is already
   // only followed papers.
   const pins = me !== null && !q && !onlyFollowed;
   const browse = { kind, status, sort };
@@ -127,8 +127,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       exceptFollowedBy: pins ? me : null,
       exceptHeldBy: pins ? me : null,
     }),
-    pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me }) : null,
-    pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me, exceptFollowedBy: me }) : null,
+    pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me, exceptHeldBy: me }) : null,
+    pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
   ]);
   const cookieJar = await cookies();
@@ -176,7 +176,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           defaultValue={q ?? ''}
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search papers and people"
-          placeholder='Search papers and people — "a phrase", -without, author:name, accept>=70'
+          placeholder='Search papers and people'
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint focus:border-frame focus:outline-none"
         />
         <button
@@ -297,10 +297,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           className="group mt-3.5"
           summary={
             <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-              <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
+              Following <span className="font-normal">({followed.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
                 ›
               </span>
-              Following <span className="font-normal">({followed.total})</span>
             </summary>
           }
         >
@@ -319,10 +318,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           className="group mt-3.5"
           summary={
             <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-              <span className="inline-block w-3 group-open:rotate-90" aria-hidden>
+              My positions <span className="font-normal">({held.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
                 ›
               </span>
-              My positions <span className="font-normal">({held.total})</span>
             </summary>
           }
         >

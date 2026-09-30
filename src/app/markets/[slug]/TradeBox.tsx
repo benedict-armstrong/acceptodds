@@ -1,28 +1,17 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { ui } from '@/components/ui';
+import { sharesForCost } from '@/lib/lmsr';
 import { parseUnits } from '@/lib/money';
-import { pct, rep, REP, shares } from '@/lib/format';
+import { payoutReturn, pct, rep, REP } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
+import { MESSAGES, useOrder } from '@/components/orders';
+import { useQuote } from '@/components/quote';
 
 type Market = z.output<typeof S.Market>;
-type Holding = z.output<typeof S.Holding>;
-type Quote = z.output<typeof S.Quote>;
-
-const MESSAGES: Record<string, string> = {
-  slippage_exceeded: 'The price moved before your order arrived. Check the new quote and try again.',
-  insufficient_balance: 'Not enough reputation for this order.',
-  insufficient_shares: 'You can only sell shares you hold.',
-  not_verified: 'Only accounts with a confirmed institutional email can trade.',
-  market_closed: 'This market has closed.',
-  market_not_open: 'This market is not open.',
-  unauthorized: 'Sign in to trade.',
-  rate_limited: 'Too many requests. Wait a moment.',
-};
 
 /** One button of a segmented control. */
 function segment(on: boolean): string {
@@ -30,128 +19,58 @@ function segment(on: boolean): string {
 }
 
 /**
- * Buy or sell — one widget, because selling is a trade with negative shares.
- * The Buy/Sell toggle and the per-holding sell buttons appear only when the
- * viewer holds shares in this market.
+ * Buy any outcome by stake: the viewer names what to spend, never a share
+ * count, and sees what it pays if that outcome wins. It only buys: selling
+ * is from the viewer's positions (`Positions`), so there is nothing to pick
+ * here that cannot be sold.
+ * A signed-in viewer sees their cash under the stake; a buy they cannot
+ * afford is said so and not sent.
  *
- * What it shows is what the engine charges: the quote prices the **whole**
- * order, and the order is sent with that quote as `maxCostMicro`, so it fills
- * at the shown cost or better, or not at all (§6, §9).
+ * What it shows is what the engine charges: the order is sent with the
+ * quote it showed as `maxCostMicro` (`useOrder`).
  */
 export function TradeBox({
   market,
-  holdings,
+  cashMicro,
   viewer,
   onFilled,
 }: {
   market: Market;
-  holdings: Holding[];
+  /** The viewer's cash, from their polled portfolio; `null` when signed out. */
+  cashMicro: bigint | null;
   viewer: { signedIn: boolean; canTrade: boolean };
   onFilled: () => void;
 }) {
-  const router = useRouter();
-  const [chosenSide, setSide] = useState<'buy' | 'sell'>('buy');
-  // Selling is offered only to a viewer who holds something here. When the
-  // stake goes to zero (sold out, or settled), the widget falls back to buy.
-  const canSell = holdings.length > 0;
-  const side = canSell ? chosenSide : 'buy';
-  useEffect(() => {
-    if (!canSell) setSide('buy');
-  }, [canSell]);
   const [idx, setIdx] = useState(0);
-  const [amount, setAmount] = useState('10');
-  const [quote, setQuote] = useState<{ key: string; q: Quote } | null>(null);
-  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const idempotencyKey = useRef<string | null>(null);
+  const [stake, setStake] = useState('100');
+  const { send, busy, note } = useOrder(market.id, onFilled);
 
   const outcome = market.outcomes[idx];
-  const held = holdings.find((h) => h.outcomeId === outcome.id);
-  const size = parseUnits(amount);
-  const signed = size && size > 0n ? (side === 'buy' ? size : -size) : null;
-  const key = `${outcome.id}:${signed}`;
-
-  // A different order is a different idempotency key. The same order retried
-  // after a network error keeps its key, so it cannot fill twice.
-  useEffect(() => {
-    idempotencyKey.current = null;
-  }, [key]);
-
-  // Re-quote whenever the order or the board changes.
-  useEffect(() => {
-    if (signed === null) {
-      setQuote(null);
-      return;
-    }
-    const ctl = new AbortController();
-    const t = setTimeout(async () => {
-      const res = await fetch(`/api/v1/markets/${market.id}/quote`, {
-        method: 'POST',
-        credentials: 'omit',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ outcomeId: outcome.id, sharesMicro: signed.toString() }),
-        signal: ctl.signal,
-      }).catch(() => null);
-      if (res?.ok) setQuote({ key, q: await res.json() });
-    }, 200);
-    return () => {
-      clearTimeout(t);
-      ctl.abort();
-    };
-    // market.outcomes changes on every poll, which is what keeps the quote fresh.
-  }, [key, market.outcomes, market.id, outcome.id, signed]);
-
-  const current = quote?.key === key ? quote.q : null;
+  const budget = parseUnits(stake);
+  // The shares the stake buys on the board as last polled, rounded down. The
+  // engine only takes a share count; the quote then prices it on the live
+  // board, and that quote, not the stake, is what is shown and bounds the order.
+  const size =
+    budget && budget > 0n
+      ? BigInt(
+        Math.floor(
+          sharesForCost(
+            market.outcomes.map((o) => Number(o.sharesMicro)),
+            idx,
+            Number(budget),
+            market.b,
+          ),
+        ),
+      )
+      : null;
+  const signed = size && size > 0n ? size : null;
+  const current = useQuote(market.id, outcome.id, signed, market.outcomes);
   const cost = current ? BigInt(current.costMicro) : null;
-
-  async function submit() {
-    if (!current || signed === null) return;
-    setBusy(true);
-    setNote(null);
-    idempotencyKey.current ??= crypto.randomUUID();
-    try {
-      const res = await fetch(`/api/v1/markets/${market.id}/orders`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey.current },
-        body: JSON.stringify({ outcomeId: outcome.id, sharesMicro: signed.toString(), maxCostMicro: current.costMicro }),
-      });
-      const body = await res.json();
-      if (res.ok) {
-        const c = BigInt(body.costMicro);
-        setNote({
-          ok: true,
-          text:
-            side === 'buy'
-              ? `Bought ${shares(size!)} ${outcome.label} for ${rep(c)} ${REP}.`
-              : `Sold ${shares(size!)} ${outcome.label} for ${rep(-c)} ${REP}.`,
-        });
-        idempotencyKey.current = null;
-        onFilled();
-        router.refresh(); // the balance in the header
-      } else {
-        setNote({ ok: false, text: MESSAGES[body.error?.code] ?? body.error?.message ?? 'Something went wrong.' });
-        // A refused order is final; the next attempt is a new order.
-        if (res.status !== 429) idempotencyKey.current = null;
-      }
-    } catch {
-      setNote({ ok: false, text: 'Network error. Your order may or may not have gone through; check your trades.' });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const short = cashMicro !== null && cost !== null && cost > cashMicro;
+  const payoutRet = current && cost !== null ? payoutReturn(BigInt(current.sharesMicro), cost) : null;
 
   return (
     <div className={ui.box}>
-      {canSell && (
-        <div className="mb-2 flex gap-1.5">
-          <button className={segment(side === 'buy')} onClick={() => setSide('buy')}>
-            Buy
-          </button>
-          <button className={segment(side === 'sell')} onClick={() => setSide('sell')}>
-            Sell
-          </button>
-        </div>
-      )}
       <div className="mb-2 flex gap-1.5">
         {market.outcomes.map((o, i) => (
           <button key={o.id} className={segment(i === idx)} onClick={() => setIdx(i)}>
@@ -159,20 +78,40 @@ export function TradeBox({
           </button>
         ))}
       </div>
-      <input
-        inputMode="decimal"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        aria-label="shares"
-        placeholder="shares"
-        className={ui.input}
-      />
+      {/* A sentence, "Stake 10 $rep", whose number is an input sized to what
+          is typed, marked only by a dashed underline (solid while hovered or
+          focused). The whole line is the label, so a click anywhere on it
+          lands in the input. The balance under it is justified to the same
+          width: the wrapper is as wide as the wider of the two. */}
+      <div className="mx-auto mb-4 w-fit">
+        <label className="flex cursor-text items-baseline justify-center gap-2 text-2xl font-semibold text-muted">
+          stake
+          <input
+            inputMode="decimal"
+            value={stake}
+            onChange={(e) => setStake(e.target.value)}
+            placeholder="0"
+            aria-label={`stake in ${REP}`}
+            style={{ width: `${Math.max(stake.length, 1) + 1}ch` }}
+            className="min-w-0 border-0 border-b-2 border-dashed border-rule-strong bg-transparent p-0 text-center font-mono text-4xl text-accent outline-none placeholder:text-faint hover:border-solid hover:border-accent focus:border-solid focus:border-accent"
+          />
+          <span className="font-mono">{REP}</span>
+        </label>
+        {cashMicro !== null && (
+          <div className={`mt-3 text-justify font-bold text-sm [text-align-last:justify] ${short ? 'text-down' : 'text-faint'}`}>
+            out of <span className="font-mono">{rep(cashMicro)} {REP}</span> balance
+          </div>
+        )}
+      </div>
 
       {cost !== null && current && (
         <>
           <div className={ui.kv}>
-            <span>{side === 'buy' ? 'Cost' : 'You receive'}</span>
-            <b>{rep(side === 'buy' ? cost : -cost)} {REP}</b>
+            <span>Payout if {outcome.label}</span>
+            <b>
+              {rep(BigInt(current.sharesMicro))} {REP}
+              {payoutRet && <span className="ml-1.5 font-normal text-muted">({payoutRet})</span>}
+            </b>
           </div>
           <div className={ui.kv}>
             <span>Price</span>
@@ -180,13 +119,12 @@ export function TradeBox({
               {pct(current.priceBefore, true)} → {pct(current.priceAfter, true)}
             </span>
           </div>
-          {side === 'buy' && (
-            <div className={ui.kv}>
-              <span>Pays if {outcome.label}</span>
-              <span>{shares(size!)} {REP}</span>
-            </div>
-          )}
         </>
+      )}
+      {short && (
+        <div className={ui.note(false)}>
+          Not enough cash: this costs {rep(cost!)} and you have {rep(cashMicro!)} {REP}.
+        </div>
       )}
 
       {!viewer.signedIn ? (
@@ -194,47 +132,16 @@ export function TradeBox({
       ) : !viewer.canTrade ? (
         <div className={ui.note(false)}>{MESSAGES.not_verified}</div>
       ) : (
-        <button className={ui.btn()} disabled={!current || busy} onClick={submit}>
-          {busy ? '…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${size ? shares(size) : ''} ${outcome.label}`}
+        <button
+          className={ui.btn()}
+          disabled={!current || busy || short}
+          onClick={() => current && signed !== null && send(outcome.id, outcome.label, signed.toString(), current.costMicro)}
+        >
+          {busy ? '…' : `Stake ${cost !== null ? rep(cost) : ''} ${REP} on ${outcome.label}`}
         </button>
       )}
-      {cost !== null && (
-        <div className={ui.fine}>
-          {side === 'buy'
-            ? `Refused if the cost rises above ${rep(cost)}.`
-            : `Refused if the proceeds fall below ${rep(-cost)}.`}
-        </div>
-      )}
+      {cost !== null && <div className={ui.fine}>Refused if the price moves against you before it fills.</div>}
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
-
-      {holdings.length > 0 && <hr className="my-3.5 border-rule-soft" />}
-      {holdings.map((h) => (
-        <div key={h.outcomeId} className="mb-2">
-          <div className={ui.kv}>
-            <span>
-              You hold {shares(h.sharesMicro)} {h.outcomeLabel} · marked
-            </span>
-            <span>{rep(h.markMicro)}</span>
-          </div>
-          <div className={ui.kv}>
-            <span>Sell all now</span>
-            <b>{rep(h.quotedExitMicro)}</b>
-          </div>
-          <button
-            className={ui.btn({ ghost: true })}
-            onClick={() => {
-              setSide('sell');
-              setIdx(market.outcomes.findIndex((o) => o.id === h.outcomeId));
-              setAmount(shares(h.sharesMicro).replace(/,/g, ''));
-            }}
-          >
-            Sell {shares(h.sharesMicro)} {h.outcomeLabel}
-          </button>
-        </div>
-      ))}
-      {held === undefined && side === 'sell' && viewer.signedIn && (
-        <div className={ui.fine}>You hold no {outcome.label}.</div>
-      )}
     </div>
   );
 }

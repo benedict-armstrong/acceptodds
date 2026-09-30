@@ -9,7 +9,9 @@ import * as authSchema from '@/db/auth-schema';
 import { CLIENT_IP_HEADER } from './api/http';
 import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
+import { safeReturnTo } from '@/lib/return-to';
 import { sendMail } from './mail';
+import { siteUrl } from './share';
 
 /**
  * Better Auth, mounted in-app with its tables in our Postgres
@@ -79,6 +81,28 @@ export function createAuth(database: Database) {
       enabled: true,
       requireEmailVerification: true,
       minPasswordLength: 12,
+      // With verification required, signing up with a taken address answers
+      // exactly like a fresh sign-up (Better Auth's guard against email
+      // enumeration) and creates nothing. The person is on `/confirm` waiting
+      // for a code, so mail the address rather than leave them there: a fresh
+      // code and link if it was never confirmed, else a note to sign in. Only
+      // the inbox's owner learns the address is taken, and the password typed
+      // here is ignored.
+      onExistingUserSignUp: async ({ user }, request) => {
+        if (!user.emailVerified) {
+          const body = (await request?.json().catch(() => null)) as { callbackURL?: unknown } | null;
+          const callbackURL = typeof body?.callbackURL === 'string' ? safeReturnTo(body.callbackURL) : undefined;
+          await auth.api.sendVerificationEmail({ body: { email: user.email, callbackURL } });
+          return;
+        }
+        await sendMail({
+          to: user.email,
+          subject: 'You already have an acceptodds account',
+          text:
+            `Someone tried to sign up with this address, which already has an account. If it was you, sign in instead:\n\n` +
+            `${siteUrl()}/signin\n\nIf not, ignore this; nothing has changed.`,
+        });
+      },
       sendResetPassword: async ({ user, url }) => {
         await sendMail({
           to: user.email,

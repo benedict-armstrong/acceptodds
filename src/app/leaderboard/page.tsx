@@ -320,7 +320,7 @@ function FieldCurve({ field, you, label }: { field: FieldSnapshot; you: bigint |
   ];
   return (
     <section aria-label="The field">
-      <h3 className={ui.groupHeading}>The field</h3>
+      <h3 className={`${ui.subsection} mt-6 mb-1.5`}>The field</h3>
       <p className={ui.caption}>
         Net worth of all {worths.length.toLocaleString('en')} traders, if each sold everything now, as of{' '}
         {ago(field.computedAt)} ago.{you !== null && ' The shaded part is everyone below you.'}

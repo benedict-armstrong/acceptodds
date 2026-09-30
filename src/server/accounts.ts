@@ -2,7 +2,8 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import * as schema from '@/db/schema';
-import { accounts, ledgerEntries, listings, markets, outcomes, positions } from '@/db/schema';
+import { accounts, ledgerEntries, listings, markets, orders, outcomes, positions } from '@/db/schema';
+import { costBasis, type Fill } from '@/lib/cost-basis';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { creditAccount, HOUSE_HANDLE, quote } from './engine';
@@ -102,6 +103,9 @@ export interface Holding {
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
   outcomeLabel: string;
+  /** The outcome's place in its market, 0 = first (best), and how many there are: its colour. */
+  outcomeOrdinal: number;
+  outcomeCount: number;
   sharesMicro: bigint;
   /** The current implied probability of this outcome. */
   price: number;
@@ -119,6 +123,12 @@ export interface Holding {
    * are shown. Never put `markMicro` next to a sell button on its own.
    */
   quotedExitMicro: bigint;
+  /**
+   * What the shares held cost, by the average-cost method over this
+   * account's fills (`lib/cost-basis.ts`). How the position was entered: not
+   * a value, and not what selling pays — that is `quotedExitMicro`.
+   */
+  costBasisMicro: bigint;
 }
 
 export interface Portfolio {
@@ -178,6 +188,21 @@ export async function getPortfolio(
     .where(and(eq(positions.accountId, accountId), ne(positions.sharesMicro, 0n)))
     .orderBy(asc(markets.slug), asc(outcomes.ordinal));
 
+  // Every fill on an outcome still held, in the order they filled, for the
+  // cost basis. One query for the whole portfolio.
+  const fills = await database
+    .select({ outcomeId: orders.outcomeId, sharesMicro: orders.sharesMicro, costMicro: orders.costMicro })
+    .from(orders)
+    .innerJoin(positions, and(eq(positions.accountId, orders.accountId), eq(positions.outcomeId, orders.outcomeId)))
+    .where(and(eq(orders.accountId, accountId), ne(positions.sharesMicro, 0n)))
+    .orderBy(asc(orders.createdAt), asc(orders.id));
+  const fillsByOutcome = new Map<string, Fill[]>();
+  for (const f of fills) {
+    const list = fillsByOutcome.get(f.outcomeId) ?? [];
+    list.push(f);
+    fillsByOutcome.set(f.outcomeId, list);
+  }
+
   const holdings: Holding[] = [];
   for (const row of rows) {
     const board = await database
@@ -203,10 +228,13 @@ export async function getPortfolio(
       marketStatus: row.market.status,
       outcomeId: row.outcome.id,
       outcomeLabel: row.outcome.label,
+      outcomeOrdinal: index,
+      outcomeCount: board.length,
       sharesMicro: row.position.sharesMicro,
       price,
       markMicro,
       quotedExitMicro: -exit.costMicro,
+      costBasisMicro: costBasis(fillsByOutcome.get(row.outcome.id) ?? []).basisMicro,
     });
   }
 

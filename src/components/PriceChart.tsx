@@ -3,7 +3,7 @@
 import { useMemo, useState, type PointerEvent } from 'react';
 import { ui } from '@/components/ui';
 import { stepIndexAt } from '@/lib/chart';
-import { pct } from '@/lib/format';
+import { clock, dayMonth, pct } from '@/lib/format';
 import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, TIER_HEX } from '@/lib/headline';
 
 export interface ChartPoint {
@@ -58,19 +58,8 @@ export function PriceChart({
   const ticks = [0.25, 0.5, 0.75].filter((v) => v > lo && v < hi);
   // Days for a long history, clock times for one that fits in a day.
   const short = t1 - t0 < 86_400_000;
-  const date = (ms: number) =>
-    new Date(ms).toLocaleString('en-GB', {
-      timeZone: 'UTC',
-      ...(short ? { hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' }),
-    }) + (short ? ' UTC' : '');
-  const when = (ms: number) =>
-    new Date(ms).toLocaleString('en-GB', {
-      timeZone: 'UTC',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }) + ' UTC';
+  const date = (ms: number) => (short ? `${clock(ms)} UTC` : dayMonth(ms));
+  const when = (ms: number) => `${dayMonth(ms)}, ${clock(ms)} UTC`;
 
   // The pointer, in viewBox units, held to the plot area.
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
@@ -168,12 +157,12 @@ export function PriceChart({
         )}
       </div>
       {lines.length > 1 && (
-        <div className={ui.caption}>
+        <div className={`${ui.caption} text-right`}>
           {lines.map((i) => (
             <span
               key={i}
               tabIndex={0}
-              className={`mr-3.5 cursor-default transition-opacity ${faded(i) ? 'opacity-40' : ''} ${focus === i ? 'text-ink' : ''}`}
+              className={`ml-3.5 cursor-default transition-opacity ${faded(i) ? 'opacity-40' : ''} ${focus === i ? 'text-ink' : ''}`}
               onPointerEnter={() => setFocus(i)}
               onPointerLeave={() => setFocus(null)}
               onFocus={() => setFocus(i)}

@@ -101,7 +101,7 @@ export function SharePanel({
         </PopoverTrigger>
       </span>
       <PopoverContent>
-        <h3 className={ui.sectionHeading}>Share</h3>
+        <h3 className={ui.boxHeading}>Share</h3>
         <label className="mb-1 block text-xs text-muted" htmlFor="share-name">
           Short name
         </label>
@@ -119,7 +119,7 @@ export function SharePanel({
           )}
         </div>
 
-        <h3 className={`${ui.sectionHeading} mt-4`}>Badge</h3>
+        <h3 className={`${ui.boxHeading} mt-4`}>Badge</h3>
         <div className="mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element -- an SVG badge, shown as embedders will see it */}
           <img src={badgeUrl} alt={`${kind ?? 'acceptodds'} odds`} />
@@ -129,7 +129,7 @@ export function SharePanel({
           <CopyButton value={html} label="Copy HTML" />
         </div>
 
-        <h3 className={`${ui.sectionHeading} mt-4`}>Link</h3>
+        <h3 className={`${ui.boxHeading} mt-4`}>Link</h3>
         <div className="flex items-center gap-3">
           <code className="min-w-0 truncate font-mono text-[13px]">{shareUrl}</code>
           <CopyButton value={shareUrl} label="Copy" />

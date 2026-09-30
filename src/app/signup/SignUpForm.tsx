@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ui } from '@/components/ui';
@@ -54,9 +53,6 @@ export function SignUpForm({ next }: { next: string }) {
         Sign up
       </button>
       {error && <div className={ui.note(false)}>{error}</div>}
-      <p className={`${ui.fine} mb-3`}>
-        Have an account? <Link href={authHref('/signin', next)}>Sign in</Link>.
-      </p>
     </form>
   );
 }

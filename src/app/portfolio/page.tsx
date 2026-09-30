@@ -2,26 +2,26 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Pager } from '@/components/Pager';
+import { holdingHref, PositionsTable } from '@/components/PositionsTable';
 import { Stat } from '@/components/Stat';
 import { ui } from '@/components/ui';
-import { day, pct, rep, REP, shares, signedRep } from '@/lib/format';
-import { closedPositions, getPortfolio, type Holding } from '@/server/accounts';
+import { day, rep, REP, shares, signedRep } from '@/lib/format';
+import { presentPortfolio } from '@/server/api/present';
+import { closedPositions, getPortfolio } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
+import { tradingMarketIds } from '@/server/views';
 
 export const dynamic = 'force-dynamic';
 
 const CLOSED_PAGE = 50;
 const CLOSED_BY = { sold: 'sold', won: 'settled · won', lost: 'settled · lost' } as const;
 
-function holdingHref(h: Pick<Holding, 'marketSlug' | 'listingSlug'>): string {
-  return h.listingSlug ? `/papers/${h.listingSlug}?market=${encodeURIComponent(h.marketSlug)}` : `/markets/${h.marketSlug}`;
-}
-
 /**
- * Cash, net worth at liquidation value, and P&L, then the holdings — each
- * with its mark and its quoted exit value in two separate columns (§1.1). The
- * mark-based net worth (§1.2) is not shown. Then the closed positions (#22),
+ * Cash, net worth at liquidation value, and P&L, then the open positions in
+ * the same `PositionsTable` as a market's page, with a market column and a
+ * sell button on every open market (never a mark, §1.1). The mark-based net
+ * worth (§1.2) is not shown. Then the closed positions (#22),
  * 50 a page on `?page=`.
  */
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
@@ -38,6 +38,8 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   }
   events.log('portfolio.read', { accountId: viewer.account.id });
   const s = p.summary;
+  const canTrade = viewer.account.isBot || viewer.account.verifiedAt !== null;
+  const sellable = canTrade ? await tradingMarketIds([...new Set(p.holdings.map((h) => h.marketId))]) : [];
 
   return (
     <main className={ui.page}>
@@ -61,40 +63,16 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       {p.holdings.length === 0 ? (
         <div className={ui.empty}>No open positions.</div>
       ) : (
-        <table className={ui.table}>
-          <thead>
-            <tr>
-              <th className={ui.th()}>Market</th>
-              <th className={ui.th()}>Holding</th>
-              <th className={ui.th(true)}>Price</th>
-              <th className={ui.th(true)}>Marked at</th>
-              <th className={ui.th(true)}>Sell all now</th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.holdings.map((h) => (
-              <tr key={h.outcomeId}>
-                <td className={ui.td}>
-                  <Link href={holdingHref(h)}>{h.question}</Link>
-                  {h.marketStatus !== 'open' && <span className={ui.badge}>{h.marketStatus}</span>}
-                </td>
-                <td className={`${ui.td} font-mono text-[13px]`}>
-                  {shares(h.sharesMicro)} {h.outcomeLabel}
-                </td>
-                <td className={`${ui.td} ${ui.num}`}>{pct(h.price)}</td>
-                <td className={`${ui.td} ${ui.num}`}>{rep(h.markMicro)}</td>
-                <td className={`${ui.td} ${ui.num}`}>
-                  <b>{rep(h.quotedExitMicro)}</b>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <PositionsTable
+          holdings={presentPortfolio(p).holdings}
+          showMarket
+          sellable={sellable}
+        />
       )}
       <p className={`${ui.fine} mb-3`}>
-        “Marked at” is shares × price. “Sell all now” is what selling the whole holding would actually pay; it is lower,
-        because each share you sell moves the price against you. Net worth and unrealized P&L use “sell all now”, never
-        the mark.
+        “Bought @” is the average price you paid. “Current value” is what selling it all now would pay against what it
+        cost; it starts a little negative, because each share you sell moves the price against you. Net worth and
+        unrealized P&L use the same sell-all value.
       </p>
 
       <h2 className={ui.groupHeading}>Closed positions</h2>

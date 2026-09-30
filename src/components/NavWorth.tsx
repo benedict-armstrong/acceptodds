@@ -49,7 +49,7 @@ export function NavWorth({ worth, cash, standing }: { worth: string; cash: strin
           <span className="text-muted">net worth</span> <b className={ui.mono}>{worth}</b>
         </div>
         <div className="text-muted">
-          if you sold everything now · cash <span className={ui.mono}>{cash}</span>
+          cash <span className={ui.mono}>{cash}</span>
         </div>
         {standing && (
           <div className="mt-1 border-t border-rule pt-1">

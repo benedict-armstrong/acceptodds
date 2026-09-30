@@ -110,6 +110,30 @@ export function costToTrade(
 }
 
 /**
+ * The inverse of a buy: how many shares of `outcomeIndex` a spend of `budget`
+ * buys, so that `costToTrade(shares, outcomeIndex, result, b) === budget`.
+ *
+ * Buying `Δ` costs `b · ln(1 − p + p·e^{Δ/b})` with `p` the outcome's price
+ * now, so `Δ = b · ln(1 + (e^{x} − 1)/p)` with `x = budget / b`. It is
+ * evaluated as `b · (x + ln(e^{−x} + (1 − e^{−x})/p))`, which neither
+ * overflows for a large spend nor loses the small one.
+ *
+ * Buys only: `budget` must be ≥ 0. A spend is not a sell's proceeds, and a
+ * sell is sized in the shares held.
+ */
+export function sharesForCost(shares: number[], outcomeIndex: number, budget: number, b: number): number {
+  const p = prices(shares, b)[outcomeIndex];
+  if (p === undefined || !Number.isInteger(outcomeIndex)) {
+    throw new RangeError(`lmsr: outcomeIndex ${outcomeIndex} out of range`);
+  }
+  if (!Number.isFinite(budget) || budget < 0) {
+    throw new RangeError(`lmsr: budget must be finite and >= 0, got ${budget}`);
+  }
+  const x = budget / b;
+  return b * (x + Math.log(Math.exp(-x) - Math.expm1(-x) / p));
+}
+
+/**
  * The venue's worst-case subsidy for a market with this `b` and this many
  * outcomes: `b * ln(n)`.
  *

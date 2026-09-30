@@ -358,6 +358,13 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
   nothing. There is still no user session, account or reputation before
   confirmation.
+- **Signing up with a taken address looks like success, and mails the
+  owner.** With verification required, Better Auth answers a duplicate
+  sign-up with a fake 200 (enumeration guard) and creates nothing.
+  `onExistingUserSignUp` then resends the code and link if the address was
+  never confirmed, or mails "you already have an account, sign in" if it
+  was. The typed password is ignored. Don't turn this into a 422: that
+  tells anyone which addresses have accounts.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is
@@ -389,7 +396,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   the winner by stylesheet order, not class order — so a variant is a
   parameter (`ui.btn({ ghost: true })`). Shared behaviour is a component in
   `components/`: `CopyButton`, and `Popover` (Radix, the primitive shadcn
-  wraps, in our tokens) for anything that floats over the page — reuse
+  wraps, in our tokens) for anything that floats over the page, and
+  `Modal` (Radix Dialog, likewise) for anything that takes it over — reuse
   them rather than hand-roll another. Preflight is on: headings, `p` and
   `hr` have no default margins, and `svg` is `display: block`.
 - **The UI writes through the public API, not Server Actions.** §9 suggests
@@ -412,8 +420,22 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   fresh `Idempotency-Key` per order (kept across a network-error retry of the
   same order, replaced when the order changes). So the charged cost is the
   displayed cost or better, or the order is refused — checked end to end.
-  The Buy/Sell toggle and sell buttons show only while the viewer holds
-  shares in that market; at zero the widget falls back to buy.
+  The form only buys, by **stake**: the viewer enters what to spend in
+  `REP`, `lmsr.sharesForCost` turns it into shares on the polled board, and
+  the quote for those shares is what is shown ("pays N if …") and sent as
+  the bound — the API still takes shares. The viewer's positions are a
+  full-width table under the chart (`components/PositionsTable`, also
+  `/portfolio`'s, with a market column): `Bought @` (the average
+  price paid, from `Holding.costBasisMicro`: average cost over the fills,
+  `lib/cost-basis.ts`), `Payout` (shares, 1 each if it wins) and `Current
+  value`, the exit quote against the basis as % or `REP` (toggled in the
+  header) — never the mark (§1.1), so it is a little negative right after
+  a buy. Selling is per row, in a
+  `SellModal` (10/50/100% or a custom amount, capped at the holding),
+  quoted live and bounded like a buy, so nothing unheld can be offered.
+  Both send through `useOrder` (`components/orders.ts`). A row's Sell
+  shows only for a market in `sellable` (`views.tradingMarketIds`: open
+  and before `closes_at`, the engine's own test).
 - **The navbar shows where the viewer stands** (#17, `components/NavWorth`):
   a tiny bell curve of the net-worth field with a line at the viewer
   (`MiniCurve`). Hovering it (tapping, on touch) opens a `Popover` below
@@ -441,11 +463,12 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   venue's `closing` sort is not offered. Status and "following" filters sit
   in a `⋯` `Popover` menu, which shows the active one when not the default.
   A signed-in viewer sees a **Following** section above the list: the
-  followed subset of that same list (venue, status, sort), 10 a page on its
+  followed subset of that same list (venue, status, sort) the viewer holds
+  no shares in, 10 a page on its
   own `?fpage=`, collapsible, the open state in the `home_following_open`
   cookie so the server renders it as left. Then **My positions**, the
-  papers the viewer holds shares in (any market of the row) and doesn't
-  follow, 10 a page on `?hpage=`, cookie `home_positions_open`. Hidden while
+  papers the viewer holds shares in (any market of the row), followed or
+  not — a position wins over a follow — 10 a page on `?hpage=`, cookie `home_positions_open`. Hidden while
   searching or with `?following=1`. "All papers" below is the rest: nothing
   pinned above is repeated, and the exclusion is in SQL so its pages count
   right.
@@ -585,6 +608,11 @@ unpaginated, and 5 s for that search.
   as its main market (rank 0), created by `../research`. The platform still
   attaches no meaning to the labels, and a listing may still carry more
   markets (the paper page lists them only when there is more than one).
+- **Reject also covers a withdrawal** (#19): a paper withdrawn or
+  desk-rejected before the decision settles as `Reject`, never void. That is
+  `../research`'s call when it settles, and the market's `description` says
+  so to traders (the seed's `DECISION_RULE`); the platform still interprets
+  no label.
 - **Outcomes are ordered best first, worst last, and the headline is
   `1 − P(last)`** (`lib/headline.ts`) — for a paper, accepted in any form.
   For a binary `[YES, NO]` market that is exactly P(YES), so binary markets
@@ -606,9 +634,12 @@ unpaginated, and 5 s for that search.
   - `/s/<slug>` — a paper's slug or an unlisted market's — 307s to its page
     and logs `share.opened` (no payload, no account).
   - `opengraph-image.tsx` on `/papers/[slug]` and `/markets/[slug]`
-    (`server/og.tsx`): the title and the outcome bar **without numbers**;
-    no band, trader count or link (the card already shows the link).
-    Settled: "Decided: <label>" in place of the bar. Five-minute `Cache-Control`. Its
+    (`server/og.tsx`): the question, `<title> @ <kind>?` (`shareTitleLine`,
+    ~120 characters, `@ <kind>?` in the accent), and the outcome bar with
+    each outcome's price and label centred on its segment, alternately
+    below and above the bar, nudged apart only where a row would still
+    collide (`placeLabels`); no band, trader count or link (the card already shows the link).
+    Settled: the bar all in the winner's colour, "Decided <label>"; void: an empty bar. Five-minute `Cache-Control`. Its
     font is `assets/fonts/LiberationSerif-Regular.ttf` (OFL), read from disk
     and named in `outputFileTracingIncludes` so standalone output carries it.
     Latin only: no emoji or arrows in the image.

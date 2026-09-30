@@ -49,8 +49,39 @@ export function pct(p: number, precise = false): string {
   return `${v}%`;
 }
 
+/**
+ * What a payout returns on its cost, for display: a multiple ("×3.20") when
+ * it at least doubles the money, else the gain as a percentage ("+35%",
+ * "−2%"). A float, for display only; `null` for a zero cost.
+ */
+export function payoutReturn(payoutMicro: bigint, costMicro: bigint): string | null {
+  if (costMicro <= 0n) return null;
+  const ratio = Number(payoutMicro) / Number(costMicro);
+  if (ratio >= 2) return `×${ratio.toFixed(2)}`;
+  const gain = Math.round((ratio - 1) * 100);
+  return `${gain < 0 ? '−' : '+'}${Math.abs(gain)}%`;
+}
+
+// Dates are spelled out by hand, in UTC, never through `toLocaleString`: the
+// server's ICU and the browser's disagree ("13 Sept" vs "13 Sep" in en-GB),
+// and a client component rendered on both then fails to hydrate.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "13 Sep", UTC. */
+export function dayMonth(at: string | Date | number): string {
+  const d = new Date(at);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+/** "09:05", UTC, 24-hour. */
+export function clock(at: string | Date | number): string {
+  const d = new Date(at);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/** "13 Sep 2026", UTC. */
 export function day(iso: string | Date): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return `${dayMonth(iso)} ${new Date(iso).getUTCFullYear()}`;
 }
 
 export function ago(iso: string | Date, now = Date.now()): string {

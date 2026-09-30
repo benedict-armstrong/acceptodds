@@ -5,29 +5,46 @@ import { Suspense } from 'react';
 import { authHref } from '@/lib/return-to';
 import { useReturnTo } from './useReturnTo';
 
-function Links() {
+function NavLink() {
   const here = useReturnTo();
+  return <Link href={authHref('/signin', here)}>sign in</Link>;
+}
+
+/**
+ * The navbar's one way in, back to this page afterwards. It opens sign-in,
+ * whose tabs (`AuthTabs`) offer sign-up.
+ */
+export function AuthNavLink() {
   return (
-    <>
-      <Link href={authHref('/signin', here)}>sign in</Link>
-      <Link href={authHref('/signup', here)}>sign up</Link>
-    </>
+    <Suspense fallback={<Link href="/signin">sign in</Link>}>
+      <NavLink />
+    </Suspense>
   );
 }
 
-/** The navbar's sign-in and sign-up links, which bring the person back to this page. */
-export function AuthLinks() {
+/**
+ * The heading of `/signin` and `/signup`: both as tabs, the current one the
+ * page's `h1`, switching between them keeps `next`.
+ */
+export function AuthTabs({ current, next }: { current: '/signin' | '/signup'; next: string }) {
+  const tabs = [
+    { page: '/signin', label: 'Sign in' },
+    { page: '/signup', label: 'Sign up' },
+  ] as const;
   return (
-    <Suspense
-      fallback={
-        <>
-          <Link href="/signin">sign in</Link>
-          <Link href="/signup">sign up</Link>
-        </>
-      }
-    >
-      <Links />
-    </Suspense>
+    <div className="my-4.5 flex items-baseline gap-5 border-b border-rule text-[26px]">
+      {tabs.map(({ page, label }) =>
+        page === current ? (
+          <h1 key={page} className="-mb-px border-b-2 border-accent pb-1 font-normal">
+            {label}
+          </h1>
+        ) : (
+          <Link key={page} href={authHref(page, next)} className="pb-1 text-muted hover:text-ink hover:no-underline">
+            {label}
+          </Link>
+        ),
+      )}
+    </div>
   );
 }
 

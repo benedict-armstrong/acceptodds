@@ -450,6 +450,10 @@ export const Holding = z
     marketStatus: MarketStatus,
     outcomeId: Id,
     outcomeLabel: z.string(),
+    outcomeOrdinal: z.number().int().nonnegative().meta({
+      description: 'The outcome’s place in its market, 0 = first. Outcomes are ordered best first, worst last.',
+    }),
+    outcomeCount: z.number().int().positive().meta({ description: 'How many outcomes its market has.' }),
     sharesMicro: Micro,
     price: Price,
     markMicro: Micro.meta({
@@ -459,6 +463,10 @@ export const Holding = z
     quotedExitMicro: Micro.meta({
       description:
         'What selling the whole holding now would pay: a real quote for the full size, slippage included. Always ≤ `markMicro`.',
+    }),
+    costBasisMicro: Micro.meta({
+      description:
+        'What the shares held cost, by the average-cost method: buys add their cost, a sell removes its fraction of the basis. How the position was entered — not a value.',
     }),
   })
   .meta({ id: 'Holding' });

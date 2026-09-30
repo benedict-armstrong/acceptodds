@@ -6,6 +6,7 @@ import {
   marketHeadline,
   MIN_SQUARE_PRICE,
   openingHeadline,
+  placeLabels,
   shareText,
   shareTitleLine,
   SHARE_TITLE_MAX,
@@ -112,6 +113,35 @@ describe('shareTitleLine', () => {
 
   it('drops TeX dollar signs', () => {
     expect(shareTitleLine('An $O(\\sqrt{T})$ Bound', 'ICLR 2027')).toBe('An O(\\sqrt{T}) Bound @ ICLR 2027?');
+  });
+});
+
+describe('placeLabels', () => {
+  it('centres labels that fit', () => {
+    expect(placeLabels([100, 500], [40, 60], 1000, 10)).toEqual([80, 470]);
+  });
+
+  it('keeps labels inside the bar and apart', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.double({ min: 0, max: 1000, noNaN: true }), fc.integer({ min: 10, max: 150 })), {
+          minLength: 1,
+          maxLength: 4,
+        }),
+        (items) => {
+          const sorted = [...items].sort((a, b) => a[0] - b[0]);
+          const widths = sorted.map(([, w]) => w);
+          const left = placeLabels(sorted.map(([c]) => c), widths, 1000, 12);
+          const last = left.length - 1;
+          expect(left[last] + widths[last]).toBeLessThanOrEqual(1000 + 1e-9);
+          if (widths.reduce((a, b) => a + b, 0) + 12 * last > 1000) return;
+          expect(left[0]).toBeGreaterThanOrEqual(-1e-9);
+          for (let i = 1; i < left.length; i++) {
+            expect(left[i]).toBeGreaterThanOrEqual(left[i - 1] + widths[i - 1] + 12 - 1e-9);
+          }
+        },
+      ),
+    );
   });
 });
 
