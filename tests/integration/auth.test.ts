@@ -135,6 +135,39 @@ describe('sign-up with email and password', () => {
     expect(mail.text).toMatch(/https?:\/\/\S+verify-email/);
   });
 
+  it('signing up again with an unconfirmed address resends the code and link, and creates nothing', async () => {
+    await signUpUnconfirmed('twice@example.org');
+    clearDevOutbox();
+    const again = await authCall('POST', '/sign-up/email', {
+      body: { email: 'twice@example.org', password: 'another password entirely', name: 'Twice', callbackURL: '/papers/x' },
+    });
+    expect(again.status).toBe(200); // indistinguishable from a fresh sign-up
+    expect(await db.select().from(user).where(eq(user.email, 'twice@example.org'))).toHaveLength(1);
+
+    const mail = devOutbox().find((m) => m.to === 'twice@example.org')!;
+    const otp = codeFrom(mail.text);
+    expect(mail.text).toContain(encodeURIComponent('/papers/x'));
+    expect((await confirmWithCode('twice@example.org', otp)).status).toBe(200);
+    // The first password still stands; the second was ignored.
+    const inRes = await authCall('POST', '/sign-in/email', { body: { email: 'twice@example.org', password: 'correct horse battery' } });
+    expect(inRes.status).toBe(200);
+  });
+
+  it('signing up again with a confirmed address mails its owner to sign in, and changes nothing', async () => {
+    await signUp('taken@example.org', 'Taken');
+    clearDevOutbox();
+    const again = await authCall('POST', '/sign-up/email', {
+      body: { email: 'taken@example.org', password: 'another password entirely', name: 'Impostor' },
+    });
+    expect(again.status).toBe(200);
+    expect(cookieFrom(again)).not.toContain('session_token=');
+    expect(devOutbox()).toEqual([
+      expect.objectContaining({ to: 'taken@example.org', subject: 'You already have an acceptodds account', text: expect.stringContaining('/signin') }),
+    ]);
+    const [row] = await db.select().from(user).where(eq(user.email, 'taken@example.org'));
+    expect(row.name).toBe('Taken');
+  });
+
   it('gives two users with the same name different handles', async () => {
     const a = await api('GET', '/me', { cookie: await signUp('one@example.org', 'Sam Smith') });
     const b = await api('GET', '/me', { cookie: await signUp('two@example.org', 'Sam Smith') });

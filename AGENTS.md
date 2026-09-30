@@ -358,6 +358,13 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
   nothing. There is still no user session, account or reputation before
   confirmation.
+- **Signing up with a taken address looks like success, and mails the
+  owner.** With verification required, Better Auth answers a duplicate
+  sign-up with a fake 200 (enumeration guard) and creates nothing.
+  `onExistingUserSignUp` then resends the code and link if the address was
+  never confirmed, or mails "you already have an account, sign in" if it
+  was. The typed password is ignored. Don't turn this into a 422: that
+  tells anyone which addresses have accounts.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is
