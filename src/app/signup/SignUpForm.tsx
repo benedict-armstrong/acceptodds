@@ -39,15 +39,15 @@ export function SignUpForm({ next }: { next: string }) {
     >
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Name
-        <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
+        <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
       </label>
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Institutional email
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
       </label>
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Password (12+ characters)
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} autoComplete="new-password" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} autoComplete="new-password" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
       </label>
       <button className={ui.btn()} disabled={busy}>
         Sign up

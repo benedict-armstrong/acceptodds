@@ -107,7 +107,7 @@ export function Comments({
 
   return (
     <section className="mt-9">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className={ui.section}>
           Discussion ({data.comments.length}
           {data.nextCursor ? '+' : ''})
@@ -132,7 +132,7 @@ export function Comments({
             </div>
           ) : (
             <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} placeholder="Add a comment"
-              className="min-h-[70px] w-full border border-rule bg-white p-2 font-sans text-sm"
+              className="min-h-[70px] w-full border border-rule bg-white p-2 font-sans text-sm narrow:text-base"
             />
           )}
           <div className="flex items-center justify-between gap-3">
@@ -302,14 +302,14 @@ function BackForm({
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted">Back with</span>
         <input
-          className="w-24 border border-rule bg-white px-1.5 py-0.5 text-right font-mono text-[13px]"
+          className="w-24 border border-rule bg-white px-1.5 py-0.5 text-right font-mono text-[13px] narrow:text-base"
           inputMode="decimal"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           aria-label="Shares"
         />
         <select
-          className="border border-rule bg-white px-1 py-0.5 text-sm"
+          className="border border-rule bg-white px-1 py-0.5 text-sm narrow:text-base"
           value={chosen.outcomeId}
           onChange={(e) => {
             const next = available.find((a) => a.outcomeId === e.target.value)!;

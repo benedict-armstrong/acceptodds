@@ -1,14 +1,13 @@
-import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Pager } from '@/components/Pager';
+import { PaperName } from '@/components/PaperName';
 import { PositionsTable } from '@/components/PositionsTable';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { WorthTable } from '@/components/WorthTable';
 import { day, rep, REP, shares, signedRep } from '@/lib/format';
-import { marketHref } from '@/lib/links';
 import { presentPortfolio } from '@/server/api/present';
 import { closedPositions, getPortfolio } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
@@ -70,46 +69,48 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
         <div className={ui.empty}>No closed positions yet.</div>
       ) : (
         <>
-          <table className={ui.table}>
-            <caption className={ui.tableCaption}>
-              <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Outcomes you traded and no longer hold, over all their fills, newest first.
-            </caption>
-            <thead>
-              <tr>
-                <th className={ui.th()}>Market</th>
-                <th className={ui.th()}>Bought</th>
-                <th className={ui.th(true)}>Paid</th>
-                <th className={ui.th(true)}>
-                  Got back<sup className={ui.mark}>a</sup>
-                </th>
-                <th className={ui.th(true)}>P&L</th>
-                <th className={ui.th()}>Closed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {closed.rows.map((c) => (
-                <tr key={c.outcomeId}>
-                  <td className={ui.td}>
-                    <Link href={marketHref(c)}>{c.question}</Link>
-                  </td>
-                  <td className={`${ui.td} font-mono text-[13px]`}>
-                    {shares(c.boughtMicro)} {c.outcomeLabel}
-                  </td>
-                  <td className={`${ui.td} ${ui.num}`}>{rep(c.paidMicro)}</td>
-                  <td
-                    className={`${ui.td} ${ui.num}`}
-                    title={`sold for ${rep(c.soldMicro)}${c.closedBy === 'sold' ? '' : `, settlement paid ${rep(c.payoutMicro)}`}`}
-                  >
-                    {rep(c.soldMicro + c.payoutMicro)}
-                  </td>
-                  <td className={`${ui.td} ${ui.num} ${ui.pnl(c.pnlMicro)}`}>{signedRep(c.pnlMicro)}</td>
-                  <td className={`${ui.td} text-[13px] whitespace-nowrap`}>
-                    {day(c.closedAt)} <span className="text-muted">{CLOSED_BY[c.closedBy]}</span>
-                  </td>
+          <div className={ui.tableScroll}>
+            <table className={ui.table}>
+              <caption className={ui.tableCaption}>
+                <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Outcomes you traded and no longer hold, over all their fills, newest first.
+              </caption>
+              <thead>
+                <tr>
+                  <th className={ui.th()}>Paper</th>
+                  <th className={ui.th()}>Bought</th>
+                  <th className={`${ui.th(true)}`}>Paid</th>
+                  <th className={`${ui.th(true)}`}>
+                    Got back<sup className={ui.mark}>a</sup>
+                  </th>
+                  <th className={ui.th(true)}>P&L</th>
+                  <th className={ui.th()}>Closed</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {closed.rows.map((c) => (
+                  <tr key={c.outcomeId}>
+                    <td className={ui.td}>
+                      <PaperName m={c} />
+                    </td>
+                    <td className={`${ui.td} font-mono text-[13px]`}>
+                      {shares(c.boughtMicro)} {c.outcomeLabel}
+                    </td>
+                    <td className={`${ui.td} ${ui.num}`}>{rep(c.paidMicro)}</td>
+                    <td
+                      className={`${ui.td} ${ui.num}`}
+                      title={`sold for ${rep(c.soldMicro)}${c.closedBy === 'sold' ? '' : `, settlement paid ${rep(c.payoutMicro)}`}`}
+                    >
+                      {rep(c.soldMicro + c.payoutMicro)}
+                    </td>
+                    <td className={`${ui.td} ${ui.num} ${ui.pnl(c.pnlMicro)}`}>{signedRep(c.pnlMicro)}</td>
+                    <td className={`${ui.td} text-[13px] whitespace-nowrap`}>
+                      {day(c.closedAt)} <span className="text-muted">{CLOSED_BY[c.closedBy]}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <TableNotes
             notes={[
               [

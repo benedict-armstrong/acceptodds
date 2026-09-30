@@ -179,7 +179,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search papers and people"
           placeholder='Search papers and people'
-          className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint focus:border-frame focus:outline-none"
+          className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
         />
         <button
           type="submit"
@@ -231,7 +231,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       )}
 
       <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted">
-        <span className="flex gap-3">
+        {/* Each group wraps on its own; on a phone, venues take one line and sort the next. */}
+        <span className="flex flex-wrap gap-x-3 gap-y-1">
           {kinds.map((k) => (
             <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
               {k.kind}
@@ -241,8 +242,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             all venues
           </Link>
         </span>
-        <span className="flex-1" />
-        <span className="flex gap-3">
+        <span className="flex-1 narrow:hidden" />
+        <span className="flex flex-wrap gap-x-3 gap-y-1">
           sort:
           {sorts.map((s) => (
             <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
@@ -254,7 +255,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         <Popover>
           {/* Not a flex box: an icon alone gives a flex item no text baseline, and the row aligns on
               baselines. Inline, `align-middle` centres the dots on the text's x-height. */}
-          <PopoverTrigger title="More filters: status, following" className="cursor-pointer px-1 text-ink hover:text-accent">
+          <PopoverTrigger title="More filters: status, following" className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent narrow:px-2">
             {activeFilters}
             <MoreIcon className={`inline-block size-5 align-middle ${activeFilters ? 'ml-1' : ''}`} />
           </PopoverTrigger>
@@ -362,7 +363,7 @@ function SearchHelp() {
         type="button"
         title="Search syntax"
         aria-label="Search syntax"
-        className="cursor-pointer px-1 font-sans text-sm text-muted hover:text-accent"
+        className="cursor-pointer px-1 font-sans text-sm text-muted hover:text-accent narrow:px-2.5"
       >
         ?
       </PopoverTrigger>
@@ -377,7 +378,7 @@ function SearchHelp() {
             <tr>
               <th className={ui.th()}>Filter</th>
               <th className={ui.th()}>Means</th>
-              <th className={ui.th()}>Also</th>
+              <th className={`${ui.th()} narrow:hidden`}>Also</th>
             </tr>
           </thead>
           <tbody>
@@ -385,7 +386,7 @@ function SearchHelp() {
               <tr key={f.field}>
                 <td className={`${ui.td} font-mono text-ink`}>{f.example}</td>
                 <td className={ui.td}>{f.means}</td>
-                <td className={`${ui.td} text-faint`}>{f.aliases.map((a) => `${a}:`).join(' ')}</td>
+                <td className={`${ui.td} text-faint narrow:hidden`}>{f.aliases.map((a) => `${a}:`).join(' ')}</td>
               </tr>
             ))}
           </tbody>

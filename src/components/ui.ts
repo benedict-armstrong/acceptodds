@@ -26,7 +26,7 @@ export const ui = {
   boxHeading: `mb-2 ${subsectionLook}`,
   /** A run-in heading, set in a line of other text: who wrote a comment, as OpenReview heads one. */
   runIn: subsectionLook,
-  page: 'mx-auto max-w-[880px] px-6 pt-3 pb-15',
+  page: 'mx-auto max-w-[880px] px-6 pt-3 pb-15 narrow:px-4',
   groupHeading: `mt-7 mb-1.5 ${section}`,
   /** An unnumbered section, for back matter such as References. */
   backHeading: `mt-7 mb-1.5 ${sectionLook}`,
@@ -40,7 +40,12 @@ export const ui = {
   mono: 'font-mono text-[13px]',
   badge: 'ml-1 rounded-[3px] border border-[#bbb] px-1 align-[1px] font-sans text-[11px] text-muted',
   box: 'border border-frame bg-card p-3.5 font-sans text-sm',
-  input: 'mb-2 w-full border border-rule bg-white p-1.5 font-sans text-sm leading-[normal]',
+  /**
+   * A text field. 16px on a phone: iOS Safari zooms the page into any field
+   * set smaller when it is focused. Every text input and textarea carries
+   * `narrow:text-base` for the same reason.
+   */
+  input: 'mb-2 w-full border border-rule bg-white p-1.5 font-sans text-sm leading-[normal] narrow:text-base',
   /** A label on the left, a value on the right. */
   kv: 'flex justify-between gap-3 tabular-nums [&>span:first-child]:text-muted',
   /**
@@ -54,6 +59,8 @@ export const ui = {
   td: 'py-[5px] pr-2',
   num: 'text-right font-mono text-[13px]',
   table: 'mt-3 w-full border-collapse border-y-[1.5px] border-ink',
+  /** Around a table, so one too wide for a phone scrolls sideways rather than the page. */
+  tableScroll: 'overflow-x-auto',
   /** A table note's mark on a column heading, "Net worth<sup>a</sup>": an italic letter, as threeparttable sets it. */
   mark: 'ml-px font-serif text-[10px] font-normal italic',
   /** The selected link in a row of filter or tab links. */

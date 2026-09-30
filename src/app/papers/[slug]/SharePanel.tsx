@@ -93,7 +93,7 @@ export function SharePanel({
           onFail={() => setMenuOpen(true)} // no clipboard: the text is in the menu to copy by hand
         />
         <PopoverTrigger
-          className="flex cursor-pointer items-center px-1 text-muted hover:text-accent"
+          className="flex cursor-pointer items-center px-1 text-muted hover:text-accent narrow:px-2"
           aria-label="More ways to share"
           title="More ways to share"
         >

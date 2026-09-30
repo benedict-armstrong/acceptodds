@@ -111,13 +111,13 @@ export function MarketLive({
         {sentence ? statusLine(market) : `${market.kind} · ${statusLine(market)}`}
       </div>
       {sentence ? (
-        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal">
+        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
           <b className={lead}>{pct(headline)}</b> chance this paper gets accepted at {market.kind}.
         </h2>
       ) : embedded ? (
-        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal">{market.question}</h2>
+        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">{market.question}</h2>
       ) : (
-        <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal">{market.question}</h1>
+        <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal narrow:text-2xl">{market.question}</h1>
       )}
       {market.description && <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>}
 

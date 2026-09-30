@@ -426,7 +426,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Styling is Tailwind v4, utilities in the markup.** The palette and fonts
   are `@theme` tokens in `app/globals.css` (`text-muted`, `border-rule`,
   `font-mono`, …); use a token, not a raw hex, for any colour that has one.
-  The 720px breakpoint is the `narrow:` variant. Patterns used on more than
+  The 720px breakpoint is the `narrow:` variant. On a phone a table too
+  wide for the screen scrolls sideways inside `ui.tableScroll` rather than
+  dropping columns; every text field is 16px there (`narrow:text-base`,
+  built into `ui.input`), or iOS zooms in when it is focused; charts are
+  drawn at their measured width, never a fixed `viewBox` scaled down. Patterns used on more than
   one page (section labels, buttons, box, inputs, table cells) are class
   lists in `components/ui.ts`. Each is a complete look: add utilities for
   properties it doesn't set, never override one it does — Tailwind picks
@@ -466,7 +470,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   the quote for those shares is what is shown ("pays N if …") and sent as
   the bound — the API still takes shares. The viewer's positions are a
   full-width table under the chart (`components/PositionsTable`, also
-  `/portfolio`'s, with a market column): `Bought @` (the average
+  `/portfolio`'s, with a paper column: the listing's title, one line, cut
+  by `components/PaperName`, as in closed positions): `Bought @` (the average
   price paid, from `Holding.costBasisMicro`: average cost over the fills,
   `lib/cost-basis.ts`), `Payout` (shares, 1 each if it wins) and `Current
   value`, the exit quote against the basis as % or `REP` (toggled in the

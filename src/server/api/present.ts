@@ -158,6 +158,7 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       marketId: h.marketId,
       marketSlug: h.marketSlug,
       listingSlug: h.listingSlug,
+      listingTitle: h.listingTitle,
       question: h.question,
       marketStatus: h.marketStatus,
       outcomeId: h.outcomeId,

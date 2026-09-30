@@ -107,67 +107,69 @@ export function Affiliations({ initial, n }: { initial: AffiliationRow[]; n: num
 
   return (
     <div className="font-sans text-sm">
-      <table className={ui.table}>
-        <caption className={ui.tableCaption}>
-          <b>Table {n}.</b> Your institutional addresses. Each confirmed one adds its institution to your name.
-        </caption>
-        <thead>
-          <tr>
-            <th className={ui.th()}>Address</th>
-            <th className={`${ui.th()} narrow:hidden`}>Institution</th>
-            <th className={ui.th()}>Status</th>
-            <th className={ui.th()} />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="align-baseline">
-              <td className={`${ui.td} ${ui.mono} break-all`}>{r.email}</td>
-              <td className={`${ui.td} narrow:hidden`}>{r.institutionName}</td>
-              <td className={ui.td}>
-                {r.verifiedAt ? (
-                  <span className="text-muted">
-                    {r.primary ? 'signed up with' : `confirmed ${day(r.verifiedAt)}`}
-                  </span>
-                ) : (
-                  <form
-                    className="flex items-baseline gap-1.5"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void confirm(r);
-                    }}
-                  >
-                    <input
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      pattern="\s*\d{6}\s*"
-                      maxLength={8}
-                      placeholder="6-digit code"
-                      aria-label={`Code sent to ${r.email}`}
-                      value={codes[r.id] ?? ''}
-                      onChange={(e) => setCodes({ ...codes, [r.id]: e.target.value })}
-                      className="w-[7.5em] border border-rule bg-white px-1.5 py-0.5 font-mono text-[13px]"
-                    />
-                    <button type="submit" className={ui.linkBtn} disabled={busy !== null}>
-                      confirm
-                    </button>
-                    <button type="button" className={ui.linkBtn} disabled={busy !== null} onClick={() => void add(r.email)}>
-                      resend
-                    </button>
-                  </form>
-                )}
-              </td>
-              <td className={`${ui.td} text-right`}>
-                {!r.primary && (
-                  <button type="button" className={ui.linkBtn} disabled={busy !== null} onClick={() => void remove(r)}>
-                    remove
-                  </button>
-                )}
-              </td>
+      <div className={ui.tableScroll}>
+        <table className={ui.table}>
+          <caption className={ui.tableCaption}>
+            <b>Table {n}.</b> Your institutional addresses. Each confirmed one adds its institution to your name.
+          </caption>
+          <thead>
+            <tr>
+              <th className={ui.th()}>Address</th>
+              <th className={`${ui.th()}`}>Institution</th>
+              <th className={ui.th()}>Status</th>
+              <th className={ui.th()} />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="align-baseline">
+                <td className={`${ui.td} ${ui.mono} break-all`}>{r.email}</td>
+                <td className={`${ui.td}`}>{r.institutionName}</td>
+                <td className={ui.td}>
+                  {r.verifiedAt ? (
+                    <span className="text-muted">
+                      {r.primary ? 'signed up with' : `confirmed ${day(r.verifiedAt)}`}
+                    </span>
+                  ) : (
+                    <form
+                      className="flex items-baseline gap-1.5"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void confirm(r);
+                      }}
+                    >
+                      <input
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="\s*\d{6}\s*"
+                        maxLength={8}
+                        placeholder="6-digit code"
+                        aria-label={`Code sent to ${r.email}`}
+                        value={codes[r.id] ?? ''}
+                        onChange={(e) => setCodes({ ...codes, [r.id]: e.target.value })}
+                        className="w-[7.5em] border border-rule bg-white px-1.5 py-0.5 font-mono text-[13px] narrow:text-base"
+                      />
+                      <button type="submit" className={ui.linkBtn} disabled={busy !== null}>
+                        confirm
+                      </button>
+                      <button type="button" className={ui.linkBtn} disabled={busy !== null} onClick={() => void add(r.email)}>
+                        resend
+                      </button>
+                    </form>
+                  )}
+                </td>
+                <td className={`${ui.td} text-right`}>
+                  {!r.primary && (
+                    <button type="button" className={ui.linkBtn} disabled={busy !== null} onClick={() => void remove(r)}>
+                      remove
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <form
         className="mt-3 flex gap-2"
@@ -184,7 +186,7 @@ export function Affiliations({ initial, n }: { initial: AffiliationRow[]; n: num
           onChange={(e) => setEmail(e.target.value)}
           placeholder="another institutional address"
           aria-label="Add an institutional address"
-          className="min-w-0 flex-1 border border-rule bg-white p-1.5 font-sans text-sm leading-[normal]"
+          className="min-w-0 flex-1 border border-rule bg-white p-1.5 font-sans text-sm leading-[normal] narrow:text-base"
         />
         <button type="submit" className={ui.btn({ ghost: true, inline: true, flush: true })} disabled={busy !== null}>
           add

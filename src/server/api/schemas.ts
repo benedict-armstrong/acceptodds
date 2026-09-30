@@ -454,6 +454,7 @@ export const Holding = z
     marketId: Id,
     marketSlug: z.string(),
     listingSlug: z.string().nullable().meta({ description: 'The slug of the market’s listing, if it has one.' }),
+    listingTitle: z.string().nullable().meta({ description: 'The title of the market’s listing, if it has one.' }),
     question: z.string(),
     marketStatus: MarketStatus,
     outcomeId: Id,

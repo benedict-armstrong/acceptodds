@@ -8,7 +8,7 @@ import { authClient } from '@/lib/auth-client';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
 import { authHref } from '@/lib/return-to';
 
-const field = 'w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink';
+const field = 'w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base';
 
 /**
  * The code from the confirmation mail, typed where the person already is.

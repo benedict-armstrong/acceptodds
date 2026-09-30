@@ -43,11 +43,11 @@ export function SignInForm({ next }: { next: string }) {
     >
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Email
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
       </label>
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Password
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink" />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
       </label>
       <button className={ui.btn()} disabled={busy}>
         Sign in

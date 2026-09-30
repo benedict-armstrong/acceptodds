@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ui } from '@/components/ui';
 import { stepIndexAt } from '@/lib/chart';
 import { clock, dayMonth, pct } from '@/lib/format';
@@ -23,18 +23,21 @@ function colorOf(i: number, n: number): string {
  * A binary market draws only its first outcome (the other is the complement).
  * SVG, server-rendered; on the client, hovering shows a line with the time
  * and every price then, and hovering a legend entry fades the other lines.
+ * Drawn at the width it is given, measured, never scaled to fit: scaled down
+ * to a phone, its labels would shrink to a few pixels.
  */
-export function PriceChart({
-  points,
-  labels,
-  width = 820,
-  height = 220,
-}: {
-  points: ChartPoint[];
-  labels: string[];
-  width?: number;
-  height?: number;
-}) {
+export function PriceChart({ points, labels }: { points: ChartPoint[]; labels: string[] }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(820);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(240, e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Less tall on a phone, but not in proportion: a plot must stay readable.
+  const height = width < 500 ? 180 : 220;
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const times = useMemo(() => points.map((p) => new Date(p.at).getTime()), [points]);
@@ -75,7 +78,7 @@ export function PriceChart({
 
   return (
     <div>
-      <div className="relative">
+      <div ref={box} className="relative">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           width="100%"

@@ -122,6 +122,8 @@ export interface Holding {
   marketSlug: string;
   /** The market's listing ("paper"), if it has one: the UI links there. */
   listingSlug: string | null;
+  /** That listing's title: what the UI names the row by. */
+  listingTitle: string | null;
   question: string;
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
@@ -203,6 +205,7 @@ export async function getPortfolio(
       outcome: outcomes,
       market: markets,
       listingSlug: listings.slug,
+      listingTitle: listings.title,
     })
     .from(positions)
     .innerJoin(outcomes, eq(positions.outcomeId, outcomes.id))
@@ -247,6 +250,7 @@ export async function getPortfolio(
       marketId: row.market.id,
       marketSlug: row.market.slug,
       listingSlug: row.listingSlug,
+      listingTitle: row.listingTitle,
       question: row.market.question,
       marketStatus: row.market.status,
       outcomeId: row.outcome.id,
@@ -289,6 +293,7 @@ export async function getPortfolio(
 export interface ClosedPosition {
   marketSlug: string;
   listingSlug: string | null;
+  listingTitle: string | null;
   question: string;
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
@@ -324,6 +329,7 @@ export async function closedPositions(
   const result = await database.execute<{
     market_slug: string;
     listing_slug: string | null;
+    listing_title: string | null;
     question: string;
     status: ClosedPosition['marketStatus'];
     outcome_id: string;
@@ -336,7 +342,7 @@ export async function closedPositions(
     closed_at: Date;
     total: number;
   }>(sql`
-    select m.slug as market_slug, l.slug as listing_slug, m.question, m.status,
+    select m.slug as market_slug, l.slug as listing_slug, l.title as listing_title, m.question, m.status,
            oc.id as outcome_id, oc.label, m.resolved_outcome_id,
            coalesce(sum(o.shares_micro) filter (where o.shares_micro > 0), 0)::text as bought,
            coalesce(sum(o.cost_micro) filter (where o.shares_micro > 0), 0)::text as paid,
@@ -352,7 +358,7 @@ export async function closedPositions(
       left join positions p on p.account_id = o.account_id and p.outcome_id = o.outcome_id
      where o.account_id = ${accountId}::uuid
        and coalesce(p.shares_micro, 0) = 0
-     group by m.id, l.slug, oc.id
+     group by m.id, l.slug, l.title, oc.id
      order by closed_at desc, oc.id
      limit ${limit} offset ${offset}
   `);
@@ -366,6 +372,7 @@ export async function closedPositions(
     return {
       marketSlug: r.market_slug,
       listingSlug: r.listing_slug,
+      listingTitle: r.listing_title,
       question: r.question,
       marketStatus: r.status,
       outcomeId: r.outcome_id,

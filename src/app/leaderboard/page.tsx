@@ -130,7 +130,7 @@ export default async function LeaderboardPage({
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search traders"
           placeholder="Find a trader by name or handle"
-          className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint focus:border-frame focus:outline-none"
+          className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
         />
         <button type="submit" className="cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink">
           Search
@@ -208,43 +208,45 @@ export default async function LeaderboardPage({
                 : 'No traders yet.'}
         </div>
       ) : (
-        <table className={ui.table}>
-          {/* A paper's table caption sits above the table, its figure captions below. */}
-          <caption className={ui.tableCaption}>
-            <b>Table 1.</b> Traders{where}
-            {basis === 'net_worth' ? ' by net worth, if each sold everything now' : ' by profit on settled markets'}
-            {q ? `, matching “${q}”` : ''}. The best figure in each column is in bold.
-          </caption>
-          <thead>
-            <tr>
-              <th className={ui.th()}>#</th>
-              <th className={ui.th()}>Trader</th>
-              <th className={`${ui.th()} narrow:hidden`}>Institutions</th>
-              <th className={ui.th(true)}>
-                Net worth<sup className={ui.mark}>a</sup>
-              </th>
-              <th className={ui.th(true)}>
-                Unrealized<sup className={ui.mark}>b</sup>
-              </th>
-              <th className={ui.th(true)}>
-                Settled<sup className={ui.mark}>c</sup>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {segments.map((segment, i) => (
-              <Segment
-                key={segment[0]?.accountId ?? i}
-                rows={segment}
-                gapBefore={i > 0}
-                me={me}
-                best={best}
-                focus={focus >= 0 ? field[focus].accountId : null}
-                institutionHref={(name) => href({ institution: name, around: null, page: null })}
-              />
-            ))}
-          </tbody>
-        </table>
+        <div className={ui.tableScroll}>
+          <table className={ui.table}>
+            {/* A paper's table caption sits above the table, its figure captions below. */}
+            <caption className={ui.tableCaption}>
+              <b>Table 1.</b> Traders{where}
+              {basis === 'net_worth' ? ' by net worth, if each sold everything now' : ' by profit on settled markets'}
+              {q ? `, matching “${q}”` : ''}. The best figure in each column is in bold.
+            </caption>
+            <thead>
+              <tr>
+                <th className={ui.th()}>#</th>
+                <th className={ui.th()}>Trader</th>
+                <th className={`${ui.th()}`}>Institutions</th>
+                <th className={ui.th(true)}>
+                  Net worth<sup className={ui.mark}>a</sup>
+                </th>
+                <th className={ui.th(true)}>
+                  Unrealized<sup className={ui.mark}>b</sup>
+                </th>
+                <th className={ui.th(true)}>
+                  Settled<sup className={ui.mark}>c</sup>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {segments.map((segment, i) => (
+                <Segment
+                  key={segment[0]?.accountId ?? i}
+                  rows={segment}
+                  gapBefore={i > 0}
+                  me={me}
+                  best={best}
+                  focus={focus >= 0 ? field[focus].accountId : null}
+                  institutionHref={(name) => href({ institution: name, around: null, page: null })}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {onScreen > 0 && (
         <TableNotes
@@ -328,7 +330,7 @@ function Segment({
               {r.isBot && <span className={ui.badge}>bot</span>}
               {r.accountId === me && <span className="ml-1 font-sans text-xs text-muted">(you)</span>}
             </td>
-            <td className={`${ui.td} text-muted narrow:hidden`}>
+            <td className={`${ui.td} text-muted`}>
               {r.institutions.map((name, i) => (
                 <span key={name}>
                   {i > 0 && '; '}

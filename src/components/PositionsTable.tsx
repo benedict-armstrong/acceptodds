@@ -1,15 +1,14 @@
 'use client';
 
-import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import type { z } from 'zod';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
+import { PaperName } from '@/components/PaperName';
 import { useOrder, type OrderResult } from '@/components/orders';
 import { SellModal } from '@/components/SellModal';
 import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { pct, rep, REP } from '@/lib/format';
-import { marketHref } from '@/lib/links';
 import type * as S from '@/server/api/schemas';
 
 type Holding = z.output<typeof S.Holding>;
@@ -65,46 +64,50 @@ export function PositionsTable({
 
   return (
     <>
-      <table className={ui.table}>
-        {caption && <caption className={ui.tableCaption}>{caption}</caption>}
-        <thead>
-          <tr>
-            {showMarket && <th className={ui.th()}>Market</th>}
-            <th className={ui.th()}>Outcome</th>
-            <th className={ui.th(true)}>
-              Bought @<sup className={ui.mark}>a</sup>
-            </th>
-            <th className={ui.th(true)}>
-              Payout<sup className={ui.mark}>b</sup>
-            </th>
-            <th className={ui.th(true)}>
-              <button
-                className="cursor-pointer font-semibold hover:text-accent"
-                title={`Show in ${absolute ? 'percent' : REP}`}
-                onClick={() => setAbsolute((a) => !a)}
-              >
-                Current value ({absolute ? REP : '%'})
-              </button>
-              <sup className={ui.mark}>c</sup>
-            </th>
-            {anySellable && <th className={ui.th()} />}
-          </tr>
-        </thead>
-        <tbody>
-          {holdings.map((h) => (
-            <Row
-              key={h.outcomeId}
-              h={h}
-              showMarket={showMarket}
-              sellable={canSell(h)}
-              sellColumn={anySellable}
-              absolute={absolute}
-              onFilled={onFilled}
-              onResult={setNote}
-            />
-          ))}
-        </tbody>
-      </table>
+      <div className={ui.tableScroll}>
+        <table className={ui.table}>
+          {caption && (
+            <caption className={ui.tableCaption}>{caption}</caption>
+          )}
+          <thead>
+            <tr>
+              {showMarket && <th className={ui.th()}>Paper</th>}
+              <th className={ui.th()}>Outcome</th>
+              <th className={`${ui.th(true)}`}>
+                Bought @<sup className={ui.mark}>a</sup>
+              </th>
+              <th className={ui.th(true)}>
+                Payout<sup className={ui.mark}>b</sup>
+              </th>
+              <th className={ui.th(true)}>
+                <button
+                  className="cursor-pointer font-semibold hover:text-accent"
+                  title={`Show in ${absolute ? 'percent' : REP}`}
+                  onClick={() => setAbsolute((a) => !a)}
+                >
+                  Current value ({absolute ? REP : '%'})
+                </button>
+                <sup className={ui.mark}>c</sup>
+              </th>
+              {anySellable && <th className={ui.th()} />}
+            </tr>
+          </thead>
+          <tbody>
+            {holdings.map((h) => (
+              <Row
+                key={h.outcomeId}
+                h={h}
+                showMarket={showMarket}
+                sellable={canSell(h)}
+                sellColumn={anySellable}
+                absolute={absolute}
+                onFilled={onFilled}
+                onResult={setNote}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
       <TableNotes
         notes={[
           ['a', 'The average price you paid per share.'],
@@ -146,8 +149,9 @@ function Row({
     <tr>
       {showMarket && (
         <td className={ui.td}>
-          <Link href={marketHref(h)}>{h.question}</Link>
-          {h.marketStatus !== 'open' && <span className={ui.badge}>{h.marketStatus}</span>}
+          <PaperName m={h}>
+            {h.marketStatus !== 'open' && <span className={`${ui.badge} shrink-0`}>{h.marketStatus}</span>}
+          </PaperName>
         </td>
       )}
       <td className={`${ui.td} whitespace-nowrap`}>

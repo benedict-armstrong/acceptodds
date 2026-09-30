@@ -28,7 +28,7 @@ export function ConfirmBanner({ signedIn }: { signedIn: boolean }) {
 
   if (!pending || AUTH_PAGES.includes(pathname)) return null;
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 border-b border-rule bg-highlight px-6 py-2 font-sans text-[13px]">
+    <div className="flex flex-wrap items-baseline gap-x-3 border-b border-rule bg-highlight px-6 py-2 narrow:px-4 font-sans text-[13px]">
       <span>
         Confirm <b>{pending.email}</b> to start trading: enter the code we emailed you.
       </span>
