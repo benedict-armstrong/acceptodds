@@ -6,6 +6,8 @@ import { REP } from '@/lib/format';
 
 const HEIGHT = 190;
 const PAD = { top: 30, right: 12, bottom: 26, left: 12 };
+/** Headroom for a second row of labels, when the viewer and another trader are both marked. */
+const LABEL_ROW = 15;
 
 /** Whole units with grouping: axis ticks and the tooltip, not the ledger's figures. */
 function units(x: number): string {
@@ -18,9 +20,11 @@ function units(x: number): string {
  * from the shared snapshot (`server/field-snapshot.ts`, computed once for
  * everyone), a rug of one tick per trader so a small field's curve can't
  * pretend to more than it has, and — for a signed-in viewer — the part below
- * them shaded (its share is the percentile) and a maroon line at them. Hover
+ * them shaded (its share is the percentile) and a maroon line at them. A
+ * second trader (the leaderboard's `?around=`) gets a dashed ink line, no
+ * shading, labelled a row above the viewer's so the two never collide. Hover
  * (or arrow keys) reads any point off: how many traders have less. One
- * series, so no legend; the page renders the numbers as a table beside it.
+ * series, so no legend.
  */
 export function StandingChart({
   curve,
@@ -28,6 +32,7 @@ export function StandingChart({
   values,
   you,
   label,
+  other = null,
 }: {
   /** The density at evenly spaced points across `domain`, peaking at 1. */
   curve: number[];
@@ -39,6 +44,8 @@ export function StandingChart({
   you: number | null;
   /** Beside the viewer's line, e.g. "you · ahead of 96%". */
   label: string | null;
+  /** Another trader to mark, in the same units, e.g. the one the leaderboard is focused on. */
+  other?: { value: number; label: string } | null;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
@@ -57,12 +64,16 @@ export function StandingChart({
     return { xs: curve.map((_, i) => domain[0] + ((domain[1] - domain[0]) * i) / n), ys: curve, domain };
   }, [curve, domain]);
   // A viewer whose live figure has left the snapshot's range is drawn at its edge.
-  const at = you === null ? null : Math.min(domain[1], Math.max(domain[0], you));
+  const clamp = (x: number) => Math.min(domain[1], Math.max(domain[0], x));
+  const at = you === null ? null : clamp(you);
+  const otherAt = other ? clamp(other.value) : null;
+  const top = PAD.top + (at !== null && otherAt !== null ? LABEL_ROW : 0);
+  const height = HEIGHT + top - PAD.top;
   const plotW = width - PAD.left - PAD.right;
-  const plotH = HEIGHT - PAD.top - PAD.bottom;
+  const plotH = height - top - PAD.bottom;
   const sx = (x: number) => PAD.left + ((x - d.domain[0]) / (d.domain[1] - d.domain[0])) * plotW;
-  const sy = (y: number) => PAD.top + plotH - y * plotH;
-  const base = PAD.top + plotH;
+  const sy = (y: number) => top + plotH - y * plotH;
+  const base = top + plotH;
   const invert = (px: number) => d.domain[0] + ((px - PAD.left) / plotW) * (d.domain[1] - d.domain[0]);
 
   const line = d.xs.map((x, i) => `${i ? 'L' : 'M'}${sx(x).toFixed(1)},${sy(d.ys[i]).toFixed(1)}`).join('');
@@ -70,8 +81,10 @@ export function StandingChart({
   const youX = at === null ? null : sx(at);
   const youY = at === null ? null : sy(yAt(d, at));
   const ticks = niceTicks(d.domain[0], d.domain[1], Math.max(2, Math.floor(plotW / 140)));
-  // Keep the label inside the chart when the viewer is near an edge.
-  const anchor = youX === null ? 'middle' : youX < width * 0.2 ? 'start' : youX > width * 0.8 ? 'end' : 'middle';
+  const otherX = otherAt === null ? null : sx(otherAt);
+  const otherY = otherAt === null ? null : sy(yAt(d, otherAt));
+  // Keep a label inside the chart when its line is near an edge.
+  const anchorAt = (x: number) => (x < width * 0.2 ? 'start' : x > width * 0.8 ? 'end' : 'middle');
 
   const hoverX = hover === null ? null : sx(hover);
   const hoverBelow = hover === null ? 0 : countBelow(values, hover);
@@ -80,9 +93,9 @@ export function StandingChart({
     <div ref={box} className="relative mt-2 select-none">
       <svg
         width={width}
-        height={HEIGHT}
+        height={height}
         role="img"
-        aria-label={`Net worth of ${values.length} traders${label ? `; ${label}` : ''}`}
+        aria-label={`Net worth of ${values.length} traders${label ? `; ${label}` : ''}${other ? `; ${other.label}` : ''}`}
         tabIndex={0}
         className="block overflow-visible focus:outline-none"
         onPointerMove={(e) => {
@@ -96,7 +109,7 @@ export function StandingChart({
           if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
           e.preventDefault();
           const step = (d.domain[1] - d.domain[0]) / 40;
-          const from = hover ?? at ?? (d.domain[0] + d.domain[1]) / 2;
+          const from = hover ?? at ?? otherAt ?? (d.domain[0] + d.domain[1]) / 2;
           setHover(Math.min(d.domain[1], Math.max(d.domain[0], from + (e.key === 'ArrowLeft' ? -step : step))));
         }}
       >
@@ -104,7 +117,7 @@ export function StandingChart({
         {youX !== null && (
           <>
             <clipPath id="standing-below">
-              <rect x={0} y={0} width={Math.max(0, youX)} height={HEIGHT} />
+              <rect x={0} y={0} width={Math.max(0, youX)} height={height} />
             </clipPath>
             <path d={area} clipPath="url(#standing-below)" className="fill-accent opacity-15" />
           </>
@@ -120,20 +133,45 @@ export function StandingChart({
             {units(t)}
           </text>
         ))}
+        {otherX !== null && otherY !== null && other && (
+          <>
+            {/* Another trader: above the viewer's label row, when there is one. */}
+            <line
+              x1={otherX}
+              x2={otherX}
+              y1={base}
+              y2={PAD.top - 6}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              className="stroke-ink"
+            />
+            <circle cx={otherX} cy={otherY} r={3.5} strokeWidth={2} className="fill-ink stroke-card" />
+            <text x={otherX} y={PAD.top - 12} textAnchor={anchorAt(otherX)} className="fill-ink font-sans text-xs">
+              {other.label}
+            </text>
+          </>
+        )}
         {youX !== null && youY !== null && (
           <>
             {/* The viewer. */}
-            <line x1={youX} x2={youX} y1={base} y2={Math.min(youY, PAD.top - 6)} strokeWidth={2} className="stroke-accent" />
+            <line x1={youX} x2={youX} y1={base} y2={Math.min(youY, top - 6)} strokeWidth={2} className="stroke-accent" />
             <circle cx={youX} cy={youY} r={4} strokeWidth={2} className="fill-accent stroke-card" />
             {label && (
-              <text x={youX} y={PAD.top - 12} textAnchor={anchor} className="fill-ink font-sans text-xs font-semibold">
+              <text
+                x={youX}
+                y={top - 12}
+                textAnchor={anchorAt(youX)}
+                strokeWidth={4}
+                paintOrder="stroke"
+                className="fill-ink stroke-card font-sans text-xs font-semibold"
+              >
                 {label}
               </text>
             )}
           </>
         )}
         {hoverX !== null && (
-          <line x1={hoverX} x2={hoverX} y1={PAD.top} y2={base} strokeWidth={1} className="stroke-rule-strong" pointerEvents="none" />
+          <line x1={hoverX} x2={hoverX} y1={top} y2={base} strokeWidth={1} className="stroke-rule-strong" pointerEvents="none" />
         )}
       </svg>
       {hover !== null && hoverX !== null && (

@@ -65,6 +65,11 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       ) : (
         <PositionsTable
           holdings={presentPortfolio(p).holdings}
+          caption={
+            <>
+              <b>Table 1.</b> Your open positions, one row per outcome held.
+            </>
+          }
           showMarket
           sellable={sellable}
         />
@@ -81,6 +86,9 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       ) : (
         <>
           <table className={ui.table}>
+            <caption className={ui.tableCaption}>
+              <b>{p.holdings.length === 0 ? 'Table 1.' : 'Table 2.'}</b> Outcomes you traded and no longer hold, newest first.
+            </caption>
             <thead>
               <tr>
                 <th className={ui.th()}>Market</th>

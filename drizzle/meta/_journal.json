@@ -64,6 +64,20 @@
       "when": 1790696682201,
       "tag": "0008_field_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790771354823,
+      "tag": "0009_affiliations",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790771365630,
+      "tag": "0010_drop_institution_name",
+      "breakpoints": true
     }
   ]
 }

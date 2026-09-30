@@ -161,6 +161,11 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
           <h3 className={`${ui.section} mb-2`}>Your positions</h3>
           <PositionsTable
             holdings={holdings}
+            caption={
+              <>
+                <b>Table 1.</b> Your open positions in this market.
+              </>
+            }
             sellable={tradable && initial.viewer.canTrade ? [market.id] : []}
             onFilled={onFilled}
           />

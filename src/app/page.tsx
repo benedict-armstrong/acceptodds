@@ -215,14 +215,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           {people.map((p) => (
             <Link
               key={p.accountId}
-              href={`/leaderboard?around=${encodeURIComponent(p.handle)}#focus`}
+              href={`/people/${encodeURIComponent(p.handle)}`}
               className="flex items-baseline gap-2 border-b border-dotted border-rule-strong py-1.5 hover:bg-highlight hover:no-underline"
             >
               <span>{p.displayName}</span>
               <span className="font-mono text-xs text-muted">@{p.handle}</span>
               {p.isBot && <span className={ui.badge}>bot</span>}
               <span className="flex-1" />
-              <span className="font-sans text-xs text-muted">{p.institutionName ?? ''}</span>
+              <span className="font-sans text-xs text-muted">{p.institutions.join('; ')}</span>
             </Link>
           ))}
         </section>

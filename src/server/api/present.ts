@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { Account } from '@/db/schema';
+import type { Account, Affiliation } from '@/db/schema';
 import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
@@ -134,7 +134,7 @@ export function presentMe(p: Principal): z.input<typeof S.Me> {
     handle: a.handle,
     displayName: a.displayName,
     isBot: a.isBot,
-    institutionName: a.institutionName,
+    institutions: [...a.institutions],
     verifiedAt: toIsoOrNull(a.verifiedAt),
     canTrade: a.isBot || a.verifiedAt !== null,
     balanceMicro: a.balanceMicro.toString(),
@@ -182,6 +182,18 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       unrealizedPnlMicro: p.summary.unrealizedPnlMicro.toString(),
       realizedPnlMicro: p.summary.realizedPnlMicro.toString(),
     },
+  };
+}
+
+export function presentAffiliation(f: Affiliation): z.input<typeof S.Affiliation> {
+  return {
+    id: f.id,
+    email: f.email,
+    institutionName: f.institutionName,
+    primary: f.isPrimary,
+    verifiedAt: toIsoOrNull(f.verifiedAt),
+    codeExpiresAt: f.verifiedAt ? null : toIsoOrNull(f.codeExpiresAt),
+    createdAt: toIso(f.createdAt),
   };
 }
 

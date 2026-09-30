@@ -67,7 +67,7 @@ describe('sign-up with email and password', () => {
       handle: 'ada-lovelace',
       displayName: 'Ada Lovelace',
       isBot: false,
-      institutionName: 'Example University',
+      institutions: ['Example University'],
       verifiedAt: expect.any(String),
       canTrade: true,
       balanceMicro: STARTING_MICRO.toString(),
@@ -360,9 +360,9 @@ describe('the institution allowlist', () => {
   it('admits subdomains of a listed domain, and records the institution', async () => {
     const cookie = await signUp('grace@inf.ethz.ch', 'Grace');
     const me = await api('GET', '/me', { cookie });
-    expect(me.body).toMatchObject({ institutionName: 'ETH Zurich', canTrade: true });
+    expect(me.body).toMatchObject({ institutions: ['ETH Zurich'], canTrade: true });
     const profile = await api('GET', `/accounts/${me.body.handle}`);
-    expect(profile.body).toMatchObject({ institutionName: 'ETH Zurich', verifiedAt: expect.any(String) });
+    expect(profile.body).toMatchObject({ institutions: ['ETH Zurich'], verifiedAt: expect.any(String) });
   });
 
   it('a domain dropped from the list before confirmation gets a funded account that cannot trade', async () => {
@@ -377,7 +377,7 @@ describe('the institution allowlist', () => {
     const cookie = cookieFrom(verified);
 
     const me = await api('GET', '/me', { cookie });
-    expect(me.body).toMatchObject({ canTrade: false, verifiedAt: null, institutionName: null });
+    expect(me.body).toMatchObject({ canTrade: false, verifiedAt: null, institutions: [] });
     const res = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('not_verified');

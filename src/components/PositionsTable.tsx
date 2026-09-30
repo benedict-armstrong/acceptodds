@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { z } from 'zod';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { useOrder, type OrderResult } from '@/components/orders';
@@ -46,11 +46,14 @@ function formatChange(h: Holding, absolute: boolean): string {
  */
 export function PositionsTable({
   holdings,
+  caption,
   showMarket = false,
   sellable,
   onFilled = () => {},
 }: {
   holdings: Holding[];
+  /** The table's paper-style caption, "<b>Table N.</b> …": the number depends on the page. */
+  caption?: ReactNode;
   showMarket?: boolean;
   /** Ids of the markets whose holdings may be sold now: trading, and the viewer may trade. Plain data, so a Server Component can pass it. */
   sellable: string[];
@@ -65,6 +68,7 @@ export function PositionsTable({
   return (
     <>
       <table className={ui.table}>
+        {caption && <caption className={ui.tableCaption}>{caption}</caption>}
         <thead>
           <tr>
             {showMarket && <th className={ui.th()}>Market</th>}
@@ -77,7 +81,7 @@ export function PositionsTable({
             </th>
             <th className={ui.th(true)}>
               <button
-                className="cursor-pointer uppercase hover:text-ink"
+                className="cursor-pointer font-semibold hover:text-accent"
                 title={`What selling it all now would pay, against what it cost. Click for ${absolute ? 'percent' : REP}.`}
                 onClick={() => setAbsolute((a) => !a)}
               >

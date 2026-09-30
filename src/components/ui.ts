@@ -33,7 +33,10 @@ export const ui = {
   groupHeading: `mt-7 mb-1.5 ${section}`,
   sectionHeading: `mb-2 ${subsection}`,
   empty: 'py-7.5 italic text-muted',
+  /** A figure's caption, under it: "<b>Figure N.</b> …", numbered by hand in page order. */
   caption: 'mt-1 text-[13px] text-subtle',
+  /** A table's `<caption>`, above it as in a paper: "<b>Table N.</b> …". */
+  tableCaption: 'mb-1 text-left font-serif text-[13px] text-subtle',
   fine: 'mt-1.5 text-xs text-faint',
   mono: 'font-mono text-[13px]',
   badge: 'ml-1 rounded-[3px] border border-[#bbb] px-1 align-[1px] font-sans text-[11px] text-muted',
@@ -41,13 +44,17 @@ export const ui = {
   input: 'mb-2 w-full border border-rule bg-white p-1.5 font-sans text-sm leading-[normal]',
   /** A label on the left, a value on the right. */
   kv: 'flex justify-between gap-3 tabular-nums [&>span:first-child]:text-muted',
+  /**
+   * Tables are set like a LaTeX paper's with booktabs: a heavy rule above
+   * (\toprule), a light one under the header (\midrule), a heavy one below
+   * (\bottomrule), and nothing vertical or between rows. The caption, a
+   * `<caption>`, sits above the top rule.
+   */
   th: (numeric = false) =>
-    `border-b border-rule py-1.5 pr-2 font-semibold uppercase tracking-[.05em] text-muted ${
-      numeric ? 'text-right font-mono text-[13px]' : 'text-left font-sans text-xs'
-    }`,
-  td: 'border-b border-dotted border-rule-strong py-[7px] pr-2',
+    `border-b border-ink py-1.5 pr-2 font-serif text-sm font-semibold text-ink ${numeric ? 'text-right' : 'text-left'}`,
+  td: 'py-[5px] pr-2',
   num: 'text-right font-mono text-[13px]',
-  table: 'mt-3 w-full border-collapse',
+  table: 'mt-3 w-full border-collapse border-y-[1.5px] border-ink',
   /** The selected link in a row of filter or tab links. */
   on: 'font-semibold text-ink',
   /** A P&L's colour: profit green, loss red, zero plain ink. */

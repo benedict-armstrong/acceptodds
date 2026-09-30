@@ -338,6 +338,11 @@ export const Fill = z
 // accounts and leaderboard
 // ---------------------------------------------------------------------------
 
+const Institutions = z.array(z.string()).meta({
+  description:
+    'Every institution the trader has a confirmed email address at, the one they signed up with first. Empty for a bot or an unverified account.',
+});
+
 export const SettledRecord = z
   .object({
     settledPnlMicro: Micro.meta({
@@ -353,7 +358,7 @@ export const LeaderboardEntry = z
     handle: z.string(),
     displayName: z.string(),
     isBot: z.boolean(),
-    institutionName: z.string().nullable(),
+    institutions: Institutions,
     settledPnlMicro: Micro.meta({
       description: 'Realized: net reputation from trading and settlement, over settled markets only.',
     }),
@@ -380,7 +385,8 @@ export const LeaderboardBasis = z.enum(['settled_pnl', 'net_worth']).meta({ desc
 export const LeaderboardQuery = PaginationQuery.extend({
   basis: LeaderboardBasis.default('settled_pnl'),
   institution: z.string().max(200).optional().meta({
-    description: 'Only traders at this institution (exactly its `institutionName`), ranked among themselves.',
+    description:
+      'Only traders with a confirmed affiliation at this institution (exactly one of their `institutions`), ranked among themselves.',
     example: 'ETH Zurich',
   }),
   q: z
@@ -410,7 +416,7 @@ export const PublicAccount = z
     handle: z.string(),
     displayName: z.string(),
     isBot: z.boolean(),
-    institutionName: z.string().nullable(),
+    institutions: Institutions,
     rorId: z.string().nullable(),
     verifiedAt: Timestamp.nullable(),
     createdAt: Timestamp,
@@ -424,8 +430,10 @@ export const Me = z
     handle: z.string(),
     displayName: z.string(),
     isBot: z.boolean(),
-    institutionName: z.string().nullable().meta({ description: 'From the allowlist entry for your email domain.' }),
-    verifiedAt: Timestamp.nullable().meta({ description: 'When your institutional email address was confirmed.' }),
+    institutions: Institutions,
+    verifiedAt: Timestamp.nullable().meta({
+      description: 'When the first of your current institutional email addresses was confirmed; null when none is.',
+    }),
     canTrade: z.boolean().meta({
       description: 'True for a verified account or a bot. Unverified accounts may browse and quote but not place orders.',
     }),
@@ -556,6 +564,40 @@ export const TokenInfo = z
   .meta({ id: 'TokenInfo' });
 
 export const TokenList = z.object({ tokens: z.array(TokenInfo) }).meta({ id: 'TokenList' });
+
+export const AffiliationId = Id.meta({ description: 'An affiliation id.' });
+
+export const Affiliation = z
+  .object({
+    id: AffiliationId,
+    email: z.string(),
+    institutionName: z.string().meta({ description: 'The allowlist’s name for the address’s domain.' }),
+    primary: z.boolean().meta({ description: 'The address you signed up with. It cannot be removed.' }),
+    verifiedAt: Timestamp.nullable().meta({ description: 'When the address was confirmed; null while a code is outstanding.' }),
+    codeExpiresAt: Timestamp.nullable().meta({ description: 'When the outstanding code stops working, if there is one.' }),
+    createdAt: Timestamp,
+  })
+  .meta({ id: 'Affiliation' });
+
+export const AffiliationList = z.object({ affiliations: z.array(Affiliation) }).meta({ id: 'AffiliationList' });
+
+export const AddAffiliationRequest = z
+  .object({
+    email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
+  })
+  .strict()
+  .meta({ id: 'AddAffiliationRequest' });
+
+export const VerifyAffiliationRequest = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/)
+      .meta({ description: 'The 6-digit code mailed to the address.', example: '042317' }),
+  })
+  .strict()
+  .meta({ id: 'VerifyAffiliationRequest' });
 
 // ---------------------------------------------------------------------------
 // admin
