@@ -8,15 +8,19 @@
 # One-time: scripts/init-env-production.sh https://acceptodds.com
 #
 # Deploy:
-#   docker compose -f docker-compose.prod.yml --env-file .env.production build
+#   docker compose -f docker-compose.prod.yml --env-file .env.production --profile tools build
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d postgres
 #   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm tools
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d app
 #
 # Migrations are their own step, never run at app start (src/db/migrate.ts).
+# `build` needs --profile tools: without it the tools image goes stale and
+# migrate silently applies nothing new.
 # `tools` runs them by default; other scripts:
 #   ... run --rm tools npm run token:mint -- --handle research-bot --scopes admin --name ops
 #   ... run --rm tools npm run digest:send
+#   ... run --rm -e SEED_ADMIN_PASSWORD=... tools npm run db:seed -- --allow-remote
+#       (WIPES EVERY TABLE, users included, then seeds demo papers, bots and the admin)
 
 name: acceptodds
 
@@ -40,7 +44,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 20
 

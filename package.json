@@ -13,7 +13,6 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:seed:demo": "tsx src/db/seed.ts --papers-only",
     "token:mint": "tsx scripts/mint-token.ts",
     "api:smoke": "tsx scripts/api-smoke.ts",
     "digest:send": "tsx scripts/send-digest.ts",

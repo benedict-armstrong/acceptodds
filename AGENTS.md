@@ -624,8 +624,11 @@ unpaginated, and 5 s for that search.
     `MarketLive`, so it adds no polling.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
-- **`npm run db:seed`** gives a dev venue of invented papers with four-outcome
-  markets traded by seed bots, and three settled ones. It back-dates their
+- **`npm run db:seed`** wipes every table, then gives a venue of invented
+  papers with four-outcome markets, three settled ones, and the admin. A field
+  of seed bots, each funded exactly as a signup is, trades them as a crowd, so
+  net worths stay around the starting balance. Only a local database without
+  `--allow-remote`; a remote one also needs `SEED_ADMIN_PASSWORD`. It back-dates their
   fills so charts have a history — the only place anything but the engine
   touches `orders`, and only timestamps. Never outside a seed.
 

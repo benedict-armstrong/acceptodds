@@ -23,7 +23,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U papermarket -d papermarket"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 20
     # The default log driver is uncapped and this disk also holds the database.
