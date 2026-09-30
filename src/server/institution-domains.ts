@@ -18,6 +18,10 @@ import { readFileSync } from 'node:fs';
  * matching never goes below two labels, so a bare TLD on the list admits
  * nobody. List exact institutional domains: `ac.uk` would admit every UK
  * university. The file is read once per process; restart after changing it.
+ *
+ * The file is generated (`npm run institutions:build`) from swot, ROR and
+ * Hipo's list plus `config/institution-domains.curated.json`; see
+ * `scripts/build-institution-domains.ts`. Edit the curated file, not it.
  */
 
 export interface Institution {
@@ -63,7 +67,7 @@ export function institutionForEmail(email: string): Institution | null {
   return null;
 }
 
-/** Institution names on the allowlist, for telling people who may sign up. */
-export function allowedInstitutions(): string[] {
-  return [...new Set(domains().values())].sort();
+/** How many institutions are on the allowlist, for telling people who may sign up. */
+export function allowedInstitutionCount(): number {
+  return new Set(domains().values()).size;
 }

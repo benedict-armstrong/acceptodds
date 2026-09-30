@@ -175,8 +175,23 @@ recorded as `/confirm`.
 ```
 
 Each listed domain also admits its subdomains (`inf.ethz.ch`). The name is
-what appears as the trader's institution. The checked-in list is a
-placeholder: MIT (`mit.edu`) and ETH Zurich (`ethz.ch`).
+what appears as the trader's institution. The file is **generated**, about
+55k domains:
+
+```sh
+npm run institutions:build             # downloads sources into .cache/, rewrites the file
+npm run institutions:build -- --offline  # rebuild from what .cache/ already holds
+```
+
+It merges JetBrains' [swot](https://github.com/JetBrains/swot) (reviewed
+academic domains, minus its abused/stop lists), every non-company
+[ROR](https://ror.org) organisation with a curated domain (universities,
+institutes, labs, hospitals, agencies), and
+[Hipo's list](https://github.com/Hipo/university-domains-list) where the domain
+is under `edu`/`ac`. Public suffixes and, outside swot, free-mail domains are
+dropped. Companies that do research, and anything the sources miss, go in
+`config/institution-domains.curated.json` (which wins on a clash and has an
+`exclude` list); edit that and rebuild, never the generated file.
 `INSTITUTION_DOMAINS_PATH` points at a different file. It is read once per process, so restart the app
 after editing it.
 

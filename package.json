@@ -16,6 +16,7 @@
     "token:mint": "tsx scripts/mint-token.ts",
     "api:smoke": "tsx scripts/api-smoke.ts",
     "digest:send": "tsx scripts/send-digest.ts",
+    "institutions:build": "NODE_OPTIONS=--max-old-space-size=4096 tsx scripts/build-institution-domains.ts",
     "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts"
   },
   "dependencies": {

@@ -325,8 +325,12 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   Confirming the address *is* the verification. This replaces §8's
   institutional code + ROR lookup, and ORCID sign-in is deferred too; both
   were built and then removed on the owner's call (git history has them).
-  The checked-in list is MIT (`mit.edu`) and ETH Zurich (`ethz.ch`), a
-  placeholder the owner will replace.
+  The list is generated, permissively on the owner's call (~55k domains):
+  `npm run institutions:build` merges swot, ROR (every type but `company`)
+  and Hipo's `edu`/`ac` domains, dropping public suffixes and free mail, plus
+  `config/institution-domains.curated.json` (research companies, gaps,
+  `exclude`), which wins. Edit the curated file and rebuild; never the
+  generated one. Sign-up shows a count, not the names.
 - **The refusal is a 422 `EMAIL_DOMAIN_NOT_ALLOWED`, not a 403.** Better Auth
   answers a 403 from user creation with a fake success (its guard against
   email enumeration), so the person would wait for a mail that never comes.
