@@ -1188,6 +1188,20 @@ export async function sparklines(
 }
 
 /** How many distinct accounts have traded in a market. A count, never who. */
+/**
+ * Of these markets, the ids of those still trading: status `open` and not yet
+ * past `closes_at`, the engine's own test (`trade()` refuses the rest). For a
+ * sell button that should not be offered on a market that would refuse it.
+ */
+export async function tradingMarketIds(ids: string[], database: Database = getDb()): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await database
+    .select({ id: markets.id })
+    .from(markets)
+    .where(and(inArray(markets.id, ids), eq(markets.status, 'open'), sql`now() < ${markets.closesAt}`));
+  return rows.map((r) => r.id);
+}
+
 export async function traderCount(marketId: string, database: Database = getDb()): Promise<number> {
   const [row] = await database
     .select({ n: sql<number>`count(distinct ${orders.accountId})::int` })

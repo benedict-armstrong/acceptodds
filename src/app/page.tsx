@@ -110,7 +110,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const me = viewer?.account.id ?? null;
   // Papers the viewer follows, then papers they hold shares in, are pinned
   // above the list: same venue, status and sort, each paged on its own, and
-  // none repeated below. Not while searching, nor when the list is already
+  // none repeated. A paper both followed and held is under My positions. Not while searching, nor when the list is already
   // only followed papers.
   const pins = me !== null && !q && !onlyFollowed;
   const browse = { kind, status, sort };
@@ -127,8 +127,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       exceptFollowedBy: pins ? me : null,
       exceptHeldBy: pins ? me : null,
     }),
-    pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me }) : null,
-    pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me, exceptFollowedBy: me }) : null,
+    pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me, exceptHeldBy: me }) : null,
+    pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
   ]);
   const cookieJar = await cookies();

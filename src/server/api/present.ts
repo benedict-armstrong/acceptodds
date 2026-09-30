@@ -162,10 +162,13 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       marketStatus: h.marketStatus,
       outcomeId: h.outcomeId,
       outcomeLabel: h.outcomeLabel,
+      outcomeOrdinal: h.outcomeOrdinal,
+      outcomeCount: h.outcomeCount,
       sharesMicro: h.sharesMicro.toString(),
       price: h.price,
       markMicro: h.markMicro.toString(),
       quotedExitMicro: h.quotedExitMicro.toString(),
+      costBasisMicro: h.costBasisMicro.toString(),
     })),
     unsettledValuation: {
       midMarketNetWorthMicro: p.markedNetWorthMicro.toString(),

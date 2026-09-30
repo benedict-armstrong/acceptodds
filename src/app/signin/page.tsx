@@ -1,3 +1,4 @@
+import { AuthTabs } from '@/components/AuthLinks';
 import { safeReturnTo } from '@/lib/return-to';
 import { SignInForm } from './SignInForm';
 
@@ -7,7 +8,7 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<R
   const next = safeReturnTo((await searchParams).next);
   return (
     <main className="mx-auto my-10 max-w-[360px]">
-      <h1 className="my-4.5 text-[26px] font-normal">Sign in</h1>
+      <AuthTabs current="/signin" next={next} />
       <SignInForm next={next} />
     </main>
   );

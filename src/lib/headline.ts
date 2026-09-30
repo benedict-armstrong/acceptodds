@@ -163,14 +163,41 @@ export const SHARE_TITLE_MAX = 50;
  * are dropped, since a chat app shows them raw.
  */
 export function shareTitleLine(title: string, kind: string | null, max = SHARE_TITLE_MAX): string {
+  const { head, suffix } = shareTitleParts(title, kind, max);
+  return head + suffix;
+}
+
+/** `shareTitleLine` in two parts, the (cut) title and ` @ <kind>?`, for a card that sets them apart. */
+export function shareTitleParts(
+  title: string,
+  kind: string | null,
+  max = SHARE_TITLE_MAX,
+): { head: string; suffix: string } {
   const suffix = kind ? ` @ ${kind}?` : '?';
   const clean = title.replace(/\$/g, '').replace(/\s+/g, ' ').trim();
   const room = Math.max(8, max - suffix.length);
-  if ([...clean].length <= room) return clean + suffix;
+  if ([...clean].length <= room) return { head: clean, suffix };
   const chars = [...clean].slice(0, room - 1).join('');
   const cut = chars.lastIndexOf(' ');
   const head = (cut >= room / 2 ? chars.slice(0, cut) : chars).replace(/[\s,.:;–—-]+$/, '');
-  return `${head}…${suffix}`;
+  return { head: `${head}…`, suffix };
+}
+
+/**
+ * Left edges for labels of the given widths, each centred on its `centers`
+ * entry where it can be, pushed apart by at least `gap` and kept inside
+ * `[0, total]`. Centres are in order, left to right. When the labels cannot
+ * all fit, the right edge wins and the leftmost ones overlap.
+ */
+export function placeLabels(centers: readonly number[], widths: readonly number[], total: number, gap: number): number[] {
+  const left = centers.map((c, i) => c - widths[i] / 2);
+  for (let i = 0; i < left.length; i++) {
+    left[i] = Math.max(left[i], i === 0 ? 0 : left[i - 1] + widths[i - 1] + gap);
+  }
+  for (let i = left.length - 1; i >= 0; i--) {
+    left[i] = Math.min(left[i], i === left.length - 1 ? total - widths[i] : left[i + 1] - gap - widths[i]);
+  }
+  return left;
 }
 
 export interface ShareInput {

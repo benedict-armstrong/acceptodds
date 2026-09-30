@@ -6,6 +6,7 @@ import {
   liquidityFor,
   maxSubsidy,
   prices,
+  sharesForCost,
   SUBSIDY_FRACTION,
 } from '@/lib/lmsr';
 import { costToMicro } from '@/lib/money';
@@ -219,6 +220,39 @@ describe('lmsr property 5 — the venue subsidy is bounded by b * ln(n)', () => 
       }),
       { numRuns: NUM_RUNS },
     );
+  });
+});
+
+describe('sharesForCost — the inverse of a buy', () => {
+  it('buys exactly the budget, and more budget buys more shares', () => {
+    fc.assert(
+      fc.property(
+        marketArb(10).chain((m) =>
+          fc.record({
+            m: fc.constant(m),
+            i: fc.nat({ max: m.shares.length - 1 }),
+            // Spends from a sliver of b to 20 b: a small bet to a pinned price.
+            x: fc.double({ min: 1e-6, max: 20, noNaN: true }),
+          }),
+        ),
+        ({ m: { b, shares }, i, x }) => {
+          const budget = x * b;
+          const delta = sharesForCost(shares, i, budget, b);
+          expect(delta).toBeGreaterThan(0);
+          // costToTrade is a difference of two costs of order b, so its own
+          // error is absolute in b as well as relative in the budget.
+          expect(Math.abs(costToTrade(shares, i, delta, b) - budget)).toBeLessThanOrEqual(budget * 1e-9 + b * 1e-12);
+          expect(sharesForCost(shares, i, budget * 1.5, b)).toBeGreaterThan(delta);
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  it('buys nothing for nothing, and refuses a negative budget', () => {
+    expect(sharesForCost([0, 0], 0, 0, 100)).toBe(0);
+    expect(() => sharesForCost([0, 0], 0, -1, 100)).toThrow(RangeError);
+    expect(() => sharesForCost([0, 0], 2, 1, 100)).toThrow(RangeError);
   });
 });
 

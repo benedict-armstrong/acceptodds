@@ -176,11 +176,11 @@ describe('browseListings pages', () => {
       expect(page.total).toBe(page.rows.length);
       return page.rows.map((r) => r.listing?.slug ?? r.market.slug).sort();
     };
-    expect(await slugs({ followedBy: me })).toEqual(['f', 'fh']);
-    expect(await slugs({ heldBy: me, exceptFollowedBy: me })).toEqual(['h']);
+    expect(await slugs({ followedBy: me, exceptHeldBy: me })).toEqual(['f']);
+    expect(await slugs({ heldBy: me })).toEqual(['fh', 'h']);
     expect(await slugs({ exceptFollowedBy: me, exceptHeldBy: me })).toEqual(['x']);
 
-    const [h] = (await browseListings({ kind: 'venue', sort: 'closing', heldBy: me, exceptFollowedBy: me })).rows;
+    const [h] = (await browseListings({ kind: 'venue', sort: 'closing', heldBy: me })).rows.filter((r) => r.listing?.slug === 'h');
     expect(h.marketCount).toBe(2);
     expect(h.totalOrderCount).toBe(1);
     expect(h.market.slug).toBe('h-main');

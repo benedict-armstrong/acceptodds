@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
-import { OutcomeBar } from '@/components/OutcomeBar';
+import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
+import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
 import { ago, day, pct, rep, REP, shares } from '@/lib/format';
-import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES, paletteSlot, TIER_BG } from '@/lib/headline';
+import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
@@ -112,7 +113,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
           <div className="mt-1.5 flex flex-wrap justify-between gap-x-4 font-sans text-[13px] text-subtle">
             {barOrder(n).map((i) => (
               <span key={i} className="whitespace-nowrap">
-                <span className={`mr-1 inline-block size-2.5 rounded-[2px] align-[-1px] ${TIER_BG[paletteSlot(i, n)]}`} aria-hidden />
+                <OutcomeSwatch ordinal={i} outcomes={n} />
                 {labels[i]} <b className="font-mono text-ink">{pct(market.outcomes[i].price)}</b>
               </span>
             ))}
@@ -145,6 +146,17 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
         )}
       </div>
 
+      {holdings.length > 0 && (
+        <div className="mt-5.5">
+          <h3 className={ui.sectionHeading}>Your positions</h3>
+          <PositionsTable
+            holdings={holdings}
+            sellable={tradable && initial.viewer.canTrade ? [market.id] : []}
+            onFilled={onFilled}
+          />
+        </div>
+      )}
+
       <div className="mt-5.5 grid grid-cols-2 gap-8 narrow:grid-cols-1">
         <div>
           <h3 className={ui.sectionHeading}>Recent trades</h3>
@@ -152,11 +164,17 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
             {tape.orders.length === 0 && <div className="text-muted">—</div>}
             {tape.orders.map((o) => {
               const sell = o.sharesMicro.startsWith('-');
+              const i = market.outcomes.findIndex((x) => x.id === o.outcomeId);
               return (
                 <div key={o.id}>
-                  <span suppressHydrationWarning>{ago(o.createdAt).padEnd(4)}</span> {sell ? 'sell' : 'buy '}{' '}
-                  {shares(sell ? o.sharesMicro.slice(1) : o.sharesMicro)} {label(o.outcomeId)} &nbsp;{pct(o.priceBefore, true)} →{' '}
-                  {pct(o.priceAfter, true)}
+                  <span className="text-subtle" suppressHydrationWarning>
+                    {ago(o.createdAt).padEnd(4)}
+                  </span>{' '}
+                  <span className={sell ? 'text-down' : 'text-up'}>{sell ? 'sell' : 'buy '}</span>{' '}
+                  {shares(sell ? o.sharesMicro.slice(1) : o.sharesMicro)}{' '}
+                  <OutcomeSwatch ordinal={i} outcomes={n} />
+                  {label(o.outcomeId)} &nbsp;<span className="text-muted">{pct(o.priceBefore, true)} →</span>{' '}
+                  <span className="text-ink">{pct(o.priceAfter, true)}</span>
                 </div>
               );
             })}
@@ -165,7 +183,12 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
         {/* On a narrow screen the trade box comes before the tape. */}
         <div className="narrow:order-first">
           {tradable ? (
-            <TradeBox market={market} holdings={holdings} viewer={initial.viewer} onFilled={onFilled} />
+            <TradeBox
+              market={market}
+              cashMicro={portfolio ? BigInt(portfolio.balanceMicro) : null}
+              viewer={initial.viewer}
+              onFilled={onFilled}
+            />
           ) : (
             <div className={ui.box}>
               <h3 className={ui.sectionHeading}>{market.status === 'settled' ? 'Resolved' : 'Trading closed'}</h3>

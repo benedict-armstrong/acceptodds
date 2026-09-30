@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { accounts } from '@/db/schema';
-import { closedPositions } from '@/server/accounts';
+import { closedPositions, getPortfolio } from '@/server/accounts';
 import { quote, settle, trade } from '@/server/engine';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -75,5 +75,27 @@ describe('closed positions', () => {
     expect(first.total).toBe(2);
     expect(first.rows.map((r) => r.outcomeId)).toEqual([no]);
     expect((await closedPositions(a, { limit: 1, offset: 1 }, db)).rows.map((r) => r.outcomeId)).toEqual([yes]);
+  });
+
+  it('gives an open holding its average-cost basis, which a partial sell scales and a sell-out resets', async () => {
+    const [trader] = fx.traderIds;
+    const [yes] = fx.outcomeIds;
+    const a = await fill(trader, yes, 10n * UNIT);
+    const b = await fill(trader, yes, 10n * UNIT);
+    const paid = a.costMicro + b.costMicro;
+    const basis = async () => (await getPortfolio(trader, db)).holdings.find((h) => h.outcomeId === yes)?.costBasisMicro;
+    expect(await basis()).toBe(paid);
+    // Its colour's inputs: first of the fixture's outcomes.
+    const [held] = (await getPortfolio(trader, db)).holdings;
+    expect(held).toMatchObject({ outcomeOrdinal: 0, outcomeCount: fx.outcomeIds.length });
+
+    // Selling a quarter keeps the average: three quarters of the basis remain.
+    await fill(trader, yes, -5n * UNIT);
+    expect(await basis()).toBe(paid - (paid * 5n) / 20n);
+
+    await fill(trader, yes, -15n * UNIT);
+    expect(await basis()).toBeUndefined();
+    const c = await fill(trader, yes, 3n * UNIT);
+    expect(await basis()).toBe(c.costMicro);
   });
 });

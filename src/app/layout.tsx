@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { AuthLinks } from '@/components/AuthLinks';
+import { AuthNavLink } from '@/components/AuthLinks';
 import { ConfirmBanner } from '@/components/ConfirmBanner';
 import { LogoMark } from '@/components/Logo';
 import { NavWorth, type NavStanding } from '@/components/NavWorth';
@@ -53,7 +53,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="en">
       <body>
-        <header className="flex items-baseline gap-4.5 border-b border-rule px-6 pt-4 pb-2.5">
+        {/* Wraps on a phone: the nav drops to its own row under the logo. */}
+        <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 border-b border-rule px-6 pt-4 pb-2.5">
           <Link href="/" className="text-[22px]">
             <LogoMark />
             <span>
@@ -61,7 +62,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </span>
           </Link>
           <span className="flex-1" />
-          <nav className="flex items-baseline gap-4.5 text-sm">
+          <nav className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1 text-sm narrow:gap-x-3.5">
             <Link href="/leaderboard">leaderboard</Link>
             {viewer ? (
               <>
@@ -74,7 +75,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <Link href="/profile">profile</Link>
               </>
             ) : (
-              <AuthLinks />
+              <AuthNavLink />
             )}
           </nav>
         </header>
