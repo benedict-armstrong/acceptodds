@@ -813,6 +813,14 @@ unpaginated, and 5 s for that search.
   signed-in viewer's bet and comment go straight through the API and the
   flow ends at the paper. What the steps collect is client state; a reload
   falls back to the search.
+- **A visitor who bets on a market's own page skips the paper and the bet**
+  (#39): its trade box hands the choice to `/welcome?step=comment` with the
+  market, outcome and stake in the URL (`lib/onboarding.ts`
+  `welcomeBetHref`), sized against the starting balance. The page re-checks
+  it against the market (open, before `closes_at`, its outcome, within the
+  starting balance) and otherwise falls back to the full flow. The steps
+  are then comment, email, confirm; back from the comment is the market's
+  page. Any market works there, not only a paper's main one.
 - **A visitor's bet is stored, never placed, until they confirm**
   (`pending_bets`, one per Better Auth user, `server/onboarding.ts`).
   `POST /onboarding` makes a Better Auth user **with no credential** and

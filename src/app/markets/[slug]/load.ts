@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import type { Account, Market } from '@/db/schema';
-import { getPortfolio } from '@/server/accounts';
+import { getPortfolio, startingBalanceMicro } from '@/server/accounts';
 import { presentComments, presentMarket, presentPortfolio, presentTapeEntry } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { listComments } from '@/server/comments';
@@ -36,5 +36,6 @@ export async function loadMarketLive(market: Market, viewer: { account: Account 
     viewer: viewer
       ? { signedIn: true, canTrade: viewer.account.isBot || viewer.account.verifiedAt !== null }
       : { signedIn: false, canTrade: false },
+    startingBalanceMicro: startingBalanceMicro().toString(),
   };
 }

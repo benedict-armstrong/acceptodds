@@ -29,8 +29,9 @@ function segment(on: boolean): string {
  * quote it showed as `maxCostMicro` (`useOrder`).
  *
  * With `onChoose`, it sends nothing: its button hands the choice back, for a
- * visitor who has no account yet (onboarding, `/welcome`). `cashMicro` is
- * then the balance they will start with.
+ * visitor who has no account yet — in onboarding (`/welcome`), or on a
+ * market's page, which then opens onboarding at the step after the bet.
+ * `cashMicro` is then the balance they will start with.
  */
 export function TradeBox({
   market,
@@ -126,13 +127,20 @@ export function TradeBox({
       )}
 
       {onChoose ? (
-        <button
-          className={ui.btn()}
-          disabled={budget === null || budget <= 0n || short}
-          onClick={() => budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget })}
-        >
-          Stake {budget ? rep(budget) : ''} {REP} on {outcome.label}
-        </button>
+        <>
+          <button
+            className={ui.btn()}
+            disabled={budget === null || budget <= 0n || short}
+            onClick={() => budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget })}
+          >
+            Stake {budget ? rep(budget) : ''} {REP} on {outcome.label}
+          </button>
+          {!viewer.signedIn && (
+            <div className={`${ui.fine} text-center`}>
+              Have an account? <SignInLink>Sign in</SignInLink>
+            </div>
+          )}
+        </>
       ) : !viewer.signedIn ? (
         <SignInLink className={ui.btn()}>Sign in to trade</SignInLink>
       ) : !viewer.canTrade ? (

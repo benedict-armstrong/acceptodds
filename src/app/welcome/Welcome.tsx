@@ -28,10 +28,31 @@ export type Step = 'intro' | 'search' | 'bet' | 'comment' | 'email' | 'confirm';
 /** A visitor's steps; a signed-in viewer's stop at the comment, their bet already placed. */
 const ANON: Step[] = ['intro', 'search', 'bet', 'comment', 'email', 'confirm'];
 const SIGNED_IN: Step[] = ['search', 'bet', 'comment'];
+/** A visitor who chose the paper and the bet on the market's own page. */
+const CHOSEN: Step[] = ['comment', 'email', 'confirm'];
+
+/** The market bet on, and the paper it is read under. */
+interface Pick {
+  market: Market;
+  /** The paper's title (a standalone market's question). */
+  title: string;
+  href: string;
+}
+
+interface Choice {
+  outcomeId: string;
+  stakeMicro: bigint;
+}
+
+/** A bet chosen on a market's page (`welcomeBetHref`), checked by the page. */
+export interface Chosen {
+  pick: Pick;
+  choice: Choice;
+}
 
 /** What a step needs from the ones before it, so a reload or a deep link falls back to where it can start. */
-const NEEDS: Partial<Record<Step, 'listing' | 'choice'>> = {
-  bet: 'listing',
+const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
+  bet: 'pick',
   comment: 'choice',
   email: 'choice',
   confirm: 'choice',
@@ -54,11 +75,15 @@ function tradable(l: Listing): Market | null {
  * Nothing is placed for a visitor: the bet and the comment go to
  * `POST /onboarding` with their email, and are placed after they confirm
  * (`Finish`). A signed-in viewer's bet and comment go straight to the API.
+ *
+ * A visitor who chose a bet on a market's page (`chosen`) skips the paper
+ * and the bet, starting at the comment; back returns to that page.
  */
 export function Welcome({
   kind,
   next,
   suggestions,
+  chosen,
   initialStep,
   viewer,
 }: {
@@ -66,20 +91,21 @@ export function Welcome({
   /** Where the intro's sign-in and sign-up links return to. */
   next: string;
   suggestions: Listing[];
+  chosen: Chosen | null;
   initialStep: Step | null;
   viewer: { signedIn: boolean; canTrade: boolean; cashMicro: string };
 }) {
   const router = useRouter();
-  const steps = viewer.signedIn ? SIGNED_IN : ANON;
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [choice, setChoice] = useState<{ outcomeId: string; stakeMicro: bigint } | null>(null);
+  const steps = viewer.signedIn ? SIGNED_IN : chosen ? CHOSEN : ANON;
+  const [pick, setPick] = useState<Pick | null>(chosen?.pick ?? null);
+  const [choice, setChoice] = useState<Choice | null>(chosen?.choice ?? null);
   const [comment, setComment] = useState('');
   const [email, setEmail] = useState('');
 
   function reachable(s: Step | null): Step {
     if (!s || !steps.includes(s)) return steps[0];
     const need = NEEDS[s];
-    if ((need === 'listing' && !listing) || (need === 'choice' && (!listing || !choice))) return 'search';
+    if ((need === 'pick' && !pick) || (need === 'choice' && (!pick || !choice))) return 'search';
     return s;
   }
 
@@ -110,14 +136,13 @@ export function Welcome({
         step={i < 0 ? undefined : i + 1}
         of={numbered.length}
         title={title}
-        onBack={at > 0 && step !== 'confirm' ? () => window.history.back() : undefined}
+        // The first of `CHOSEN` goes back to the market's page it came from.
+        onBack={(at > 0 || chosen) && step !== 'confirm' ? () => window.history.back() : undefined}
       >
         {body}
       </OnboardingCard>
     );
   };
-
-  const paperHref = listing ? marketHref({ marketSlug: listing.markets[0].slug, listingSlug: listing.slug }) : '/';
 
   switch (step) {
     case 'intro':
@@ -146,7 +171,8 @@ export function Welcome({
             kind={kind}
             suggestions={suggestions}
             onPick={(l) => {
-              setListing(l);
+              const market = tradable(l) ?? l.markets[0];
+              setPick({ market, title: l.title, href: marketHref({ marketSlug: market.slug, listingSlug: l.slug }) });
               setChoice(null);
               go('bet');
             }}
@@ -156,9 +182,9 @@ export function Welcome({
 
     case 'bet':
       return card(
-        <MathText text={listing!.title} />,
+        <MathText text={pick!.title} />,
         <BetStep
-          market={tradable(listing!) ?? listing!.markets[0]}
+          market={pick!.market}
           viewer={viewer}
           onChoose={
             viewer.signedIn
@@ -177,13 +203,13 @@ export function Welcome({
 
     case 'comment':
       return card(
-        <>Why {listing!.markets[0].outcomes.find((o) => o.id === choice!.outcomeId)?.label}? (optional)</>,
+        <>Why {pick!.market.outcomes.find((o) => o.id === choice!.outcomeId)?.label}? (optional)</>,
         <CommentStep
-          marketId={listing!.markets[0].id}
+          marketId={pick!.market.id}
           post={viewer.signedIn}
           value={comment}
           onChange={setComment}
-          onDone={() => (viewer.signedIn ? router.push(paperHref) : go('email'))}
+          onDone={() => (viewer.signedIn ? router.push(pick!.href) : go('email'))}
         />,
       );
 
@@ -191,7 +217,7 @@ export function Welcome({
       return card(
         'Where should we send your link?',
         <EmailStep
-          listing={listing!}
+          market={pick!.market}
           choice={choice!}
           comment={comment}
           onSent={(address) => {
@@ -263,8 +289,8 @@ function BetStep({
 }: {
   market: Market;
   viewer: { signedIn: boolean; canTrade: boolean; cashMicro: string };
-  onChoose?: (c: { outcomeId: string; stakeMicro: bigint }) => void;
-  onFilled: (c: { outcomeId: string; stakeMicro: bigint }) => void;
+  onChoose?: (c: Choice) => void;
+  onFilled: (c: Choice) => void;
 }) {
   const { data: market = initial } = useSWR<Market>(`/api/v1/markets/${initial.id}`, publicJson, {
     fallbackData: initial,
@@ -341,13 +367,13 @@ function CommentStep({
 
 /** Name and institutional email: `POST /onboarding` stores the bet and mails a link and a code. */
 function EmailStep({
-  listing,
+  market,
   choice,
   comment,
   onSent,
 }: {
-  listing: Listing;
-  choice: { outcomeId: string; stakeMicro: bigint };
+  market: Market;
+  choice: Choice;
   comment: string;
   onSent: (email: string) => void;
 }) {
@@ -355,7 +381,6 @@ function EmailStep({
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const market = listing.markets[0];
   const label = market.outcomes.find((o) => o.id === choice.outcomeId)?.label;
 
   return (

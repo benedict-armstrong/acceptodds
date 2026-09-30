@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { z } from 'zod';
 import { marketHref } from '@/lib/links';
+import { parseChosenBet } from '@/lib/onboarding';
 import { safeReturnTo } from '@/lib/return-to';
 import { defaultMarketKind } from '@/lib/venue';
 import { startingBalanceMicro } from '@/server/accounts';
@@ -11,11 +12,12 @@ import { viewerFromHeaders } from '@/server/auth';
 import { hasPassword, pendingBetFor } from '@/server/onboarding';
 import { browseListings, listingViews, marketView, resolveListing, resolveMarket } from '@/server/views';
 import { Finish } from './Finish';
-import { Welcome, type Step } from './Welcome';
+import { Welcome, type Chosen, type Step } from './Welcome';
 
 export const dynamic = 'force-dynamic';
 
 type Listing = z.output<typeof S.Listing>;
+type Market = z.output<typeof S.Market>;
 
 /** Papers offered before anything is typed into the search. */
 const SUGGESTIONS = 5;
@@ -27,7 +29,12 @@ const SUGGESTIONS = 5;
  * mail, signed in with a pending bet (`server/onboarding.ts`), the last step
  * is `Finish`: a password and the bet.
  */
-export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ step?: string; next?: string }> }) {
+export default async function WelcomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ step?: string; next?: string; market?: string; outcome?: string; stake?: string }>;
+}) {
+  const params = await searchParams;
   const viewer = await viewerFromHeaders(await headers());
   const userId = viewer?.account.userId ?? null;
 
@@ -52,9 +59,11 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
       );
     }
     if (needsPassword) return <Finish bet={null} needsPassword />;
-    if ((await searchParams).step === 'finish') redirect('/');
+    if (params.step === 'finish') redirect('/');
   }
 
+  // A visitor who chose a bet on a market's page starts after it.
+  const chosen = viewer ? null : await chosenBet(params);
   const kind = defaultMarketKind();
   const { rows } = await browseListings({ kind, status: 'open', sort: 'volume', limit: SUGGESTIONS });
   const listed = rows.flatMap((r) => (r.listing ? [r.listing] : []));
@@ -63,9 +72,10 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
   return (
     <Welcome
       kind={kind}
-      next={safeReturnTo((await searchParams).next)}
+      next={safeReturnTo(params.next)}
       suggestions={suggestions}
-      initialStep={((await searchParams).step ?? null) as Step | null}
+      chosen={chosen}
+      initialStep={(params.step ?? null) as Step | null}
       viewer={
         viewer
           ? {
@@ -77,4 +87,27 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
       }
     />
   );
+}
+
+/**
+ * The bet in the URL (`welcomeBetHref`), if it is still one a visitor can
+ * make: an open market before its close, one of its outcomes, and a stake
+ * within the starting balance — what `POST /onboarding` will check again.
+ */
+async function chosenBet(params: { market?: string; outcome?: string; stake?: string }): Promise<Chosen | null> {
+  const bet = parseChosenBet(params);
+  if (!bet || bet.stakeMicro > startingBalanceMicro()) return null;
+  const market = await resolveMarket(bet.marketId).catch(() => null);
+  if (!market || market.status !== 'open' || market.closesAt.getTime() <= Date.now()) return null;
+  const board = presentMarket(await marketView(market)) as Market;
+  if (!board.outcomes.some((o) => o.id === bet.outcomeId)) return null;
+  const listing = market.listingId ? await resolveListing(market.listingId) : null;
+  return {
+    pick: {
+      market: board,
+      title: listing?.title ?? market.question,
+      href: marketHref({ marketSlug: market.slug, listingSlug: listing?.slug ?? null }),
+    },
+    choice: { outcomeId: bet.outcomeId, stakeMicro: bet.stakeMicro },
+  };
 }

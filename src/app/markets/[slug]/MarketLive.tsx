@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
 import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -12,6 +13,7 @@ import { usePassed } from '@/components/usePassed';
 import { day, pct, rep, REP } from '@/lib/format';
 import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
+import { welcomeBetHref } from '@/lib/onboarding';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
 import { TAPE_LIMIT } from './tape';
@@ -30,6 +32,8 @@ export interface Initial {
   comments: CommentList;
   portfolio: Portfolio | null;
   viewer: { signedIn: boolean; canTrade: boolean };
+  /** What a new account starts with: a visitor's balance in the trade box. */
+  startingBalanceMicro: string;
 }
 
 /** Public reads go out without cookies: anonymous, and not counted against the viewer's rate limit. */
@@ -55,6 +59,7 @@ export function MarketLive({
   /** The number of its first table: the page may have numbered tables above it. */
   firstTable?: number;
 }) {
+  const router = useRouter();
   const id = initial.market.id;
   const { data: market = initial.market, mutate: refreshMarket } = useSWR<Market>(`/api/v1/markets/${id}`, publicJson, {
     fallbackData: initial.market,
@@ -197,9 +202,21 @@ export function MarketLive({
           {tradable ? (
             <TradeBox
               market={market}
-              cashMicro={portfolio ? BigInt(portfolio.balanceMicro) : null}
+              cashMicro={
+                initial.viewer.signedIn
+                  ? portfolio
+                    ? BigInt(portfolio.balanceMicro)
+                    : null
+                  : BigInt(initial.startingBalanceMicro)
+              }
               viewer={initial.viewer}
               onFilled={onFilled}
+              // A visitor's bet opens onboarding past the paper and bet steps.
+              onChoose={
+                initial.viewer.signedIn
+                  ? undefined
+                  : (c) => router.push(welcomeBetHref({ marketId: id, ...c }))
+              }
             />
           ) : (
             <div className={ui.box}>
