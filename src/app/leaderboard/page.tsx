@@ -160,7 +160,6 @@ export default async function LeaderboardPage({
     <main className={ui.page}>
       {board ? (
         <TitleBlock
-          above={group ? 'Group' : 'Institution'}
           title={<>{picker} leaderboard</>}
           byline={
             <Authors
