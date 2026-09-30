@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Pager } from '@/components/Pager';
 import { holdingHref, PositionsTable } from '@/components/PositionsTable';
 import { Stat } from '@/components/Stat';
+import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { day, rep, REP, shares, signedRep } from '@/lib/format';
 import { presentPortfolio } from '@/server/api/present';
@@ -74,11 +75,6 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           sellable={sellable}
         />
       )}
-      <p className={`${ui.fine} mb-3`}>
-        “Bought @” is the average price you paid. “Current value” is what selling it all now would pay against what it
-        cost; it starts a little negative, because each share you sell moves the price against you. Net worth and
-        unrealized P&L use the same sell-all value.
-      </p>
 
       <h2 className={ui.groupHeading}>Closed positions</h2>
       {closed.total === 0 ? (
@@ -87,14 +83,16 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
         <>
           <table className={ui.table}>
             <caption className={ui.tableCaption}>
-              <b>{p.holdings.length === 0 ? 'Table 1.' : 'Table 2.'}</b> Outcomes you traded and no longer hold, newest first.
+              <b>{p.holdings.length === 0 ? 'Table 1.' : 'Table 2.'}</b> Outcomes you traded and no longer hold, over all their fills, newest first.
             </caption>
             <thead>
               <tr>
                 <th className={ui.th()}>Market</th>
                 <th className={ui.th()}>Bought</th>
                 <th className={ui.th(true)}>Paid</th>
-                <th className={ui.th(true)}>Got back</th>
+                <th className={ui.th(true)}>
+                  Got back<sup className={ui.mark}>a</sup>
+                </th>
                 <th className={ui.th(true)}>P&L</th>
                 <th className={ui.th()}>Closed</th>
               </tr>
@@ -123,11 +121,18 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               ))}
             </tbody>
           </table>
+          <TableNotes
+            notes={[
+              [
+                'a',
+                <>
+                  What selling paid plus, if you held into settlement, 1 {REP} per winning share. Hover a figure for the
+                  split.
+                </>,
+              ],
+            ]}
+          />
           <Pager page={page} pages={pages} href={(n) => `/portfolio?page=${n}`} />
-          <p className={`${ui.fine} mb-3`}>
-            An outcome you traded and hold none of now, over all its fills. “Got back” is what selling paid plus, if you
-            held into settlement, 1 {REP} per winning share.
-          </p>
         </>
       )}
     </main>

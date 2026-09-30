@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Pager } from '@/components/Pager';
 import { FieldCurve } from '@/components/FieldCurve';
+import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { rep, signedRep } from '@/lib/format';
 import { leaderboardSegments } from '@/lib/leaderboard';
@@ -216,14 +217,14 @@ export default async function LeaderboardPage({
               <th className={ui.th()}>#</th>
               <th className={ui.th()}>Trader</th>
               <th className={`${ui.th()} narrow:hidden`}>Institutions</th>
-              <th className={ui.th(true)} title="Cash plus what selling every open holding now would pay">
-                Net worth
+              <th className={ui.th(true)}>
+                Net worth<sup className={ui.mark}>a</sup>
               </th>
-              <th className={ui.th(true)} title="On markets not yet settled, if sold now">
-                Unrealized
+              <th className={ui.th(true)}>
+                Unrealized<sup className={ui.mark}>b</sup>
               </th>
-              <th className={ui.th(true)} title="On settled markets">
-                Settled
+              <th className={ui.th(true)}>
+                Settled<sup className={ui.mark}>c</sup>
               </th>
             </tr>
           </thead>
@@ -241,6 +242,18 @@ export default async function LeaderboardPage({
           </tbody>
         </table>
       )}
+      {onScreen > 0 && (
+        <TableNotes
+          notes={[
+            [
+              'a',
+              'Cash plus what selling every open holding right now would actually pay — not holdings marked at the current price, which a trader could inflate by pushing the price themselves.',
+            ],
+            ['b', 'What selling now would make on markets not yet settled.'],
+            ['c', 'Profit on markets that have resolved.'],
+          ]}
+        />
+      )}
 
       {onScreen < list.length && (
         <Pager
@@ -251,11 +264,6 @@ export default async function LeaderboardPage({
         />
       )}
 
-      <p className={`${ui.fine} mb-3`}>
-        Net worth is cash plus what selling every open holding right now would actually pay — not holdings marked at the
-        current price, which a trader could inflate by pushing the price themselves. Unrealized is what selling now would
-        make on markets not yet settled; settled is profit on markets that have resolved.
-      </p>
     </main>
   );
 }

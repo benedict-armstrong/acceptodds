@@ -55,6 +55,8 @@ export const ui = {
   td: 'py-[5px] pr-2',
   num: 'text-right font-mono text-[13px]',
   table: 'mt-3 w-full border-collapse border-y-[1.5px] border-ink',
+  /** A table note's mark on a column heading, "Net worth<sup>a</sup>": an italic letter, as threeparttable sets it. */
+  mark: 'ml-px font-serif text-[10px] font-normal italic',
   /** The selected link in a row of filter or tab links. */
   on: 'font-semibold text-ink',
   /** A P&L's colour: profit green, loss red, zero plain ink. */

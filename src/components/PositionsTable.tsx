@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { useOrder, type OrderResult } from '@/components/orders';
 import { SellModal } from '@/components/SellModal';
+import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { pct, rep, REP } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
@@ -73,20 +74,21 @@ export function PositionsTable({
           <tr>
             {showMarket && <th className={ui.th()}>Market</th>}
             <th className={ui.th()}>Outcome</th>
-            <th className={ui.th(true)} title="The average price you paid per share">
-              Bought @
+            <th className={ui.th(true)}>
+              Bought @<sup className={ui.mark}>a</sup>
             </th>
-            <th className={ui.th(true)} title="What this pays if the outcome wins: one unit per share">
-              Payout
+            <th className={ui.th(true)}>
+              Payout<sup className={ui.mark}>b</sup>
             </th>
             <th className={ui.th(true)}>
               <button
                 className="cursor-pointer font-semibold hover:text-accent"
-                title={`What selling it all now would pay, against what it cost. Click for ${absolute ? 'percent' : REP}.`}
+                title={`Show in ${absolute ? 'percent' : REP}`}
                 onClick={() => setAbsolute((a) => !a)}
               >
                 Current value ({absolute ? REP : '%'})
               </button>
+              <sup className={ui.mark}>c</sup>
             </th>
             {anySellable && <th className={ui.th()} />}
           </tr>
@@ -106,6 +108,19 @@ export function PositionsTable({
           ))}
         </tbody>
       </table>
+      <TableNotes
+        notes={[
+          ['a', 'The average price you paid per share.'],
+          ['b', <>What the holding pays if the outcome wins: 1 {REP} per share.</>],
+          [
+            'c',
+            <>
+              What selling it all now would pay, against what it cost. It starts a little negative, because each share
+              you sell moves the price against you. Click the heading to switch between % and {REP}.
+            </>,
+          ],
+        ]}
+      />
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
     </>
   );

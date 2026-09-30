@@ -418,7 +418,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `lib/format.ts`, never the literal. The API is unchanged (`…Micro`).
   Tables are booktabs (`ui.table`/`th`/`td`: heavy top and bottom rules, a
   light one under the header, nothing vertical or between rows) with a
-  `<caption className={ui.tableCaption}>` "**Table N.**" above; charts get
+  `<caption className={ui.tableCaption}>` "**Table N.**" above, and what a
+  column means in `TableNotes` under it, keyed by an italic letter on the
+  heading (`ui.mark`) — never a `title` tooltip; charts get
   a `ui.caption` "**Figure N.**" below. Numbered by hand per page, tables
   and figures separately.
 - **Styling is Tailwind v4, utilities in the markup.** The palette and fonts
