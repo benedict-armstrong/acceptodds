@@ -170,7 +170,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <main className={ui.page}>
-      {!q && <Abstract text={ABSTRACT} />}
+      {/* The pitch is for visitors; a signed-in viewer has read it. */}
+      {!q && !viewer && <Abstract text={ABSTRACT} />}
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />
