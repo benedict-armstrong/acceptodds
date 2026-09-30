@@ -84,10 +84,11 @@ else
   echo "nothing to fill; every key with a default was already set"
 fi
 
-# INSTITUTION_DOMAINS_PATH is optional (the image has a default).
+# INSTITUTION_DOMAINS_PATH is optional (the image has a default), and so is
+# analytics.
 empty=()
 while IFS= read -r key; do
-  [[ $key == INSTITUTION_DOMAINS_PATH ]] && continue
+  [[ $key == INSTITUTION_DOMAINS_PATH || $key == UMAMI_* ]] && continue
   [[ -z $(current "$key") ]] && empty+=("$key")
 done < <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$example")
 if ((${#empty[@]})); then

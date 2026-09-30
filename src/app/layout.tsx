@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { Analytics } from '@/components/Analytics';
 import { AuthLinks } from '@/components/AuthLinks';
 import { ConfirmBanner } from '@/components/ConfirmBanner';
 import { LogoMark } from '@/components/Logo';
@@ -22,6 +23,18 @@ export async function generateMetadata(): Promise<Metadata> {
     title: 'acceptodds',
     description: 'A prediction market on the fate of research papers, traded in reputation.',
   };
+}
+
+/**
+ * Page analytics, when `UMAMI_URL` and `UMAMI_WEBSITE_ID` are both set: read
+ * per request, so turning it on or off is an env change and a restart, not a
+ * rebuild. Counts only on `APP_URL`'s host.
+ */
+function analytics(): { src: string; websiteId: string; domain: string } | null {
+  const url = process.env.UMAMI_URL?.trim().replace(/\/+$/, '');
+  const websiteId = process.env.UMAMI_WEBSITE_ID?.trim();
+  if (!url || !websiteId) return null;
+  return { src: `${url}/script.js`, websiteId, domain: new URL(siteUrl()).hostname };
 }
 
 /**
@@ -50,6 +63,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const standing = viewer
     ? navStanding(await fieldSnapshot(), worth?.netWorthMicro ?? viewer.account.balanceMicro)
     : null;
+  const tracker = analytics();
   return (
     <html lang="en">
       <body>
@@ -80,6 +94,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         </header>
         <ConfirmBanner signedIn={viewer !== null} />
         {children}
+        {tracker && <Analytics {...tracker} />}
       </body>
     </html>
   );

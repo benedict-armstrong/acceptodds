@@ -622,6 +622,14 @@ unpaginated, and 5 s for that search.
     holds shares — the outcome they hold most of, never a size — the
     badge's Markdown/HTML and the link. It reads the same SWR keys as
     `MarketLive`, so it adds no polling.
+- **Page analytics are Umami** (`components/Analytics`, host-wide
+  instance in `~/ops`), on only when `UMAMI_URL` and `UMAMI_WEBSITE_ID` are
+  set, counting only `APP_URL`'s host. Every hit's URL and referrer pass
+  `lib/analytics.ts`: same-site URLs keep an **allowlist** of query
+  parameters (browsing state), never a hash; other sites keep origin and
+  path. `/confirm?email=` is why. A page that puts anything personal in its
+  URL stays out by default; add a parameter to the list only if it is not.
+  The hook is installed before the script is added, never a bare `<script>`.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** wipes every table, then gives a venue of invented

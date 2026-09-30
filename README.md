@@ -158,6 +158,16 @@ It sends at most one mail per account per day (`DIGEST_TIMEZONE`, default
 failed (re-running the same day retries those). Links in the mail use
 `APP_URL`, else `BETTER_AUTH_URL`. People turn it off on `/profile`.
 
+### Page analytics
+
+Umami, from the host-wide instance in `~/ops` (shared with the host's other
+sites; every `analytics.<zone>` reaches it). Set `UMAMI_URL`
+(`https://analytics.acceptodds.com`) and `UMAMI_WEBSITE_ID` (from the Umami
+UI) in `.env.production` and restart; either empty turns it off. It counts page
+views only on `APP_URL`'s host, is cookieless, and records URLs through an
+allowlist of query parameters (`lib/analytics.ts`), so `/confirm?email=…` is
+recorded as `/confirm`.
+
 ### Who can sign up: `config/institution-domains.json`
 
 ```json
