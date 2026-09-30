@@ -177,6 +177,14 @@ export default async function LeaderboardPage({
         )}
       </div>
 
+      {snapshot && (
+        <FieldCurve
+          field={snapshot}
+          you={mine >= 0 ? field[mine].netWorthMicro : null}
+          label={mine >= 0 ? (standing(mine) === null ? 'you' : `you · ahead of ${standing(mine)}%`) : null}
+        />
+      )}
+
       {onScreen === 0 ? (
         <div className={ui.empty}>
           {q
@@ -189,6 +197,12 @@ export default async function LeaderboardPage({
         </div>
       ) : (
         <table className={ui.table}>
+          {/* A paper's table caption sits above the table, its figure captions below. */}
+          <caption className={ui.tableCaption}>
+            <b>Table 1.</b> Traders{where}
+            {basis === 'net_worth' ? ' by net worth, if each sold everything now' : ' by profit on settled markets'}
+            {q ? `, matching “${q}”` : ''}.
+          </caption>
           <thead>
             <tr>
               <th className={ui.th()}>#</th>
@@ -226,14 +240,6 @@ export default async function LeaderboardPage({
           pages={pages}
           label={compact ? 'all traders:' : undefined}
           href={(p) => href({ page: String(p) })}
-        />
-      )}
-
-      {snapshot && (
-        <FieldCurve
-          field={snapshot}
-          you={mine >= 0 ? field[mine].netWorthMicro : null}
-          label={mine >= 0 ? (standing(mine) === null ? 'you' : `you · ahead of ${standing(mine)}%`) : null}
         />
       )}
 
@@ -319,12 +325,7 @@ function FieldCurve({ field, you, label }: { field: FieldSnapshot; you: bigint |
     ['Highest', worths[worths.length - 1]],
   ];
   return (
-    <section aria-label="The field">
-      <h3 className={`${ui.subsection} mt-6 mb-1.5`}>The field</h3>
-      <p className={ui.caption}>
-        Net worth of all {worths.length.toLocaleString('en')} traders, if each sold everything now, as of{' '}
-        {ago(field.computedAt)} ago.{you !== null && ' The shaded part is everyone below you.'}
-      </p>
+    <section aria-label="The field" className="mt-4">
       <StandingChart
         curve={field.curve}
         domain={field.domain}
@@ -332,9 +333,16 @@ function FieldCurve({ field, you, label }: { field: FieldSnapshot; you: bigint |
         you={you === null ? null : toUnits(you)}
         label={label}
       />
+      <p className={ui.caption}>
+        <b>Figure 1.</b> Net worth of all {worths.length.toLocaleString('en')} traders, if each sold everything now, as
+        of {ago(field.computedAt)} ago.{you !== null && ' The shaded part is everyone below you.'}
+      </p>
       <details className="mt-1 font-sans text-xs text-muted">
         <summary className="cursor-pointer">the numbers</summary>
-        <table className="mt-1">
+        <table className="mt-1 border-y-[1.5px] border-ink">
+          <caption className={ui.tableCaption}>
+            <b>Table 2.</b> The figures behind Figure 1.
+          </caption>
           <tbody>
             {rows.map(([name, v]) => (
               <tr key={name}>
@@ -346,8 +354,8 @@ function FieldCurve({ field, you, label }: { field: FieldSnapshot; you: bigint |
             ))}
             {you !== null && (
               <tr>
-                <td className="pr-4 font-semibold text-ink">You</td>
-                <td className="text-right font-mono font-semibold text-ink">
+                <td className="border-t border-ink pr-4 font-semibold text-ink">You</td>
+                <td className="border-t border-ink text-right font-mono font-semibold text-ink">
                   {rep(you)} {REP}
                 </td>
               </tr>

@@ -386,6 +386,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   numbers on screen: everything shown comes from the database. Reputation
   is shown as `1,000.00 $rep` (#21): write the unit as `REP` from
   `lib/format.ts`, never the literal. The API is unchanged (`…Micro`).
+  Tables are booktabs (`ui.table`/`th`/`td`: heavy top and bottom rules, a
+  light one under the header, nothing vertical or between rows) with a
+  `<caption className={ui.tableCaption}>` "**Table N.**" above; charts get
+  a `ui.caption` "**Figure N.**" below. Numbered by hand per page, tables
+  and figures separately.
 - **Styling is Tailwind v4, utilities in the markup.** The palette and fonts
   are `@theme` tokens in `app/globals.css` (`text-muted`, `border-rule`,
   `font-mono`, …); use a token, not a raw hex, for any colour that has one.
@@ -711,8 +716,8 @@ unpaginated, and 5 s for that search.
   - `venue:` or `status:` in a query makes the page's own filter of that
     kind step aside. `accept` compares the headline cache ×100 (a void
     market fails every comparison, so a negated one includes it); `volume` compares in `numeric` micro-units, never a float.
-- **The net-worth leaderboard shows the field's shape** under the table
-  ("The field", unfiltered `net_worth` only): `components/StandingChart`,
+- **The net-worth leaderboard shows the field's shape** above the table
+  (Figure 1, unfiltered `net_worth` only): `components/StandingChart`,
   maths in `lib/distribution.ts` — a Gaussian kernel density of every
   trader's liquidation net worth (never a mark), a rug of one tick per
   trader, and for a signed-in viewer the part below them shaded and a line
