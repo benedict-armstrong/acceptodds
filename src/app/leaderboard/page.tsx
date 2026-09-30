@@ -211,59 +211,58 @@ export default async function LeaderboardPage({
           Search
         </button>
       </form>
-      {viewer && (
-        <div className="mt-1.5 text-right font-sans text-[13px]">
-          <NewGroupButton />
-        </div>
-      )}
 
       {search && search.errors.length > 0 && (
         <div className="mt-2 font-sans text-[13px] text-down">Ignored: {search.errors.join('; ')}</div>
       )}
 
-      <div className="mt-2 flex flex-col gap-0.5 font-sans text-[13px] text-muted">
-        {mine >= 0 ? (
-          <span>
-            You: <span className="font-semibold text-ink">#{field[mine].rank}</span> of {field.length.toLocaleString('en')}
-            {where}
-            {standing(mine) !== null && <> · ahead of {standing(mine)}% of traders</>}
-            {mine !== focus && (
-              <>
-                {' '}
-                · <Link href={`${href({ around: null, q: null, page: null })}#focus`}>show me</Link>
-              </>
-            )}
-          </span>
-        ) : viewer ? (
-          <span>
-            {group && role === null
-              ? 'You are not in this group.'
-              : institution && !viewer.account.institutions.includes(institution)
-              ? `You are not at ${institution}.`
-              : basis === 'settled_pnl'
-                ? 'You are not on this board yet: it counts settled markets only.'
-                : 'You are not on this board.'}
-          </span>
-        ) : null}
-        {around !== null &&
-          (focus >= 0 ? (
-            focus !== mine && (
-              <span>
-                @{around}: <span className="font-semibold text-ink">#{field[focus].rank}</span> of{' '}
-                {field.length.toLocaleString('en')}
-                {where}
-                {standing(focus) !== null && <> · ahead of {standing(focus)}% of traders</>}
-              </span>
-            )
-          ) : (
-            <span>No trader @{around} on this board{where}.</span>
-          ))}
-        {q && (
-          <span>
-            {matches.length.toLocaleString('en')} {matches.length === 1 ? 'trader' : 'traders'} match “{q}” ·{' '}
-            <Link href={href({ q: null, page: null })}>clear</Link>
-          </span>
-        )}
+      {/* Where the viewer stands, and "+ New group" at the right of its first line. */}
+      <div className="mt-2 flex items-start justify-between gap-4 font-sans text-[13px]">
+        <div className="flex min-w-0 flex-col gap-0.5 text-muted">
+          {mine >= 0 ? (
+            <span>
+              You: <span className="font-semibold text-ink">#{field[mine].rank}</span> of {field.length.toLocaleString('en')}
+              {where}
+              {standing(mine) !== null && <> · ahead of {standing(mine)}% of traders</>}
+              {mine !== focus && (
+                <>
+                  {' '}
+                  · <Link href={`${href({ around: null, q: null, page: null })}#focus`}>show me</Link>
+                </>
+              )}
+            </span>
+          ) : viewer ? (
+            <span>
+              {group && role === null
+                ? 'You are not in this group.'
+                : institution && !viewer.account.institutions.includes(institution)
+                ? `You are not at ${institution}.`
+                : basis === 'settled_pnl'
+                  ? 'You are not on this board yet: it counts settled markets only.'
+                  : 'You are not on this board.'}
+            </span>
+          ) : null}
+          {around !== null &&
+            (focus >= 0 ? (
+              focus !== mine && (
+                <span>
+                  @{around}: <span className="font-semibold text-ink">#{field[focus].rank}</span> of{' '}
+                  {field.length.toLocaleString('en')}
+                  {where}
+                  {standing(focus) !== null && <> · ahead of {standing(focus)}% of traders</>}
+                </span>
+              )
+            ) : (
+              <span>No trader @{around} on this board{where}.</span>
+            ))}
+          {q && (
+            <span>
+              {matches.length.toLocaleString('en')} {matches.length === 1 ? 'trader' : 'traders'} match “{q}” ·{' '}
+              <Link href={href({ q: null, page: null })}>clear</Link>
+            </span>
+          )}
+        </div>
+        {viewer && <NewGroupButton className={`${ui.linkBtn} shrink-0`} />}
       </div>
 
       {snapshot && (
