@@ -8,12 +8,13 @@ import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
-import { ago, day, pct, rep, REP, shares } from '@/lib/format';
+import { day, pct, rep, REP } from '@/lib/format';
 import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
 import { TAPE_LIMIT } from './tape';
+import { TapeTable } from './TapeTable';
 import { TradeBox } from './TradeBox';
 
 type Market = z.output<typeof S.Market>;
@@ -175,24 +176,8 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
       <div className="mt-5.5 grid grid-cols-2 gap-8 narrow:grid-cols-1">
         <div>
           <h3 className={`${ui.section} mb-2`}>Recent trades</h3>
-          <div className="font-mono text-[13px] whitespace-nowrap [&>div]:py-0.5">
-            {tape.orders.length === 0 && <div className="text-muted">—</div>}
-            {tape.orders.map((o) => {
-              const sell = o.sharesMicro.startsWith('-');
-              const i = market.outcomes.findIndex((x) => x.id === o.outcomeId);
-              return (
-                <div key={o.id}>
-                  <span className="text-subtle" suppressHydrationWarning>
-                    {ago(o.createdAt).padEnd(4)}
-                  </span>{' '}
-                  <span className={sell ? 'text-down' : 'text-up'}>{sell ? 'sell' : 'buy '}</span>{' '}
-                  {shares(sell ? o.sharesMicro.slice(1) : o.sharesMicro)}{' '}
-                  <OutcomeSwatch ordinal={i} outcomes={n} />
-                  {label(o.outcomeId)} &nbsp;<span className="text-muted">{pct(o.priceBefore, true)} →</span>{' '}
-                  <span className="text-ink">{pct(o.priceAfter, true)}</span>
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <TapeTable market={market} tape={tape} n={holdings.length > 0 ? 2 : 1} />
           </div>
         </div>
         {/* On a narrow screen the trade box comes before the tape. */}
