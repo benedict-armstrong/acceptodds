@@ -608,6 +608,11 @@ unpaginated, and 5 s for that search.
   as its main market (rank 0), created by `../research`. The platform still
   attaches no meaning to the labels, and a listing may still carry more
   markets (the paper page lists them only when there is more than one).
+- **Reject also covers a withdrawal** (#19): a paper withdrawn or
+  desk-rejected before the decision settles as `Reject`, never void. That is
+  `../research`'s call when it settles, and the market's `description` says
+  so to traders (the seed's `DECISION_RULE`); the platform still interprets
+  no label.
 - **Outcomes are ordered best first, worst last, and the headline is
   `1 − P(last)`** (`lib/headline.ts`) — for a paper, accepted in any form.
   For a binary `[YES, NO]` market that is exactly P(YES), so binary markets

@@ -123,6 +123,12 @@ async function report(db: Database) {
 
 /** The four outcomes of a paper's market, best first; the headline is 1 − P(Reject). */
 const DECISIONS = ['Oral', 'Spotlight', 'Poster', 'Reject'];
+/**
+ * The decision market's resolution rule, shown under the question. Reject is
+ * every way a paper can fail to appear (#19): the client that settles the
+ * market settles a withdrawal as Reject.
+ */
+const DECISION_RULE = 'Reject also covers a paper that is withdrawn or desk-rejected before the decision.';
 const DAY = 24 * 60 * 60 * 1000;
 
 interface Paper {
@@ -372,6 +378,7 @@ async function seedPaper(
       ...common,
       slug: `${p.slug}-decision`,
       question: `How will ${kind} decide this paper?`,
+      description: DECISION_RULE,
       outcomes: DECISIONS,
       listingRank: 0,
     },
