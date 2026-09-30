@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CodeInput } from '@/components/CodeInput';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
@@ -21,6 +22,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(
     resent ? { ok: true, text: 'We sent you a new code.' } : null,
   );
@@ -31,11 +33,13 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
 
   async function confirm(e: React.FormEvent) {
     e.preventDefault();
+    if (busy || code.length !== 6 || !email.trim()) return;
     setBusy(true);
     setNote(null);
     const { error } = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp: code.trim() });
     if (error) {
       setBusy(false);
+      setCode(''); // ready for the next attempt, typed or pasted
       setNote({
         ok: false,
         text:
@@ -68,7 +72,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
   }
 
   return (
-    <form onSubmit={confirm}>
+    <form ref={form} onSubmit={confirm}>
       <p className="my-4">
         {initialEmail ? (
           <>
@@ -85,20 +89,16 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className={field} />
         </label>
       )}
-      <label className="mt-2.5 block font-sans text-[13px] text-muted">
-        Code
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          required
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="\d{6}"
-          maxLength={6}
-          autoFocus
-          className={`${field} font-mono tracking-[.3em]`}
-        />
-      </label>
+      <div className="mt-2.5 font-sans text-[13px] text-muted">Code</div>
+      {/* A pasted or autofilled code confirms by itself; typed, the last digit does too. */}
+      <CodeInput
+        value={code}
+        onChange={setCode}
+        onComplete={() => form.current?.requestSubmit()}
+        autoFocus={!!initialEmail}
+        disabled={busy}
+        aria-label="6-digit code"
+      />
       <button className={ui.btn()} disabled={busy || code.length !== 6}>
         Confirm
       </button>
