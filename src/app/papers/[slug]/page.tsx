@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
+import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
@@ -115,33 +116,58 @@ export default async function PaperPage({
       {markets.length === 0 && <div className={ui.empty}>No markets on this paper yet.</div>}
       {markets.length > 1 && (
         <section className="mt-6">
-          <h3 className={`${ui.section} mb-2`}>Markets</h3>
-          {markets.map((m) => {
-            const on = m.market.id === selected?.market.id;
-            const look = likelihoodClass(marketLikelihood({ ...m.market, outcomes: m.outcomes }));
-            return (
-              <Link
-                key={m.market.id}
-                href={`/papers/${encodeURIComponent(listing.slug)}?market=${encodeURIComponent(m.market.slug)}`}
-                scroll={false}
-                aria-current={on ? 'page' : undefined}
-                className={`grid grid-cols-[3px_1fr_auto] items-center gap-2.5 border-b border-dotted border-rule-strong py-1.5 hover:bg-highlight hover:no-underline ${
-                  on ? 'bg-tint font-semibold' : ''
-                }`}
-              >
-                <span className={`self-stretch ${look.bar}`} aria-hidden />
-                <span className="leading-[1.35]">
-                  {m.market.question}
-                  {m.market.status !== 'open' && <span className={ui.badge}>{m.market.status}</span>}
-                </span>
-                <span className={`rounded-[3px] px-1.5 font-mono text-sm ${look.chip}`}>{headline(m)}</span>
-              </Link>
-            );
-          })}
+          <h2 className={`${ui.section} mb-2`}>Markets</h2>
+          <table className={ui.table}>
+            <caption className={ui.tableCaption}>
+              <b>Table 1.</b> The markets on this paper, main market first. The one shown below is highlighted.
+            </caption>
+            <thead>
+              <tr>
+                <th className={ui.th()}>Market</th>
+                <th className={ui.th(true)}>
+                  Chance<sup className={ui.mark}>a</sup>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {markets.map((m) => {
+                const on = m.market.id === selected?.market.id;
+                const look = likelihoodClass(marketLikelihood({ ...m.market, outcomes: m.outcomes }));
+                return (
+                  <tr key={m.market.id} className={on ? 'bg-tint' : ''}>
+                    <td className={ui.td}>
+                      <Link
+                        href={`/papers/${encodeURIComponent(listing.slug)}?market=${encodeURIComponent(m.market.slug)}`}
+                        scroll={false}
+                        aria-current={on ? 'page' : undefined}
+                        className={on ? 'font-semibold text-ink' : 'text-ink'}
+                      >
+                        {m.market.question}
+                      </Link>
+                      {m.market.status !== 'open' && <span className={ui.badge}>{m.market.status}</span>}
+                    </td>
+                    <td className={`${ui.td} ${ui.num}`}>
+                      <span className={`rounded-[3px] px-1.5 ${look.chip}`}>{headline(m)}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <TableNotes
+            notes={[
+              [
+                'a',
+                'One minus the price of the last outcome: for a decision, the chance the paper is accepted in any form; for a yes/no question, the chance of yes. Once settled, the result.',
+              ],
+            ]}
+          />
         </section>
       )}
 
-      {initial && <MarketLive key={initial.market.id} initial={initial} embedded />}
+      {initial && (
+        <MarketLive key={initial.market.id} initial={initial} embedded firstTable={markets.length > 1 ? 2 : 1} />
+      )}
     </main>
   );
 }

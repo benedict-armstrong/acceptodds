@@ -41,9 +41,19 @@ const POLL_MS = 3000;
 /**
  * A market's board, chart, trade box, tape and comments, kept live by polling.
  * `embedded` when it sits under a listing's own title (the paper page): the
- * question is then a sub-heading rather than the page title.
+ * question is then a sub-heading rather than the page title. Its tables are
+ * numbered from `firstTable`.
  */
-export function MarketLive({ initial, embedded = false }: { initial: Initial; embedded?: boolean }) {
+export function MarketLive({
+  initial,
+  embedded = false,
+  firstTable = 1,
+}: {
+  initial: Initial;
+  embedded?: boolean;
+  /** The number of its first table: the page may have numbered tables above it. */
+  firstTable?: number;
+}) {
   const id = initial.market.id;
   const { data: market = initial.market, mutate: refreshMarket } = useSWR<Market>(`/api/v1/markets/${id}`, publicJson, {
     fallbackData: initial.market,
@@ -164,7 +174,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
             holdings={holdings}
             caption={
               <>
-                <b>Table 1.</b> Your open positions in this market.
+                <b>Table {firstTable}.</b> Your open positions in this market.
               </>
             }
             sellable={tradable && initial.viewer.canTrade ? [market.id] : []}
@@ -177,7 +187,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
         <div>
           <h3 className={`${ui.section} mb-2`}>Recent trades</h3>
           <div className="overflow-x-auto">
-            <TapeTable market={market} tape={tape} n={holdings.length > 0 ? 2 : 1} />
+            <TapeTable market={market} tape={tape} n={firstTable + (holdings.length > 0 ? 1 : 0)} />
           </div>
         </div>
         {/* On a narrow screen the trade box comes before the tape. */}
