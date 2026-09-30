@@ -162,6 +162,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
     `${href({ ...pages, [key]: String(p) })}${anchor}`;
   const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
+  // Shown on the ⋯ trigger when not the defaults.
+  const activeFilters = [status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ');
 
   return (
     <main className={ui.page}>
@@ -250,9 +252,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </span>
         {/* Status and following, out of the way. */}
         <Popover>
-          <PopoverTrigger title="More filters: status, following" className="inline-flex cursor-pointer items-center gap-1 px-1 text-ink hover:text-accent">
-            {[status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ')}
-            <MoreIcon />
+          {/* Not a flex box: an icon alone gives a flex item no text baseline, and the row aligns on
+              baselines. Inline, `align-middle` centres the dots on the text's x-height. */}
+          <PopoverTrigger title="More filters: status, following" className="cursor-pointer px-1 text-ink hover:text-accent">
+            {activeFilters}
+            <MoreIcon className={`inline-block size-5 align-middle ${activeFilters ? 'ml-1' : ''}`} />
           </PopoverTrigger>
           <PopoverContent menu align="end" className="text-[13px]">
             {STATUSES.map((s) => (
@@ -368,13 +372,20 @@ function SearchHelp() {
           matches in order, <code>-word</code> excludes. Words alone also find people. Terms are ANDed; use{' '}
           <code>OR</code> and <code>( )</code> to group, and <code>-</code> before a filter or group to negate it.
         </p>
-        <table className="mt-1.5">
+        <table className={ui.table}>
+          <thead>
+            <tr>
+              <th className={ui.th()}>Filter</th>
+              <th className={ui.th()}>Means</th>
+              <th className={ui.th()}>Also</th>
+            </tr>
+          </thead>
           <tbody>
             {FIELD_HELP.map((f) => (
               <tr key={f.field}>
-                <td className="pr-3 font-mono text-ink">{f.example}</td>
-                <td className="pr-3">{f.means}</td>
-                <td className="text-faint">{f.aliases.map((a) => `${a}:`).join(' ')}</td>
+                <td className={`${ui.td} font-mono text-ink`}>{f.example}</td>
+                <td className={ui.td}>{f.means}</td>
+                <td className={`${ui.td} text-faint`}>{f.aliases.map((a) => `${a}:`).join(' ')}</td>
               </tr>
             ))}
           </tbody>

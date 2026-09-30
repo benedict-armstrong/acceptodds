@@ -88,8 +88,8 @@ export function PriceChart({
         >
           {ticks.map((v) => (
             <g key={v}>
-              <line x1={pad.l} x2={width - pad.r} y1={y(v)} y2={y(v)} stroke="#ddd" strokeDasharray="3 4" />
-              <text x={0} y={y(v) + 4} fontSize="11" fill="#999" fontFamily="ui-monospace, monospace">
+              <line x1={pad.l} x2={width - pad.r} y1={y(v)} y2={y(v)} strokeDasharray="3 4" className="stroke-rule" />
+              <text x={0} y={y(v) + 4} className="fill-muted font-mono text-[11px]">
                 {pct(v)}
               </text>
             </g>
@@ -111,7 +111,7 @@ export function PriceChart({
           )}
           {hoverX !== null && at && (
             <g pointerEvents="none">
-              <line x1={hoverX} x2={hoverX} y1={pad.t} y2={height - pad.b} stroke="#999" strokeDasharray="2 3" />
+              <line x1={hoverX} x2={hoverX} y1={pad.t} y2={height - pad.b} strokeDasharray="2 3" className="stroke-faint" />
               {lines.map((i) => (
                 <circle
                   key={i}
@@ -119,23 +119,21 @@ export function PriceChart({
                   cy={y(at.prices[i])}
                   r="3.5"
                   fill={colorOf(i, n)}
-                  stroke="#fbfaf7"
+                  className="stroke-bg"
                   strokeWidth="1.5"
                   opacity={faded(i) ? 0.15 : 1}
                 />
               ))}
             </g>
           )}
-          <text x={pad.l} y={height - 4} fontSize="11" fill="#999" fontFamily="ui-monospace, monospace">
+          <text x={pad.l} y={height - 4} className="fill-muted font-mono text-[11px]">
             {date(t0)}
           </text>
           <text
             x={width - pad.r}
             y={height - 4}
-            fontSize="11"
-            fill="#999"
             textAnchor="end"
-            fontFamily="ui-monospace, monospace"
+            className="fill-muted font-mono text-[11px]"
           >
             {date(t1)}
           </text>

@@ -9,14 +9,11 @@ import { SellModal } from '@/components/SellModal';
 import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { pct, rep, REP } from '@/lib/format';
+import { marketHref } from '@/lib/links';
 import type * as S from '@/server/api/schemas';
 
 type Holding = z.output<typeof S.Holding>;
 
-/** Where a holding's market is read: its paper, with the market selected, or the market itself. */
-export function holdingHref(h: Pick<Holding, 'marketSlug' | 'listingSlug'>): string {
-  return h.listingSlug ? `/papers/${h.listingSlug}?market=${encodeURIComponent(h.marketSlug)}` : `/markets/${h.marketSlug}`;
-}
 
 /** Exit value minus cost basis: what selling it all now would gain or lose. */
 function change(h: Holding): bigint {
@@ -149,7 +146,7 @@ function Row({
     <tr>
       {showMarket && (
         <td className={ui.td}>
-          <Link href={holdingHref(h)}>{h.question}</Link>
+          <Link href={marketHref(h)}>{h.question}</Link>
           {h.marketStatus !== 'open' && <span className={ui.badge}>{h.marketStatus}</span>}
         </td>
       )}

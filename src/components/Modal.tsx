@@ -2,6 +2,7 @@
 
 import * as D from '@radix-ui/react-dialog';
 import type { ComponentProps, ReactNode } from 'react';
+import { ui } from './ui';
 
 /**
  * A modal dialog in the site's look: Radix's primitive (what shadcn/ui's
@@ -32,7 +33,7 @@ export function ModalContent({
         {...props}
       >
         <div className="mb-3 flex items-baseline justify-between gap-3">
-          <D.Title className="text-base font-normal">{title}</D.Title>
+          <D.Title className={ui.runIn}>{title}</D.Title>
           <D.Close aria-label="Close" className="cursor-pointer px-1 text-lg leading-none text-muted hover:text-ink">
             ×
           </D.Close>

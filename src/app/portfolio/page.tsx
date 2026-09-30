@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Pager } from '@/components/Pager';
-import { holdingHref, PositionsTable } from '@/components/PositionsTable';
+import { PositionsTable } from '@/components/PositionsTable';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { WorthTable } from '@/components/WorthTable';
 import { day, rep, REP, shares, signedRep } from '@/lib/format';
+import { marketHref } from '@/lib/links';
 import { presentPortfolio } from '@/server/api/present';
 import { closedPositions, getPortfolio } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
@@ -89,7 +90,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               {closed.rows.map((c) => (
                 <tr key={c.outcomeId}>
                   <td className={ui.td}>
-                    <Link href={holdingHref(c)}>{c.question}</Link>
+                    <Link href={marketHref(c)}>{c.question}</Link>
                   </td>
                   <td className={`${ui.td} font-mono text-[13px]`}>
                     {shares(c.boughtMicro)} {c.outcomeLabel}

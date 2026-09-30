@@ -91,6 +91,8 @@ export default async function LeaderboardPage({
     return s ? `/leaderboard?${s}` : '/leaderboard';
   };
   const where = institution ? ` at ${institution}` : '';
+  // The best figure in each column over the whole board, set in bold as a results table sets it.
+  const best = bestOf(field);
 
   return (
     <main className={ui.page}>
@@ -211,7 +213,7 @@ export default async function LeaderboardPage({
           <caption className={ui.tableCaption}>
             <b>Table 1.</b> Traders{where}
             {basis === 'net_worth' ? ' by net worth, if each sold everything now' : ' by profit on settled markets'}
-            {q ? `, matching “${q}”` : ''}.
+            {q ? `, matching “${q}”` : ''}. The best figure in each column is in bold.
           </caption>
           <thead>
             <tr>
@@ -236,6 +238,7 @@ export default async function LeaderboardPage({
                 rows={segment}
                 gapBefore={i > 0}
                 me={me}
+                best={best}
                 focus={focus >= 0 ? field[focus].accountId : null}
                 institutionHref={(name) => href({ institution: name, around: null, page: null })}
               />
@@ -269,17 +272,38 @@ export default async function LeaderboardPage({
   );
 }
 
+type Best = { netWorth: bigint | null; unrealized: bigint | null; settled: bigint | null };
+
+/**
+ * Each column's highest figure on the board, or null when nobody is above
+ * zero: a column of zeros has no best, and a loss is never set as one.
+ */
+function bestOf(field: readonly LeaderboardRow[]): Best {
+  const max = (pick: (r: LeaderboardRow) => bigint) => {
+    const m = field.reduce<bigint | null>((acc, r) => (acc === null || pick(r) > acc ? pick(r) : acc), null);
+    return m !== null && m > 0n ? m : null;
+  };
+  return { netWorth: max((r) => r.netWorthMicro), unrealized: max((r) => r.unrealizedPnlMicro), settled: max((r) => r.settledPnlMicro) };
+}
+
+/** Bold when `v` is its column's best. */
+function bold(v: bigint, best: bigint | null): string {
+  return v === best ? 'font-bold' : '';
+}
+
 /** Consecutive rows of the board, after a "…" row when they do not follow the rows above. */
 function Segment({
   rows,
   gapBefore,
   me,
+  best,
   focus,
   institutionHref,
 }: {
   rows: LeaderboardRow[];
   gapBefore: boolean;
   me: string | null;
+  best: Best;
   focus: string | null;
   institutionHref: (name: string) => string;
 }) {
@@ -314,9 +338,13 @@ function Segment({
                 </span>
               ))}
             </td>
-            <td className={`${ui.td} ${ui.num}`}>{rep(r.netWorthMicro)}</td>
-            <td className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)}`}>{signedRep(r.unrealizedPnlMicro)}</td>
-            <td className={`${ui.td} ${ui.num} ${ui.pnl(r.settledPnlMicro)}`}>{signedRep(r.settledPnlMicro)}</td>
+            <td className={`${ui.td} ${ui.num} ${bold(r.netWorthMicro, best.netWorth)}`}>{rep(r.netWorthMicro)}</td>
+            <td className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}>
+              {signedRep(r.unrealizedPnlMicro)}
+            </td>
+            <td className={`${ui.td} ${ui.num} ${ui.pnl(r.settledPnlMicro)} ${bold(r.settledPnlMicro, best.settled)}`}>
+              {signedRep(r.settledPnlMicro)}
+            </td>
           </tr>
         );
       })}
