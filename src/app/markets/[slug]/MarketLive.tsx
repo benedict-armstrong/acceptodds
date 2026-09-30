@@ -8,6 +8,7 @@ import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
+import { usePassed } from '@/components/usePassed';
 import { day, pct, rep, REP } from '@/lib/format';
 import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
@@ -84,7 +85,8 @@ export function MarketLive({
   const labels = market.outcomes.map((o) => o.label);
   const label = (outcomeId: string) => labels[market.outcomes.findIndex((o) => o.id === outcomeId)] ?? '?';
   const holdings = (portfolio?.holdings ?? []).filter((h) => h.marketId === id);
-  const tradable = market.status === 'open' && new Date(market.closesAt).getTime() > Date.now();
+  const closed = usePassed(new Date(market.closesAt).getTime());
+  const tradable = market.status === 'open' && !closed;
   const sorted = market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
   const lead = likelihoodClass(marketLikelihood(market)).text;
   // Three or four ordered outcomes (a paper: oral, spotlight, poster, reject)

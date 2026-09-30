@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { clearPending, readPending, type PendingConfirmation } from '@/lib/pending-confirmation';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { clearPending, parsePending, readPendingRaw, subscribePending } from '@/lib/pending-confirmation';
 import { authHref } from '@/lib/return-to';
 
 const AUTH_PAGES = ['/signin', '/signup', '/confirm'];
@@ -15,18 +15,15 @@ const AUTH_PAGES = ['/signin', '/signup', '/confirm'];
  */
 export function ConfirmBanner({ signedIn }: { signedIn: boolean }) {
   const pathname = usePathname();
-  const [pending, setPending] = useState<PendingConfirmation | null>(null);
+  // Nothing on the server, so the first client render matches it.
+  const raw = useSyncExternalStore(subscribePending, readPendingRaw, () => null);
+  const pending = useMemo(() => parsePending(raw), [raw]);
 
   useEffect(() => {
-    if (signedIn) {
-      clearPending();
-      setPending(null);
-    } else {
-      setPending(readPending());
-    }
-  }, [signedIn, pathname]);
+    if (signedIn) clearPending();
+  }, [signedIn]);
 
-  if (!pending || AUTH_PAGES.includes(pathname)) return null;
+  if (signedIn || !pending || AUTH_PAGES.includes(pathname)) return null;
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 border-b border-rule bg-highlight px-6 py-2 narrow:px-4 font-sans text-[13px]">
       <span>
@@ -38,10 +35,7 @@ export function ConfirmBanner({ signedIn }: { signedIn: boolean }) {
       <span className="flex-1" />
       <button
         className="cursor-pointer text-faint"
-        onClick={() => {
-          clearPending();
-          setPending(null);
-        }}
+        onClick={clearPending}
         aria-label="dismiss"
       >
         ×

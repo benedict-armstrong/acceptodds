@@ -372,11 +372,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           open={followingOpen}
           className="group mt-3.5"
           summary={
-            <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-              Following <span className="font-normal">({followed.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
-                ›
-              </span>
-            </summary>
+            <>
+              Following <span className="font-normal">({followed.total})</span>
+            </>
           }
         >
           {followed.rows.map((r) => (
@@ -393,11 +391,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           open={positionsOpen}
           className="group mt-3.5"
           summary={
-            <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-              My positions <span className="font-normal">({held.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
-                ›
-              </span>
-            </summary>
+            <>
+              My positions <span className="font-normal">({held.total})</span>
+            </>
           }
         >
           {held.rows.map((r) => (

@@ -5,7 +5,7 @@
 #          the server: migrations, token:mint, digest:send. Run one-off with
 #          `docker compose run --rm tools npm run <script>`.
 
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -22,7 +22,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # the compile is nearly all of a deploy's time, and most modules do not change.
 RUN --mount=type=cache,target=/app/.next/cache npm run build
 
-FROM node:24-bookworm-slim AS app
+FROM node:26-bookworm-slim AS app
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

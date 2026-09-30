@@ -50,13 +50,12 @@ export function TradeBox({
 }) {
   const [idx, setIdx] = useState(0);
   const [stake, setStake] = useState('100');
+  const outcome = market.outcomes[idx];
+  const budget = parseUnits(stake);
   // Called after the fill, with this render's choice: the one the order was sent from.
   const { send, busy, note } = useOrder(market.id, () =>
     onFilled({ outcomeId: outcome.id, stakeMicro: budget ?? 0n }),
   );
-
-  const outcome = market.outcomes[idx];
-  const budget = parseUnits(stake);
   // The shares the stake buys on the board as last polled, rounded down. The
   // engine only takes a share count; the quote then prices it on the live
   // board, and that quote, not the stake, is what is shown and bounds the order.

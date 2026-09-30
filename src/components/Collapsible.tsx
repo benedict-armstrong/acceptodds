@@ -1,9 +1,15 @@
 'use client';
 
+import { ui } from './ui';
+
 /**
  * A `<details>` that remembers whether it was left open, in a cookie the
  * server reads (`cookies().get(cookie)`), so the page renders it that way
  * with no flash. A preference, nothing more: no account, no API.
+ *
+ * `summary` is the heading's content; the `<summary>` element is built here,
+ * not passed in, so a server-rendered element never sits unkeyed beside
+ * `children` (React's missing-key warning).
  */
 export function Collapsible({
   cookie,
@@ -30,7 +36,12 @@ export function Collapsible({
         document.cookie = `${cookie}=${v}; path=/; max-age=31536000; samesite=lax`;
       }}
     >
-      {summary}
+      <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+        {summary}{' '}
+        <span className="inline-block group-open:rotate-90" aria-hidden>
+          ›
+        </span>
+      </summary>
       {children}
     </details>
   );

@@ -1,8 +1,15 @@
 # AGENTS.md — papermarket platform
 
-TypeScript, Next.js 15 (App Router, `src/`), Drizzle + Postgres 16, Vitest +
-fast-check. The package was a Python/FastAPI scaffold until 2026-09-23; ignore
-anything that says otherwise.
+TypeScript, Next.js 16 (App Router, `src/`), Drizzle + Postgres 16, Vitest +
+fast-check, on Node 26 (`.node-version`, the Dockerfile). The package was a
+Python/FastAPI scaffold until 2026-09-23; ignore anything that says otherwise.
+
+- **Two TypeScripts.** `tsc` is TypeScript 7 (`@typescript/native`), which
+  has no compiler API; `typescript` is an alias for `@typescript/typescript6`,
+  for what imports the API (typescript-eslint, `next build`'s check). Move
+  `typescript` to 7 only once typescript-eslint supports it.
+- **ESLint stays on 9** until `eslint-config-next`'s `eslint-plugin-react`
+  supports 10; under 10 it crashes on load.
 
 - **Tests:** `npm test` (unit + property, no database). `npm run test:integration`
   needs the dev Postgres up and `TEST_DATABASE_URL` set; it truncates every
