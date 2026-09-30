@@ -1,6 +1,7 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
+import { user as authUser } from '@/db/auth-schema';
 import * as schema from '@/db/schema';
 import { accounts, affiliations, ledgerEntries, listings, markets, orders, outcomes, positions } from '@/db/schema';
 import { costBasis, type Fill } from '@/lib/cost-basis';
@@ -485,4 +486,24 @@ export async function ensureAccountForUser(
 
 function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+}
+
+/**
+ * Rename a trader: `accounts.display_name`, and the Better Auth user's
+ * `name` with it, so the two never disagree. The handle stays. Names are on
+ * the leaderboard, so the ranked field is invalidated after the commit.
+ */
+export async function setDisplayName(
+  account: typeof accounts.$inferSelect,
+  displayName: string,
+  database: Db = getDb(),
+): Promise<typeof accounts.$inferSelect> {
+  const name = displayName.trim();
+  const row = await database.transaction(async (tx) => {
+    const [updated] = await tx.update(accounts).set({ displayName: name }).where(eq(accounts.id, account.id)).returning();
+    if (account.userId) await tx.update(authUser).set({ name }).where(eq(authUser.id, account.userId));
+    return updated;
+  });
+  invalidateStandings();
+  return row;
 }

@@ -4,12 +4,14 @@ import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins/email-otp';
+import { magicLink } from 'better-auth/plugins/magic-link';
 import { apiKey } from '@better-auth/api-key';
 import { getDb, type Database } from '@/db';
 import * as authSchema from '@/db/auth-schema';
 import { CLIENT_IP_HEADER } from './api/http';
 import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
+import { consume, type RateLimitConfig } from './ratelimit';
 import { setPasswordPath } from '@/lib/links';
 import { safeReturnTo } from '@/lib/return-to';
 import { sendMail } from './mail';
@@ -53,6 +55,17 @@ export const EMAIL_DOMAIN_NOT_ALLOWED = 'EMAIL_DOMAIN_NOT_ALLOWED';
 /** How long a confirmation link and code stay valid. */
 const CONFIRMATION_TTL_SECONDS = 60 * 60;
 
+/** How long a sign-in link stays valid: it is a credential on its own. */
+const MAGIC_LINK_TTL_SECONDS = 15 * 60;
+
+/**
+ * Sign-in links per address: 5, refilling over a day. The route is
+ * anonymous and sends mail; this limits what any number of clients can send
+ * to one inbox, like onboarding's budget.
+ */
+const MAGIC_LINK_MAIL_BUDGET: RateLimitConfig = { burst: 5, perSecond: 5 / 86_400 };
+
+
 /**
  * The email-OTP plugin's routes that stay off. It is here for the codes in
  * two mails: the confirmation mail, and the "choose a password" mail to an
@@ -80,6 +93,32 @@ export async function hasPassword(userId: string, database: Database = getDb()):
     .from(authSchema.account)
     .where(and(eq(authSchema.account.userId, userId), eq(authSchema.account.providerId, 'credential')));
   return !!row?.password;
+}
+
+/**
+ * What a signed-in user still lacks: a name (an account made by a sign-in
+ * link has none) and a password. `/signin/continue` asks for these.
+ */
+export async function missingFromUser(
+  userId: string,
+  database: Database = getDb(),
+): Promise<{ name: boolean; password: boolean }> {
+  const [row] = await database.select({ name: authSchema.user.name }).from(authSchema.user).where(eq(authSchema.user.id, userId));
+  return { name: !row?.name.trim(), password: !(await hasPassword(userId, database)) };
+}
+
+/**
+ * The address of the account a password-reset token is for, or `null` when
+ * the token is unknown or expired. The token alone decides whose password
+ * `/reset-password` sets, so `/set-password` names this account, never the
+ * `?email=` in its URL. Read without consuming it.
+ */
+export async function resetTokenEmail(token: string, database: Database = getDb()): Promise<string | null> {
+  const ctx = await getAuth().$context;
+  const row = await ctx.internalAdapter.findVerificationValue(`reset-password:${token}`);
+  if (!row || row.expiresAt < new Date()) return null;
+  const [u] = await database.select({ email: authSchema.user.email }).from(authSchema.user).where(eq(authSchema.user.id, row.value));
+  return u?.email ?? null;
 }
 
 type RequestReset = (body: { email: string; redirectTo: string }) => Promise<unknown>;
@@ -225,6 +264,40 @@ export function createAuth(database: Database) {
     },
 
     plugins: [
+      // Sign in by a link in the mail, from `/signin`. An address with no
+      // account gets one when the link is opened — confirmed, since the link
+      // proves the inbox, with no name and no password, which
+      // `/signin/continue` then asks for. The allowlist is checked here,
+      // before any mail, as well as in the `user.create.before` hook, so an
+      // unlisted address is refused on the sign-in page, not by a dead link.
+      // The answer is otherwise the same whether or not the address has an
+      // account; only the inbox learns.
+      magicLink({
+        expiresIn: MAGIC_LINK_TTL_SECONDS,
+        sendMagicLink: async ({ email, url }) => {
+          const address = email.trim().toLowerCase();
+          if (!institutionForEmail(address)) {
+            throw new APIError('UNPROCESSABLE_ENTITY', {
+              code: EMAIL_DOMAIN_NOT_ALLOWED,
+              message: 'sign-in is open to approved institutional email domains only',
+            });
+          }
+          const budget = await consume(`magic-link-mail:${address}`, MAGIC_LINK_MAIL_BUDGET);
+          if (!budget.allowed) {
+            throw new APIError('TOO_MANY_REQUESTS', {
+              code: 'RATE_LIMITED',
+              message: 'too many sign-in links to this address; try again later',
+            });
+          }
+          await sendMail({
+            to: address,
+            subject: 'Your acceptodds sign-in link',
+            text:
+              `Open this link to sign in to acceptodds. If you have no account yet, it makes one:\n\n${url}\n\n` +
+              `It works once, for 15 minutes. If you did not ask for it, ignore this; nothing has changed.`,
+          });
+        },
+      }),
       emailOTP({
         expiresIn: CONFIRMATION_TTL_SECONDS,
         storeOTP: 'hashed',

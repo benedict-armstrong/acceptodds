@@ -531,6 +531,9 @@ export const MyOrders = z
 export const UpdateMeRequest = z
   .object({
     digestOptIn: z.boolean().optional().meta({ description: 'Turn the daily followed-papers email on or off.' }),
+    displayName: z.string().trim().min(1).max(100).optional().meta({
+      description: 'The name shown for you on the leaderboard and your public page. Your handle does not change.',
+    }),
   })
   .strict()
   .meta({ id: 'UpdateMeRequest' });

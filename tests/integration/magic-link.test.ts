@@ -1,0 +1,116 @@
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/db';
+import { user } from '@/db/auth-schema';
+import { getAuth, missingFromUser, resetTokenEmail } from '@/server/better-auth';
+import { clearDevOutbox, devOutbox } from '@/server/mail';
+import { api, authCall, cookieFrom, signUp } from './api-client';
+import { closePool, resetDatabase, seedMarket, STARTING_MICRO } from './helpers';
+
+const db = getDb();
+const LANDING = '/signin/continue';
+
+beforeEach(async () => {
+  await resetDatabase();
+  process.env.API_RATE_LIMIT_BURST = '1000';
+  process.env.API_RATE_LIMIT_PER_SECOND = '1000';
+  process.env.STARTING_BALANCE_MICRO = STARTING_MICRO.toString();
+  clearDevOutbox();
+  await seedMarket(0, 10);
+}, 60_000);
+
+afterAll(async () => {
+  await closePool();
+});
+
+function requestLink(email: string) {
+  return authCall('POST', '/sign-in/magic-link', {
+    body: { email, callbackURL: LANDING, newUserCallbackURL: `${LANDING}?new=1`, errorCallbackURL: LANDING },
+  });
+}
+
+/** Open the link in the newest mail to `email`: the session cookie and where it redirected. */
+async function openLink(email: string) {
+  const mail = devOutbox().findLast((m) => m.to === email);
+  if (!mail) throw new Error('no mail');
+  const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+  const res = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+  const location = res.headers.get('location');
+  const at = location ? new URL(location, 'http://test.local') : null;
+  return { cookie: cookieFrom(res), location: at ? `${at.pathname}${at.search}` : null };
+}
+
+async function userRow(email: string) {
+  const [row] = await db.select().from(user).where(eq(user.email, email));
+  return row;
+}
+
+describe('sign-in links', () => {
+  it('make an account for a new address, which then needs a name and a password', async () => {
+    expect((await requestLink('ada@example.org')).status).toBe(200);
+    expect(await userRow('ada@example.org')).toBeUndefined(); // nothing before the link is opened
+
+    const { cookie, location } = await openLink('ada@example.org');
+    expect(cookie).toContain('session_token');
+    expect(location).toBe(`${LANDING}?new=1`);
+
+    const me = await api('GET', '/me', { cookie });
+    expect(me.body).toMatchObject({ canTrade: true, balanceMicro: STARTING_MICRO.toString() });
+    const u = await userRow('ada@example.org');
+    expect(await missingFromUser(u.id)).toEqual({ name: true, password: true });
+
+    const named = await api('PATCH', '/me', { cookie, body: { displayName: '  Ada Lovelace ' } });
+    expect(named.status).toBe(200);
+    expect(named.body.displayName).toBe('Ada Lovelace');
+    expect((await userRow('ada@example.org')).name).toBe('Ada Lovelace');
+    expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(200);
+    expect(await missingFromUser(u.id)).toEqual({ name: false, password: false });
+
+    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    expect(signIn.status).toBe(200);
+  });
+
+  it('sign an existing account in, with nothing missing', async () => {
+    await signUp('ada@example.org', 'Ada');
+    clearDevOutbox();
+    await requestLink('ada@example.org');
+    const { cookie, location } = await openLink('ada@example.org');
+    expect(cookie).toContain('session_token');
+    expect(location).toBe(LANDING);
+    expect(await missingFromUser((await userRow('ada@example.org')).id)).toEqual({ name: false, password: false });
+  });
+
+  it('work once', async () => {
+    await requestLink('ada@example.org');
+    await openLink('ada@example.org');
+    const again = await openLink('ada@example.org');
+    expect(again.cookie).not.toContain('session_token');
+    expect(again.location).toContain('error=');
+  });
+
+  it('are refused to an unlisted address before any mail', async () => {
+    const res = await requestLink('someone@gmail.com');
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe('EMAIL_DOMAIN_NOT_ALLOWED');
+    expect(devOutbox()).toEqual([]);
+  });
+
+  it('are mailed to one address at most five times a day', async () => {
+    for (let i = 0; i < 5; i += 1) expect((await requestLink('ada@example.org')).status).toBe(200);
+    expect((await requestLink('ada@example.org')).status).toBe(429);
+    expect(devOutbox()).toHaveLength(5);
+  });
+});
+
+describe('a password-reset token', () => {
+  it('names the account it resets, whatever the URL says', async () => {
+    await signUp('ada@example.org', 'Ada');
+    await signUp('bob@example.org', 'Bob');
+    clearDevOutbox();
+    await getAuth().api.requestPasswordReset({ body: { email: 'bob@example.org', redirectTo: '/set-password?email=ada%40example.org' } });
+    const link = /https?:\/\/\S+/.exec(devOutbox()[0].text)![0];
+    const token = /reset-password\/([^?]+)/.exec(link)![1];
+    expect(await resetTokenEmail(token)).toBe('bob@example.org');
+    expect(await resetTokenEmail('not-a-token')).toBeNull();
+  });
+});

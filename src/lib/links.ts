@@ -19,3 +19,12 @@ export function setPasswordPath(email: string, code?: string): string {
   if (code) q.set('code', code);
   return `/set-password?${q}`;
 }
+
+/**
+ * Where every sign-in link lands (`app/signin/continue`), new account or
+ * not, and where a dead one reports its error: that page asks for whatever
+ * is missing (a name, a password), then goes on to `next`.
+ */
+export function signInContinueHref(next: string): string {
+  return next === '/' ? '/signin/continue' : `/signin/continue?next=${encodeURIComponent(next)}`;
+}

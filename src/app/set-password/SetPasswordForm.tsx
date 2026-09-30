@@ -7,33 +7,40 @@ import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 import { setPasswordPath } from '@/lib/links';
 
+type Proof = { token: string } | { code: string };
+
 /**
- * Set the password with the link's token or the mail's code, then sign in
- * with it. Each works once, for an hour; a dead one offers a fresh mail to
- * the same address, which Better Auth sends only if it has an account.
+ * Set the password of `target` — the account the link's token or the mail's
+ * code belongs to — then sign in as it. Each works once, for an hour; a dead
+ * one offers a fresh mail to the same address, which Better Auth sends only
+ * if it has an account.
  */
 export function SetPasswordForm({
-  proof,
-  email,
+  target,
+  resendTo,
+  signedInAs,
 }: {
-  proof: { token: string } | { code: string } | null;
-  email: string | null;
+  target: { email: string; proof: Proof } | null;
+  resendTo: string | null;
+  /** Set when the viewer is signed in as a different account than `target`. */
+  signedInAs: string | null;
 }) {
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [dead, setDead] = useState(proof === null);
+  const [dead, setDead] = useState(target === null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!proof) return;
+    if (!target) return;
     setBusy(true);
     setNote(null);
+    const { email, proof } = target;
     const reset =
       'token' in proof
         ? await authClient.resetPassword({ newPassword: password, token: proof.token })
-        : await authClient.emailOtp.resetPassword({ email: email!, otp: proof.code, password });
+        : await authClient.emailOtp.resetPassword({ email, otp: proof.code, password });
     if (reset.error) {
       setBusy(false);
       if (['INVALID_TOKEN', 'INVALID_OTP', 'OTP_EXPIRED', 'TOO_MANY_ATTEMPTS'].includes(reset.error.code ?? '')) {
@@ -41,28 +48,28 @@ export function SetPasswordForm({
       }
       return setNote({ ok: false, text: reset.error.message ?? 'Could not set the password.' });
     }
-    const signIn = email ? await authClient.signIn.email({ email, password }) : null;
-    if (!signIn || signIn.error) return router.push('/signin');
+    const signIn = await authClient.signIn.email({ email, password });
+    if (signIn.error) return router.push('/signin');
     router.push('/');
     router.refresh();
   }
 
   async function resend() {
-    if (!email) return;
+    if (!resendTo) return;
     setBusy(true);
     setNote(null);
-    const { error } = await authClient.requestPasswordReset({ email, redirectTo: setPasswordPath(email) });
+    const { error } = await authClient.requestPasswordReset({ email: resendTo, redirectTo: setPasswordPath(resendTo) });
     setBusy(false);
     setNote(error ? { ok: false, text: error.message ?? 'Could not send a new link.' } : { ok: true, text: 'Sent. Check your inbox.' });
   }
 
-  if (dead) {
+  if (dead || !target) {
     return (
       <>
-        <p className="mb-3">This {proof && 'code' in proof ? 'code' : 'link'} has expired or was already used.</p>
-        {email ? (
+        <p className="mb-3">This link or code has expired or was already used.</p>
+        {resendTo ? (
           <button type="button" className={ui.btn()} disabled={busy} onClick={resend}>
-            Send a new link to {email}
+            Send a new link to {resendTo}
           </button>
         ) : (
           <Link href="/signin">Sign in</Link>
@@ -74,13 +81,17 @@ export function SetPasswordForm({
 
   return (
     <form onSubmit={submit}>
-      {email && (
-        <p className="mb-3 text-muted">
-          For <b className="text-ink">{email}</b>. You are signed in once it is set.
-        </p>
+      <p className="mb-3 text-muted">
+        For the account <b className="text-ink">{target.email}</b>. You are signed in as it once the password is set.
+      </p>
+      {signedInAs && (
+        <div className={`${ui.note(false)} mb-3`}>
+          You are signed in as <b>{signedInAs}</b>, not {target.email}. This sets the password of{' '}
+          <b>{target.email}</b> and signs you in as it instead.
+        </div>
       )}
       {/* For password managers: which account the new password belongs to. */}
-      {email && <input type="email" value={email} readOnly hidden autoComplete="username" />}
+      <input type="email" value={target.email} readOnly hidden autoComplete="username" />
       <input
         type="password"
         value={password}
@@ -94,7 +105,7 @@ export function SetPasswordForm({
         className={ui.input}
       />
       <button className={ui.btn()} disabled={busy}>
-        {busy ? '…' : 'Set password and sign in'}
+        {busy ? '…' : signedInAs ? `Set password and switch to ${target.email}` : 'Set password and sign in'}
       </button>
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
     </form>

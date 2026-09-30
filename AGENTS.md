@@ -401,6 +401,22 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   never confirmed, or mails "you already have an account, sign in" if it
   was. The typed password is ignored. Don't turn this into a 422: that
   tells anyone which addresses have accounts.
+- **Sign-in links** (Better Auth's `magicLink` plugin): `/signin` offers
+  "Email me a sign-in link" under the password, for the address typed. The
+  allowlist and a per-address budget (`magic-link-mail:<email>`, 5 a day)
+  are checked in `sendMagicLink`, before any mail, so an unlisted address
+  is a 422 on the page, never a dead link; otherwise the answer is the same
+  whether or not the address has an account. A link works once, 15
+  minutes. Opened, it signs in — and for an address with no user, makes
+  one, confirmed (the link proves the inbox), with no name and no password;
+  the trader account follows lazily as for any session. Every link lands on
+  `/signin/continue` (`lib/links.ts` `signInContinueHref`, errors too),
+  which asks for what `missingFromUser` says is missing: a name and a
+  password, or only a password, naming the signed-in address, then goes on
+  to `next` (or to `/welcome`'s last step while an onboarding bet waits).
+  The name is `PATCH /me { displayName }` (`accounts.setDisplayName`: the
+  account's display name and Better Auth's `user.name` together, then the
+  standings cache is bumped); the handle never changes.
 - **An account with no password gets a set-password link, not `/signin`.**
   Onboarding makes accounts without one, so `mailAlreadyRegistered` (both
   sign-up and `POST /onboarding` use it) sends such an account a Better
@@ -409,6 +425,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   password with the token (Better Auth creates the missing credential) and
   signs in. `sendResetPassword` words its mail by whether a password
   exists. A dead link offers a new one to the same address.
+  **The token decides whose password is set**, not the URL: the page names
+  that account (`resetTokenEmail`, read without consuming the token) and
+  signs in as it; `?email=` is only a hint for a code and for resending.
+  Someone signed in as a different account is warned, by address, that
+  they will be switched to the link's account.
   The passwordless mail also carries a 6-digit `forget-password` code
   (minted with `createVerificationOTP`, like the confirmation code), because
   it may reach someone on `/welcome`'s confirm step, which asks for one.

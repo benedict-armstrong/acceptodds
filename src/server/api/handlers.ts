@@ -1,6 +1,6 @@
 import { isUniqueViolation } from '@/db/errors';
 import { authenticate, requireAuth, requireSession, requireTradingEligibility, type Principal } from '../auth';
-import { getPortfolio, startingBalanceMicro } from '../accounts';
+import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
@@ -295,6 +295,7 @@ export const patchMe = route(async (req) => {
   const body = await parseBody(req, S.UpdateMeRequest);
   let account = principal.account;
   if (body.digestOptIn !== undefined) account = await setDigestOptIn(account.id, body.digestOptIn);
+  if (body.displayName !== undefined) account = await setDisplayName(account, body.displayName);
   events.log('me.updated', { accountId: account.id });
   return respond(S.Me, presentMe({ ...principal, account }), { principal });
 });
