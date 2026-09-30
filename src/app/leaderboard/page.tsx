@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { Fragment } from 'react';
 import { Authors } from '@/components/Authors';
+import { BoardPicker } from '@/components/BoardPicker';
 import { GroupActions, NewGroupButton } from '@/components/Groups';
 import { Pager } from '@/components/Pager';
 import { FieldCurve } from '@/components/FieldCurve';
@@ -22,6 +22,7 @@ import {
   leaderboardStandings,
   matchingTraders,
   standingOf,
+  traderInstitutions,
   type LeaderboardBasis,
   type LeaderboardRow,
 } from '@/server/views';
@@ -51,8 +52,9 @@ function one(v: string | string[] | undefined): string | undefined {
  * `?group=` one group (#25); either opens like a paper, its members as the
  * author line, with its own Figure 1. `?q=` finds traders by name and
  * `institution:` (`lib/trader-query.ts`), each at their rank on the board.
- * Under the title, the viewer's boards: everyone, their institutions, their
- * groups.
+ * Under the title, a find box over the boards (`BoardPicker`): everyone,
+ * the viewer's institutions and groups, and any institution by name; "+ New
+ * group" on the right.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -72,11 +74,12 @@ export default async function LeaderboardPage({
   const viewer = await viewerFromHeaders(await headers());
   const group = groupId === null ? null : UUID.test(groupId) ? await groupById(groupId) : null;
   if (groupId !== null && group === null) notFound();
-  const [field, members, role, myGroups] = await Promise.all([
+  const [field, members, role, myGroups, allInstitutions] = await Promise.all([
     leaderboardStandings({ basis, institution, group: group?.id }),
     group ? groupMembersOf(group.id) : null,
     group ? roleIn(group, viewer?.account.id ?? null) : null,
     viewer ? groupsOf(viewer.account.id) : [],
+    traderInstitutions(),
   ]);
   const board = group !== null || institution !== null;
   // A group's or an institution's members by net worth: its author line, and its figure.
@@ -154,32 +157,44 @@ export default async function LeaderboardPage({
       ) : (
         <TitleBlock title="Leaderboard" />
       )}
-      <nav aria-label="Boards" className="mb-3 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-sans text-[13px] text-muted">
-        <span>Boards:</span>
-        {[
-          { key: 'everyone', label: 'Everyone', href: '/leaderboard', on: !board },
-          ...(viewer?.account.institutions ?? []).map((name) => ({
-            key: `i:${name}`,
-            label: name,
-            href: institutionPath(name),
-            on: group === null && institution === name,
-          })),
-          ...myGroups.map((g) => ({ key: `g:${g.group.id}`, label: g.group.name, href: groupPath(g.group.id), on: group?.id === g.group.id })),
-        ].map((b, i) => (
-          <Fragment key={b.key}>
-            {i > 0 && <span aria-hidden>·</span>}
-            <Link href={b.href} className={b.on ? ui.on : ''} aria-current={b.on ? 'page' : undefined}>
-              {b.label}
-            </Link>
-          </Fragment>
-        ))}
-        {viewer && (
-          <>
-            <span aria-hidden>·</span>
-            <NewGroupButton />
-          </>
-        )}
-      </nav>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 font-sans text-[13px] text-muted">
+        <div className="flex items-baseline gap-1.5">
+          <span id="board-label">Board:</span>
+          <BoardPicker
+            current={{
+              label: boardName ?? 'Everyone',
+              href: group ? groupPath(group.id) : institution ? institutionPath(institution) : '/leaderboard',
+            }}
+            mine={[
+              { section: null, options: [{ key: 'everyone', label: 'Everyone', href: '/leaderboard' }] },
+              {
+                section: 'Your institutions',
+                options: (viewer?.account.institutions ?? []).map((name) => ({
+                  key: `i:${name}`,
+                  label: name,
+                  href: institutionPath(name),
+                })),
+              },
+              {
+                section: 'Your groups',
+                options: myGroups.map((g) => ({
+                  key: `g:${g.group.id}`,
+                  label: g.group.name,
+                  href: groupPath(g.group.id),
+                  note: String(g.memberCount),
+                })),
+              },
+            ]}
+            institutions={allInstitutions.map((i) => ({
+              key: `i:${i.name}`,
+              label: i.name,
+              href: institutionPath(i.name),
+              note: String(i.traders),
+            }))}
+          />
+        </div>
+        {viewer && <NewGroupButton />}
+      </div>
       <form action="/leaderboard" method="get" role="search" className="flex gap-2">
         {basis !== 'net_worth' && <input type="hidden" name="basis" value={basis} />}
         {institution && <input type="hidden" name="institution" value={institution} />}

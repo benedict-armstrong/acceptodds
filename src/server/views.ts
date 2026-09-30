@@ -1225,3 +1225,15 @@ export async function traderCount(marketId: string, database: Database = getDb()
     .where(eq(orders.marketId, marketId));
   return row?.n ?? 0;
 }
+
+/** Every institution some trader is confirmed at, with how many: what the leaderboard's board picker finds. */
+export async function traderInstitutions(database: Database = getDb()): Promise<{ name: string; traders: number }[]> {
+  const result = await database.execute<{ name: string; traders: number }>(sql`
+    select i.name, count(*)::int as traders
+      from accounts a, unnest(a.institutions) as i(name)
+     where not a.is_house
+     group by i.name
+     order by lower(i.name), i.name
+  `);
+  return result.rows;
+}

@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '@/db';
 import { groupMembers, groups } from '@/db/schema';
 import { MAX_GROUPS_PER_ADMIN } from '@/server/groups';
-import { leaderboardStandings } from '@/server/views';
+import { leaderboardStandings, traderInstitutions } from '@/server/views';
 import { api, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO } from './helpers';
 
@@ -133,5 +133,12 @@ describe('groups', () => {
     expect((await api('POST', '/groups', { token: a.token, body: { name: 'x'.repeat(81) } })).status).toBe(400);
     expect((await api('GET', '/groups/00000000-0000-4000-8000-000000000000')).status).toBe(404);
     expect((await api('GET', '/groups/not-a-uuid')).status).toBe(400);
+  });
+
+  it('lists every institution with traders, for the board picker', async () => {
+    await trader('alice', ['read']);
+    await trader('bob', ['read']);
+    await trader('carol', ['read'], { verified: false });
+    expect(await traderInstitutions()).toEqual([{ name: 'Test University', traders: 2 }]);
   });
 });
