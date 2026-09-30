@@ -176,7 +176,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           defaultValue={q ?? ''}
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search papers and people"
-          placeholder='Search papers and people — "a phrase", -without, author:name, accept>=70'
+          placeholder='Search papers and people'
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint focus:border-frame focus:outline-none"
         />
         <button
@@ -297,7 +297,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           className="group mt-3.5"
           summary={
             <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-Following <span className="font-normal">({followed.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
+              Following <span className="font-normal">({followed.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
                 ›
               </span>
             </summary>
@@ -318,7 +318,7 @@ Following <span className="font-normal">({followed.total})</span> <span classNam
           className="group mt-3.5"
           summary={
             <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-My positions <span className="font-normal">({held.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
+              My positions <span className="font-normal">({held.total})</span> <span className="inline-block group-open:rotate-90" aria-hidden>
                 ›
               </span>
             </summary>

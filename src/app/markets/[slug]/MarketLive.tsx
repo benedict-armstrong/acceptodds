@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
+import Link from 'next/link';
 import type { z } from 'zod';
 import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -216,6 +217,9 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
               )}
             </div>
           )}
+          <Link href="/how-it-works" className="mt-1.5 block text-xs text-faint hover:text-muted">
+            How do these markets work?
+          </Link>
         </div>
       </div>
 
