@@ -8,3 +8,11 @@ export function marketHref(m: { marketSlug: string; listingSlug: string | null }
     ? `/papers/${m.listingSlug}?market=${encodeURIComponent(m.marketSlug)}`
     : `/markets/${m.marketSlug}`;
 }
+
+/**
+ * Where a password-reset link lands (`app/set-password`): the address rides
+ * along so the page can sign in once the password is set.
+ */
+export function setPasswordPath(email: string): string {
+  return `/set-password?email=${encodeURIComponent(email)}`;
+}

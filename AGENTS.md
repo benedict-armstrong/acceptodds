@@ -399,6 +399,14 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   never confirmed, or mails "you already have an account, sign in" if it
   was. The typed password is ignored. Don't turn this into a 422: that
   tells anyone which addresses have accounts.
+- **An account with no password gets a set-password link, not `/signin`.**
+  Onboarding makes accounts without one, so `mailAlreadyRegistered` (both
+  sign-up and `POST /onboarding` use it) sends such an account a Better
+  Auth password-reset link instead: one use, an hour, to `/set-password`
+  (`lib/links.ts` `setPasswordPath`, with the address), which sets the
+  password with the token (Better Auth creates the missing credential) and
+  signs in. `sendResetPassword` words its mail by whether a password
+  exists. A dead link offers a new one to the same address.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is

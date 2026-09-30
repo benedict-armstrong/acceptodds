@@ -126,6 +126,37 @@ describe('onboarding', () => {
     expect(devOutbox()).toEqual([expect.objectContaining({ to: 'ada@example.org', subject: expect.stringContaining('already have') })]);
   });
 
+  it('a confirmed address with no password yet is mailed a link that sets one, then signs in', async () => {
+    await start('ada@example.org');
+    await clickLink('ada@example.org'); // confirmed, but never chose a password
+    clearDevOutbox();
+
+    expect((await start('ada@example.org')).status).toBe(200);
+    const [mail] = devOutbox();
+    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('choose a password') });
+    expect(mail.text).not.toContain('/signin');
+
+    // The link redirects to /set-password with the address and a token.
+    const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+    const res = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    const landing = new URL(res.headers.get('location')!, 'http://test.local');
+    expect(landing.pathname).toBe('/set-password');
+    expect(landing.searchParams.get('email')).toBe('ada@example.org');
+    const token = landing.searchParams.get('token')!;
+
+    const set = await authCall('POST', '/reset-password', { body: { newPassword: 'correct horse battery', token } });
+    expect(set.status).toBe(200);
+    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    expect(signIn.status).toBe(200);
+    // Once only.
+    expect((await authCall('POST', '/reset-password', { body: { newPassword: 'another horse battery', token } })).status).toBe(400);
+
+    // With a password, the same mail says "sign in".
+    clearDevOutbox();
+    await start('ada@example.org');
+    expect(devOutbox()).toEqual([expect.objectContaining({ subject: expect.stringContaining('already have'), text: expect.stringContaining('/signin') })]);
+  });
+
   it('replaces the bet of an address not yet confirmed, and resends', async () => {
     await start('ada@example.org');
     await start('ada@example.org', { outcomeId: fx.outcomeIds[1], comment: null });

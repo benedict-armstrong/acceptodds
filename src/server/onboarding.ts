@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { isUniqueViolation } from '@/db/errors';
-import { account as authAccount, user } from '@/db/auth-schema';
+import { user } from '@/db/auth-schema';
 import { markets, outcomes, pendingBets, type PendingBet } from '@/db/schema';
 import { WELCOME_FINISH } from '@/lib/onboarding';
 import { ApiError } from './api/errors';
@@ -89,7 +89,7 @@ export async function startOnboarding(input: StartOnboarding, database: Database
   }
 
   if (existing.emailVerified) {
-    await mailAlreadyRegistered(email);
+    await mailAlreadyRegistered(email, database);
     return;
   }
   const bet = {
@@ -123,15 +123,6 @@ export async function pendingBetFor(userId: string, database: Database = getDb()
 /** Drop the user's pending bet, placed or not. Idempotent. */
 export async function clearPendingBet(userId: string, database: Database = getDb()): Promise<void> {
   await database.delete(pendingBets).where(eq(pendingBets.userId, userId));
-}
-
-/** Whether the user can sign in with a password yet. */
-export async function hasPassword(userId: string, database: Database = getDb()): Promise<boolean> {
-  const [row] = await database
-    .select({ password: authAccount.password })
-    .from(authAccount)
-    .where(and(eq(authAccount.userId, userId), eq(authAccount.providerId, 'credential')));
-  return !!row?.password;
 }
 
 /**

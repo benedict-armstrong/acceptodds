@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -9,6 +10,7 @@ import * as authSchema from '@/db/auth-schema';
 import { CLIENT_IP_HEADER } from './api/http';
 import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
+import { setPasswordPath } from '@/lib/links';
 import { safeReturnTo } from '@/lib/return-to';
 import { sendMail } from './mail';
 import { siteUrl } from './share';
@@ -69,11 +71,34 @@ const DISABLED_OTP_PATHS = [
   '/email-otp/change-email',
 ];
 
+/** Whether the user can sign in with a password yet. */
+export async function hasPassword(userId: string, database: Database = getDb()): Promise<boolean> {
+  const [row] = await database
+    .select({ password: authSchema.account.password })
+    .from(authSchema.account)
+    .where(and(eq(authSchema.account.userId, userId), eq(authSchema.account.providerId, 'credential')));
+  return !!row?.password;
+}
+
+type RequestReset = (body: { email: string; redirectTo: string }) => Promise<unknown>;
+
 /**
  * To an address that already has a confirmed account and was just used to
- * sign up again: only the inbox's owner learns it is taken.
+ * sign up again: only the inbox's owner learns it is taken. An account made
+ * by onboarding may have no password yet, and a link to `/signin` would be
+ * no use to it: it gets a password-reset link instead, which sets its first
+ * password and signs it in (`sendResetPassword`, `app/set-password`).
  */
-export async function mailAlreadyRegistered(email: string): Promise<void> {
+export async function mailAlreadyRegistered(email: string, database: Database = getDb()): Promise<void> {
+  await mailRegistered(email, database, (body) => getAuth().api.requestPasswordReset({ body }));
+}
+
+async function mailRegistered(email: string, database: Database, requestReset: RequestReset): Promise<void> {
+  const [row] = await database.select({ id: authSchema.user.id }).from(authSchema.user).where(eq(authSchema.user.email, email));
+  if (row && !(await hasPassword(row.id, database))) {
+    await requestReset({ email, redirectTo: setPasswordPath(email) });
+    return;
+  }
   await sendMail({
     to: email,
     subject: 'You already have an acceptodds account',
@@ -109,14 +134,26 @@ export function createAuth(database: Database) {
           await auth.api.sendVerificationEmail({ body: { email: user.email, callbackURL } });
           return;
         }
-        await mailAlreadyRegistered(user.email);
+        await mailRegistered(user.email, database, (body) => auth.api.requestPasswordReset({ body }));
       },
+      // An account with no password yet (made by onboarding) is told so: the
+      // link sets its first one. Either way it lands on `/set-password`.
       sendResetPassword: async ({ user, url }) => {
-        await sendMail({
-          to: user.email,
-          subject: 'Reset your acceptodds password',
-          text: `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
-        });
+        await sendMail(
+          (await hasPassword(user.id, database))
+            ? {
+                to: user.email,
+                subject: 'Reset your acceptodds password',
+                text: `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
+              }
+            : {
+                to: user.email,
+                subject: 'Sign in to acceptodds: choose a password',
+                text:
+                  `You already have an acceptodds account, but no password yet. Choose one here, and you are signed in:\n\n` +
+                  `${url}\n\nThe link works once, for an hour. If you did not ask for this, ignore it; nothing has changed.`,
+              },
+        );
       },
     },
     emailVerification: {
