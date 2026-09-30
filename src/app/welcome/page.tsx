@@ -32,7 +32,7 @@ const SUGGESTIONS = 5;
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ step?: string; next?: string; market?: string; outcome?: string; stake?: string }>;
+  searchParams: Promise<{ step?: string; next?: string; market?: string; outcome?: string; stake?: string; seen?: string }>;
 }) {
   const params = await searchParams;
   const viewer = await viewerFromHeaders(await headers());
@@ -50,6 +50,7 @@ export default async function WelcomePage({
             market: board,
             outcomeId: bet.outcomeId,
             stakeMicro: bet.stakeMicro.toString(),
+            seenOrderCount: bet.seenOrderCount,
             comment: bet.comment,
             title: listing?.title ?? market.question,
             href: marketHref({ marketSlug: market.slug, listingSlug: listing?.slug ?? null }),
@@ -94,7 +95,7 @@ export default async function WelcomePage({
  * make: an open market before its close, one of its outcomes, and a stake
  * within the starting balance — what `POST /onboarding` will check again.
  */
-async function chosenBet(params: { market?: string; outcome?: string; stake?: string }): Promise<Chosen | null> {
+async function chosenBet(params: { market?: string; outcome?: string; stake?: string; seen?: string }): Promise<Chosen | null> {
   const bet = parseChosenBet(params);
   if (!bet || bet.stakeMicro > startingBalanceMicro()) return null;
   const market = await resolveMarket(bet.marketId).catch(() => null);
@@ -108,6 +109,6 @@ async function chosenBet(params: { market?: string; outcome?: string; stake?: st
       title: listing?.title ?? market.question,
       href: marketHref({ marketSlug: market.slug, listingSlug: listing?.slug ?? null }),
     },
-    choice: { outcomeId: bet.outcomeId, stakeMicro: bet.stakeMicro },
+    choice: { outcomeId: bet.outcomeId, stakeMicro: bet.stakeMicro, seenOrderCount: bet.seenOrderCount },
   };
 }

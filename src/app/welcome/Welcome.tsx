@@ -18,7 +18,7 @@ import { authHref } from '@/lib/return-to';
 import type * as S from '@/server/api/schemas';
 import { ConfirmForm } from '../confirm/ConfirmForm';
 import { publicJson } from '../markets/[slug]/MarketLive';
-import { TradeBox } from '../markets/[slug]/TradeBox';
+import { TradeBox, type Choice } from '../markets/[slug]/TradeBox';
 
 type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
@@ -37,11 +37,6 @@ interface Pick {
   /** The paper's title (a standalone market's question). */
   title: string;
   href: string;
-}
-
-interface Choice {
-  outcomeId: string;
-  stakeMicro: bigint;
 }
 
 /** A bet chosen on a market's page (`welcomeBetHref`), checked by the page. */
@@ -400,6 +395,7 @@ function EmailStep({
             marketId: market.id,
             outcomeId: choice.outcomeId,
             stakeMicro: choice.stakeMicro.toString(),
+            seenOrderCount: choice.seenOrderCount,
             comment: comment.trim() || null,
           }),
         }).catch(() => null);

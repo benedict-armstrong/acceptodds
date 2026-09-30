@@ -42,6 +42,7 @@ export interface StartOnboarding {
   marketId: string;
   outcomeId: string;
   stakeMicro: bigint;
+  seenOrderCount: number;
   comment: string | null;
 }
 
@@ -95,6 +96,7 @@ export async function startOnboarding(input: StartOnboarding, database: Database
     marketId: input.marketId,
     outcomeId: input.outcomeId,
     stakeMicro: input.stakeMicro,
+    seenOrderCount: input.seenOrderCount,
     comment: input.comment?.trim() || null,
   };
   await database

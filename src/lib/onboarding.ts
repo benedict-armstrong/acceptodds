@@ -21,6 +21,8 @@ export interface ChosenBet {
   marketId: string;
   outcomeId: string;
   stakeMicro: bigint;
+  /** The market's `orderCount` on the board it was chosen from. */
+  seenOrderCount: number;
 }
 
 /**
@@ -33,6 +35,7 @@ export function welcomeBetHref(bet: ChosenBet): string {
     market: bet.marketId,
     outcome: bet.outcomeId,
     stake: bet.stakeMicro.toString(),
+    seen: String(bet.seenOrderCount),
   });
   return `/welcome?${q}`;
 }
@@ -41,8 +44,13 @@ export function welcomeBetHref(bet: ChosenBet): string {
  * The bet in `welcomeBetHref`'s parameters, or `null` when any is missing
  * or malformed. Only the shape: the page still checks it against the market.
  */
-export function parseChosenBet(params: { market?: string; outcome?: string; stake?: string }): ChosenBet | null {
-  const { market, outcome, stake } = params;
-  if (!market || !outcome || !stake || !/^[1-9]\d{0,18}$/.test(stake)) return null;
-  return { marketId: market, outcomeId: outcome, stakeMicro: BigInt(stake) };
+export function parseChosenBet(params: {
+  market?: string;
+  outcome?: string;
+  stake?: string;
+  seen?: string;
+}): ChosenBet | null {
+  const { market, outcome, stake, seen } = params;
+  if (!market || !outcome || !stake || !/^[1-9]\d{0,18}$/.test(stake) || !seen || !/^\d{1,9}$/.test(seen)) return null;
+  return { marketId: market, outcomeId: outcome, stakeMicro: BigInt(stake), seenOrderCount: Number(seen) };
 }

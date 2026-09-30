@@ -598,6 +598,13 @@ export const pendingBets = pgTable(
       .notNull()
       .references(() => outcomes.id, { onDelete: 'cascade' }),
     stakeMicro: money('stake_micro').notNull(),
+    /**
+     * The market's `order_count` on the board the bet was chosen from. Prices
+     * move only by fills, so while it is unchanged the bet is placed at the
+     * price the person saw, without asking again. Null on bets stored before
+     * it was recorded: treated as moved.
+     */
+    seenOrderCount: integer('seen_order_count'),
     /** The justification, posted as a comment once the bet is placed. */
     comment: text('comment'),
     createdAt: createdAt(),

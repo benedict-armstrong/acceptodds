@@ -1,0 +1,1 @@
+ALTER TABLE "pending_bets" ADD COLUMN "seen_order_count" integer;

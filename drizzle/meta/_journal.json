@@ -85,6 +85,13 @@
       "when": 1790776039094,
       "tag": "0011_pending_bets",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790787693726,
+      "tag": "0012_pending_bet_seen_order_count",
+      "breakpoints": true
     }
   ]
 }

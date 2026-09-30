@@ -35,6 +35,7 @@ function start(email: string, extra: Record<string, unknown> = {}) {
       marketId: fx.marketId,
       outcomeId: fx.outcomeIds[0],
       stakeMicro: STAKE.toString(),
+      seenOrderCount: 0,
       comment: 'Strong ablations.',
       ...extra,
     },
@@ -65,7 +66,13 @@ describe('onboarding', () => {
     expect(await db.select().from(accounts).where(eq(accounts.userId, u.id))).toEqual([]);
     expect(await db.select().from(authAccount).where(eq(authAccount.userId, u.id))).toEqual([]);
     const [bet] = await db.select().from(pendingBets).where(eq(pendingBets.userId, u.id));
-    expect(bet).toMatchObject({ marketId: fx.marketId, outcomeId: fx.outcomeIds[0], stakeMicro: STAKE, comment: 'Strong ablations.' });
+    expect(bet).toMatchObject({
+      marketId: fx.marketId,
+      outcomeId: fx.outcomeIds[0],
+      stakeMicro: STAKE,
+      seenOrderCount: 0,
+      comment: 'Strong ablations.',
+    });
 
     const mail = devOutbox().find((m) => m.to === 'ada@example.org')!;
     expect(mail.text).toContain(encodeURIComponent(WELCOME_FINISH));

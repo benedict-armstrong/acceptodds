@@ -449,7 +449,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   with it), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
   and `References`/`Cite` (numbered by hand, like tables) — and `Popover` (Radix, the primitive shadcn
   wraps, in our tokens) for anything that floats over the page, and
-  `Modal` (Radix Dialog, likewise) for anything that takes it over — reuse
+  `Modal` (Radix Dialog, likewise) for anything that takes it over, and
+  `CodeInput` (shadcn's `InputOTP` over `input-otp`) for a one-time code:
+  one real input under the boxes, so paste and autofill work — reuse
   them rather than hand-roll another. Preflight is on: headings, `p` and
   `hr` have no default margins, and `svg` is `display: block`.
 - **The UI writes through the public API, not Server Actions.** §9 suggests
@@ -833,6 +835,15 @@ unpaginated, and 5 s for that search.
   board then and bounded by its quote. Then the comment, then
   `DELETE /me/pending-bet`. It is shown before it is placed, so another
   onboarding with the same unconfirmed address may replace it.
+- **An unmoved bet is placed without asking** (`pending_bets.seen_order_count`,
+  `seenOrderCount` in `POST /onboarding`): the market's `orderCount` on the
+  board the bet was chosen from. Prices move only by fills, so while it is
+  unchanged the same stake buys the same shares at the price the person
+  saw; `Finish` places it on arrival (checking the count again on the fresh
+  board, once, guarded against a double mount), then asks for the password.
+  A moved market, or a bet stored before the column (null), is shown at the
+  price now to place or skip. The count is client-supplied, and harmless if
+  wrong: the order is still bounded by a quote on the live board.
 - **Same answer whether or not the address is taken**, as for sign-up: a
   confirmed address is mailed "sign in instead" and its bet is dropped,
   never added to that account. Five mails per address a day

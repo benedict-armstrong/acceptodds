@@ -12,6 +12,13 @@ import { sharesForStake, useQuote } from '@/components/quote';
 
 type Market = z.output<typeof S.Market>;
 
+/** An outcome and a stake, and the market's `orderCount` on the board they were chosen from. */
+export interface Choice {
+  outcomeId: string;
+  stakeMicro: bigint;
+  seenOrderCount: number;
+}
+
 /** One button of a segmented control. */
 function segment(on: boolean): string {
   return `flex-1 cursor-pointer border px-1 py-[5px] font-sans text-sm leading-[normal] ${on ? 'border-ink bg-ink text-white' : 'border-rule bg-white'}`;
@@ -45,9 +52,9 @@ export function TradeBox({
   cashMicro: bigint | null;
   viewer: { signedIn: boolean; canTrade: boolean };
   /** After a fill: the outcome bought and the stake entered. */
-  onFilled: (choice: { outcomeId: string; stakeMicro: bigint }) => void;
+  onFilled: (choice: Choice) => void;
   /** Instead of placing the order: the outcome and the stake. */
-  onChoose?: (choice: { outcomeId: string; stakeMicro: bigint }) => void;
+  onChoose?: (choice: Choice) => void;
 }) {
   const [idx, setIdx] = useState(0);
   const [stake, setStake] = useState('100');
@@ -55,7 +62,7 @@ export function TradeBox({
   const budget = parseUnits(stake);
   // Called after the fill, with this render's choice: the one the order was sent from.
   const { send, busy, note } = useOrder(market.id, () =>
-    onFilled({ outcomeId: outcome.id, stakeMicro: budget ?? 0n }),
+    onFilled({ outcomeId: outcome.id, stakeMicro: budget ?? 0n, seenOrderCount: market.orderCount }),
   );
   // The shares the stake buys on the board as last polled, rounded down. The
   // engine only takes a share count; the quote then prices it on the live
@@ -131,7 +138,7 @@ export function TradeBox({
           <button
             className={ui.btn()}
             disabled={budget === null || budget <= 0n || short}
-            onClick={() => budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget })}
+            onClick={() => budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget, seenOrderCount: market.orderCount })}
           >
             Stake {budget ? rep(budget) : ''} {REP} on {outcome.label}
           </button>
