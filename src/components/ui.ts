@@ -24,6 +24,8 @@ export const ui = {
   subsection,
   /** An unnumbered subsection heading, for a box or popover beside the page's flow. */
   boxHeading: `mb-2 ${subsectionLook}`,
+  /** A run-in heading, set in a line of other text: who wrote a comment, as OpenReview heads one. */
+  runIn: subsectionLook,
   page: 'mx-auto max-w-[880px] px-6 pt-3 pb-15',
   groupHeading: `mt-7 mb-1.5 ${section}`,
   /** An unnumbered section, for back matter such as References. */

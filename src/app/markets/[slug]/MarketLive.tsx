@@ -215,6 +215,7 @@ export function MarketLive({ initial, embedded = false }: { initial: Initial; em
 
       <Comments
         marketId={id}
+        outcomeIds={market.outcomes.map((o) => o.id)}
         initial={initial.comments}
         viewer={initial.viewer}
         tradable={tradable}

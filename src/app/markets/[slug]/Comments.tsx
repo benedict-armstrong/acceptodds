@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { Markdown } from '@/components/Markdown';
+import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { ui } from '@/components/ui';
 import { ago, rep, REP, shares } from '@/lib/format';
 import { parseUnits } from '@/lib/money';
@@ -42,6 +43,7 @@ async function errorText(res: Response, fallback: string): Promise<string> {
  */
 export function Comments({
   marketId,
+  outcomeIds,
   initial,
   viewer,
   tradable,
@@ -49,6 +51,8 @@ export function Comments({
   onChanged,
 }: {
   marketId: string;
+  /** The market's outcomes in order, for each stake's colour swatch. */
+  outcomeIds: string[];
   initial: CommentList;
   viewer: { signedIn: boolean; canTrade: boolean };
   /** Open for trading, which is also when backing is allowed. */
@@ -158,7 +162,7 @@ export function Comments({
       )}
 
       {data.comments.map((c) => (
-        <CommentItem key={c.id} c={c} canBack={canBack} available={available} onChanged={changed} />
+        <CommentItem key={c.id} c={c} outcomeIds={outcomeIds} canBack={canBack} available={available} onChanged={changed} />
       ))}
     </section>
   );
@@ -166,11 +170,13 @@ export function Comments({
 
 function CommentItem({
   c,
+  outcomeIds,
   canBack,
   available,
   onChanged,
 }: {
   c: Comment;
+  outcomeIds: string[];
   canBack: boolean;
   available: Available[];
   onChanged: () => void;
@@ -192,18 +198,27 @@ function CommentItem({
 
   return (
     <div className="border-b border-dotted border-rule-strong py-2.5">
-      <div className="flex flex-wrap gap-2 font-sans text-xs text-muted">
-        <span>{c.author.isYou ? 'you' : 'anonymous'}</span>
+      {/* Headed as OpenReview heads a comment: who, what they hold, when. */}
+      <div className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted">
+        <span className={ui.runIn}>{c.author.isYou ? 'Your comment' : 'Anonymous trader'}</span>
         {c.author.isBot && <span className={ui.badge}>bot</span>}
-        {c.author.stake.length === 0 ? (
-          <span>no position</span>
-        ) : (
-          c.author.stake.map((s) => (
-            <span key={s.outcomeId} className="rounded-[2px] bg-tint px-[5px] font-mono text-xs text-ink">
-              {shares(s.sharesMicro)} {s.outcomeLabel}
-            </span>
-          ))
-        )}
+        <span>
+          {c.author.stake.length === 0 ? (
+            'no position'
+          ) : (
+            <>
+              holding{' '}
+              {c.author.stake.map((s, i) => (
+                <span key={s.outcomeId}>
+                  {i > 0 && ', '}
+                  <span className="font-mono text-ink">{shares(s.sharesMicro)}</span>{' '}
+                  <OutcomeSwatch ordinal={outcomeIds.indexOf(s.outcomeId)} outcomes={outcomeIds.length} />
+                  {s.outcomeLabel}
+                </span>
+              ))}
+            </>
+          )}
+        </span>
         <span suppressHydrationWarning>· {ago(c.createdAt)} ago</span>
       </div>
       <Markdown className="mt-1">{c.body}</Markdown>
