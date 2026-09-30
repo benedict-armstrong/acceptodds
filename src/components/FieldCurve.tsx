@@ -12,15 +12,22 @@ const toUnits = (micro: bigint) => microToFloat(micro) / 1_000_000;
  * liquidation value (never a mark, §1.2) as a curve (`StandingChart`), the
  * viewer on it by their exact figure from the board. The snapshot may be a
  * few minutes old and says so. Nothing for a field of one. It is Figure 1
- * on both pages that show it, the leaderboard and `/profile`.
+ * on both pages that show it, the leaderboard and `/profile`; a group's or
+ * an institution's board draws its own members' the same way (`of`).
  */
 export function FieldCurve({
   field,
   you,
   label,
   other = null,
+  of,
 }: {
   field: FieldSnapshot;
+  /**
+   * Whose net worths these are, for the caption, when not the whole field's
+   * snapshot: a group's, drawn live from the board, so the caption gives no age.
+   */
+  of?: string;
   you: bigint | null;
   label: string | null;
   /** The trader the board is focused on (`?around=`), when that is not the viewer. */
@@ -39,8 +46,9 @@ export function FieldCurve({
         other={other && { value: toUnits(other.worth), label: other.label }}
       />
       <p className={ui.caption}>
-        <b>Figure 1.</b> Net worth of all {worths.length.toLocaleString('en')} traders, if each sold everything now, as
-        of {ago(field.computedAt)} ago.{you !== null && ' The shaded part is everyone below you.'}
+        <b>Figure 1.</b> Net worth of {of ?? `all ${worths.length.toLocaleString('en')} traders`}, if each sold
+        everything now{of ? '.' : `, as of ${ago(field.computedAt)} ago.`}
+        {you !== null && ' The shaded part is everyone below you.'}
         {other && ` The dashed line is @${other.handle}.`}
       </p>
     </section>

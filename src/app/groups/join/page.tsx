@@ -1,0 +1,86 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { headers } from 'next/headers';
+import { Authors } from '@/components/Authors';
+import { JoinGroupButton } from '@/components/Groups';
+import { TitleBlock } from '@/components/TitleBlock';
+import { ui } from '@/components/ui';
+import { groupInvitePath, groupPath, institutionPath } from '@/lib/links';
+import { viewerFromHeaders } from '@/server/auth';
+import { groupByInviteCode, groupMembersOf, roleIn } from '@/server/groups';
+
+export const dynamic = 'force-dynamic';
+
+// The code is the invitation: keep it out of search engines and referrers.
+export const metadata: Metadata = { title: 'Join a group', robots: { index: false }, referrer: 'no-referrer' };
+
+/**
+ * A group's invite link (#25, `lib/links.groupInvitePath`): the group as its
+ * board opens, and a button to join. Joining is a POST from that button,
+ * never this GET, so following a link joins nothing by itself. A signed-out
+ * visitor signs in and comes back here.
+ */
+export default async function JoinGroupPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const raw = (await searchParams).code;
+  const code = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? '';
+  const group = code && code.length <= 64 ? await groupByInviteCode(code) : null;
+  const viewer = await viewerFromHeaders(await headers());
+
+  if (!group) {
+    return (
+      <main className={ui.page}>
+        <TitleBlock title="Invite link not valid" />
+        <p className="text-center">
+          This link does not open any group. Its admin may have replaced it with a new one: ask them for the current
+          link. <Link href="/leaderboard">See the leaderboard</Link>.
+        </p>
+      </main>
+    );
+  }
+
+  const [members, role] = await Promise.all([groupMembersOf(group.id), roleIn(group, viewer?.account.id ?? null)]);
+  return (
+    <main className={ui.page}>
+      <TitleBlock
+        above="You are invited to join"
+        title={group.name}
+        byline={
+          <Authors
+            authors={members.map((m) => ({
+              name: m.displayName,
+              href: `/people/${encodeURIComponent(m.handle)}`,
+              isBot: m.isBot,
+              affiliations: m.institutions,
+            }))}
+            affiliationHref={institutionPath}
+          />
+        }
+        abstract={group.description}
+      >
+        <div className="mt-4 flex flex-col items-center font-sans text-sm">
+          {role ? (
+            <p>
+              You are in this group. <Link href={groupPath(group.id)}>See its board →</Link>
+            </p>
+          ) : viewer ? (
+            <>
+              <p className="mb-1 text-muted">
+                Its members are ranked among themselves on a board of their own. You stay on the main leaderboard too,
+                and can leave at any time.
+              </p>
+              <JoinGroupButton code={code} groupId={group.id} />
+            </>
+          ) : (
+            <p>
+              <Link href={`/signin?next=${encodeURIComponent(groupInvitePath(code))}`}>Sign in</Link> to join it.
+            </p>
+          )}
+        </div>
+      </TitleBlock>
+    </main>
+  );
+}

@@ -33,3 +33,21 @@ export function signInContinueHref(next: string): string {
 export function publicPositionPath(id: string): string {
   return `/positions/${id}`;
 }
+
+/** A group's board (#25): the leaderboard ranked among its members. */
+export function groupPath(id: string): string {
+  return `/leaderboard?group=${id}`;
+}
+
+/** An institution's board: the leaderboard ranked among the traders confirmed there. */
+export function institutionPath(name: string): string {
+  return `/leaderboard?institution=${encodeURIComponent(name)}`;
+}
+
+/**
+ * A group's invite link. The code rides in the query, which page analytics
+ * never records (`lib/analytics.ts`), so it stays with whoever it was sent to.
+ */
+export function groupInvitePath(code: string): string {
+  return `/groups/join?code=${encodeURIComponent(code)}`;
+}

@@ -389,6 +389,9 @@ export const LeaderboardQuery = PaginationQuery.extend({
       'Only traders with a confirmed affiliation at this institution (exactly one of their `institutions`), ranked among themselves.',
     example: 'ETH Zurich',
   }),
+  group: Id.optional().meta({
+    description: 'Only the members of this group (`GET /groups/{id}`), ranked among themselves. Combines with `institution`.',
+  }),
   q: z
     .string()
     .max(SEARCH_MAX_LENGTH)
@@ -404,12 +407,84 @@ export const Leaderboard = z
   .object({
     basis: LeaderboardBasis,
     fieldSize: z.number().int().min(0).meta({
-      description: 'Traders on this board, after `institution` and before `q`: what a rank is out of.',
+      description: 'Traders on this board, after `institution` and `group`, before `q`: what a rank is out of.',
     }),
     entries: z.array(LeaderboardEntry),
     nextCursor: Cursor,
   })
   .meta({ id: 'Leaderboard' });
+
+// ---------------------------------------------------------------------------
+// groups
+// ---------------------------------------------------------------------------
+
+export const GroupRole = z.enum(['admin', 'member']).meta({
+  description: 'The admin made the group and may rename it, rotate its invite code, remove members and delete it.',
+});
+
+const InviteCode = z.string().min(1).max(64);
+
+const GroupName = z.string().trim().min(1).max(80);
+const GroupDescription = z.string().trim().max(500);
+
+export const GroupMember = z
+  .object({
+    handle: z.string(),
+    displayName: z.string(),
+    isBot: z.boolean(),
+    institutions: Institutions,
+    role: GroupRole,
+    joinedAt: Timestamp,
+  })
+  .meta({ id: 'GroupMember' });
+
+export const Group = z
+  .object({
+    id: Id,
+    name: z.string(),
+    description: z.string().nullable(),
+    createdAt: Timestamp,
+    memberCount: z.number().int().min(1),
+    members: z.array(GroupMember).meta({ description: 'In the order they joined, the admin first.' }),
+    role: GroupRole.nullable().meta({ description: 'The caller’s role; null when not a member, or anonymous.' }),
+    inviteCode: InviteCode.nullable().meta({
+      description: 'What `POST /groups/join` takes. Shown to members only; null to anyone else.',
+    }),
+  })
+  .meta({ id: 'Group' });
+
+export const GroupSummary = z
+  .object({
+    id: Id,
+    name: z.string(),
+    description: z.string().nullable(),
+    memberCount: z.number().int().min(1),
+    role: GroupRole,
+    inviteCode: InviteCode,
+  })
+  .meta({ id: 'GroupSummary' });
+
+export const GroupList = z
+  .object({ groups: z.array(GroupSummary).meta({ description: 'By name.' }) })
+  .meta({ id: 'GroupList' });
+
+export const CreateGroupRequest = z
+  .object({ name: GroupName, description: GroupDescription.nullable().optional() })
+  .strict()
+  .meta({ id: 'CreateGroupRequest' });
+
+export const UpdateGroupRequest = z
+  .object({
+    name: GroupName.optional(),
+    description: GroupDescription.nullable().optional().meta({ description: 'Null or blank clears it.' }),
+  })
+  .strict()
+  .meta({ id: 'UpdateGroupRequest' });
+
+export const JoinGroupRequest = z
+  .object({ inviteCode: InviteCode.meta({ description: 'From the group’s invite link.' }) })
+  .strict()
+  .meta({ id: 'JoinGroupRequest' });
 
 export const PublicAccount = z
   .object({

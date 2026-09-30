@@ -1,10 +1,11 @@
 import type { z } from 'zod';
-import type { Account, Affiliation } from '@/db/schema';
+import type { Account, Affiliation, Group } from '@/db/schema';
 import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
 import type { CommentView, ViewerStake } from '../comments';
 import type { FollowedListing } from '../follows';
+import type { GroupMember, GroupRole, GroupSummary } from '../groups';
 import type { PublicPositionView } from '../public-positions';
 import type { TokenRecord } from '../tokens';
 import type { ListingView, MarketView, OrderRow } from '../views';
@@ -273,5 +274,37 @@ export function presentPublicPosition(p: PublicPositionView): z.input<typeof S.P
     quotedExitMicro: p.quotedExitMicro?.toString() ?? null,
     payoutMicro: p.payoutMicro.toString(),
     pnlMicro: p.pnlMicro.toString(),
+  };
+}
+
+/** A group as anyone sees it: its invite code only for a member (`role`). */
+export function presentGroup(group: Group, members: GroupMember[], role: GroupRole | null): z.input<typeof S.Group> {
+  return {
+    id: group.id,
+    name: group.name,
+    description: group.description,
+    createdAt: toIso(group.createdAt),
+    memberCount: members.length,
+    members: members.map((m) => ({
+      handle: m.handle,
+      displayName: m.displayName,
+      isBot: m.isBot,
+      institutions: [...m.institutions],
+      role: m.accountId === group.adminAccountId ? 'admin' : 'member',
+      joinedAt: toIso(m.joinedAt),
+    })),
+    role,
+    inviteCode: role === null ? null : group.inviteCode,
+  };
+}
+
+export function presentGroupSummary(g: GroupSummary): z.input<typeof S.GroupSummary> {
+  return {
+    id: g.group.id,
+    name: g.group.name,
+    description: g.group.description,
+    memberCount: g.memberCount,
+    role: g.role,
+    inviteCode: g.group.inviteCode,
   };
 }

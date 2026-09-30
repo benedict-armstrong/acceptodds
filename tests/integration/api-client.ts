@@ -21,6 +21,12 @@ import * as listingsRoute from '@/app/api/v1/listings/route';
 import * as listingRoute from '@/app/api/v1/listings/[id]/route';
 import * as listingFollowRoute from '@/app/api/v1/listings/[id]/follow/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
+import * as groupsRoute from '@/app/api/v1/groups/route';
+import * as groupJoinRoute from '@/app/api/v1/groups/join/route';
+import * as groupRoute from '@/app/api/v1/groups/[id]/route';
+import * as groupInviteRoute from '@/app/api/v1/groups/[id]/invite/route';
+import * as groupMemberRoute from '@/app/api/v1/groups/[id]/members/[handle]/route';
+import * as myGroupsRoute from '@/app/api/v1/me/groups/route';
 import * as leaderboardRoute from '@/app/api/v1/leaderboard/route';
 import * as accountRoute from '@/app/api/v1/accounts/[handle]/route';
 import * as accountPositionsRoute from '@/app/api/v1/accounts/[handle]/positions/route';
@@ -65,6 +71,12 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/listings/[id]', listingRoute],
   ['/listings/[id]/follow', listingFollowRoute],
   ['/leaderboard', leaderboardRoute],
+  ['/groups', groupsRoute],
+  // A static segment wins over a dynamic one, as in Next.
+  ['/groups/join', groupJoinRoute],
+  ['/groups/[id]', groupRoute],
+  ['/groups/[id]/invite', groupInviteRoute],
+  ['/groups/[id]/members/[handle]', groupMemberRoute],
   ['/accounts/[handle]', accountRoute],
   ['/accounts/[handle]/positions', accountPositionsRoute],
   ['/positions/[id]', publicPositionRoute],
@@ -73,6 +85,7 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/portfolio', portfolioRoute],
   ['/me/orders', myOrdersRoute],
   ['/me/follows', myFollowsRoute],
+  ['/me/groups', myGroupsRoute],
   ['/me/tokens', tokensRoute],
   ['/me/tokens/[id]', tokenRoute],
   ['/me/affiliations', affiliationsRoute],

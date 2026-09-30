@@ -6,6 +6,18 @@ import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
 import { getComment, listComments, postComment } from '../comments';
 import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
+import {
+  createGroup,
+  deleteGroup as deleteGroupRow,
+  groupById,
+  groupMembersOf,
+  groupsOf,
+  joinGroup,
+  removeMember,
+  roleIn,
+  rotateInvite,
+  updateGroup,
+} from '../groups';
 import { upsertListing } from '../listings';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
@@ -32,6 +44,8 @@ import { parseBody, parseParam, parseQuery, respond, route, toIso, toIsoOrNull }
 import {
   presentFill,
   presentFollowed,
+  presentGroup,
+  presentGroupSummary,
   presentListing,
   presentMarket,
   presentAffiliation,
@@ -347,6 +361,91 @@ async function setFollow(req: Request, id: unknown, on: boolean) {
 
 export const putListingFollow = route((req, params) => setFollow(req, params.id, true));
 export const deleteListingFollow = route((req, params) => setFollow(req, params.id, false));
+
+// ---------------------------------------------------------------------------
+// groups
+// ---------------------------------------------------------------------------
+
+/**
+ * Leaderboard groups (#25, `server/groups.ts`). Reading one is public — its
+ * members are on the public leaderboard anyway — but its invite code goes to
+ * members only. Writes need the `read` scope, like follows: a group moves no
+ * money and grants nothing.
+ */
+async function groupResponse(groupId: string, principal: Principal | null, status = 200) {
+  const group = await groupById(groupId);
+  if (!group) throw new ApiError(404, 'not_found', `no group ${groupId}`);
+  const [members, role] = await Promise.all([groupMembersOf(group.id), roleIn(group, accountIdOf(principal))]);
+  return respond(S.Group, presentGroup(group, members, role), { status, principal });
+}
+
+export const getGroup = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const id = parseParam(params.id, S.Id, 'id');
+  const res = await groupResponse(id, principal);
+  events.log('group.read', { accountId: accountIdOf(principal) });
+  return res;
+});
+
+export const postGroup = route(async (req) => {
+  const principal = await requireAuth(req, 'read');
+  const body = await parseBody(req, S.CreateGroupRequest);
+  const group = await createGroup(principal.account.id, body);
+  events.log('group.created', { accountId: principal.account.id });
+  return groupResponse(group.id, principal, 201);
+});
+
+export const patchGroup = route(async (req, params) => {
+  const principal = await requireAuth(req, 'read');
+  const id = parseParam(params.id, S.Id, 'id');
+  const body = await parseBody(req, S.UpdateGroupRequest);
+  await updateGroup(principal.account.id, id, body);
+  events.log('group.updated', { accountId: principal.account.id });
+  return groupResponse(id, principal);
+});
+
+export const deleteGroup = route(async (req, params) => {
+  const principal = await requireAuth(req, 'read');
+  const id = parseParam(params.id, S.Id, 'id');
+  await deleteGroupRow(principal.account.id, id);
+  events.log('group.deleted', { accountId: principal.account.id });
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+});
+
+/** A new invite code; the old link stops working. */
+export const postGroupInvite = route(async (req, params) => {
+  const principal = await requireAuth(req, 'read');
+  const id = parseParam(params.id, S.Id, 'id');
+  await rotateInvite(principal.account.id, id);
+  events.log('group.invite_rotated', { accountId: principal.account.id });
+  return groupResponse(id, principal);
+});
+
+export const postGroupJoin = route(async (req) => {
+  const principal = await requireAuth(req, 'read');
+  const body = await parseBody(req, S.JoinGroupRequest);
+  const group = await joinGroup(principal.account.id, body.inviteCode);
+  events.log('group.joined', { accountId: principal.account.id });
+  return groupResponse(group.id, principal);
+});
+
+/** Leave (your own handle), or, as the admin, remove someone. */
+export const deleteGroupMember = route(async (req, params) => {
+  const principal = await requireAuth(req, 'read');
+  const id = parseParam(params.id, S.Id, 'id');
+  const handle = parseParam(params.handle, S.Handle, 'handle');
+  if (await removeMember(principal.account.id, id, handle)) {
+    events.log('group.member_removed', { accountId: principal.account.id });
+  }
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+});
+
+export const getMyGroups = route(async (req) => {
+  const principal = await requireAuth(req, 'read');
+  const groups = await groupsOf(principal.account.id);
+  events.log('groups.read', { accountId: principal.account.id });
+  return respond(S.GroupList, { groups: groups.map(presentGroupSummary) }, { principal });
+});
 
 /**
  * Make one of your positions public, or private again (#36). Idempotent both

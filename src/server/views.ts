@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { accounts, listingFollows, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
+import { accounts, groupMembers, listingFollows, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
 import { headlinePrice, openingHeadline } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
 import { percentAhead } from '@/lib/leaderboard';
@@ -740,17 +740,18 @@ export interface LeaderboardRow {
  * `rank()`: 1, 2, 2, 4).
  *
  * `institution` narrows the field to the traders with a confirmed
- * affiliation there (any of `accounts.institutions`) and ranks within it. `q` then keeps only the traders a people search finds
+ * affiliation there (any of `accounts.institutions`) and ranks within it;
+ * `group` to a group's members. `q` then keeps only the traders a people search finds
  * (`searchPeople`), each keeping their rank in the field; `fieldSize` is the
  * field before `q`, the denominator of a rank.
  */
 export async function leaderboard(
-  q: { basis?: LeaderboardBasis; institution?: string | null; q?: string | null; cursor?: string; limit: number },
+  q: { basis?: LeaderboardBasis; institution?: string | null; group?: string | null; q?: string | null; cursor?: string; limit: number },
   database: Database = getDb(),
 ): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null; fieldSize: number }> {
   const basis = q.basis ?? 'settled_pnl';
   const after = decodePnlCursor(q.cursor, basis);
-  const field = await leaderboardStandings({ basis, institution: q.institution }, database);
+  const field = await leaderboardStandings({ basis, institution: q.institution, group: q.group }, database);
   const shown = await matchingTraders(field, q.q, database);
 
   const start = after
@@ -816,21 +817,34 @@ export async function matchingTraders(
  * in JS — one query per table (`valuations()`), not per holding — which makes
  * ranks exact however the list is sliced (pages, the UI's window around the
  * viewer, a search). `institution` filters the field and ranks it again among
- * itself.
+ * itself, as does `group`, a group's id (`server/groups.ts`).
  *
  * Cached per basis (`rankedField`), since the leaderboard, the portfolio and
  * the navbar all read it: the rows are frozen and shared, never mutate them.
  */
 export async function leaderboardStandings(
-  q: { basis?: LeaderboardBasis; institution?: string | null },
+  q: { basis?: LeaderboardBasis; institution?: string | null; group?: string | null },
   database: Database = getDb(),
 ): Promise<readonly LeaderboardRow[]> {
   const basis = q.basis ?? 'settled_pnl';
   const field = await rankedField(basis, database);
-  const institution = q.institution;
-  if (institution == null) return field;
+  const { institution, group } = q;
+  if (institution == null && group == null) return field;
+  const members =
+    group == null
+      ? null
+      : new Set(
+          (
+            await database
+              .select({ accountId: groupMembers.accountId })
+              .from(groupMembers)
+              .where(eq(groupMembers.groupId, group))
+          ).map((m) => m.accountId),
+        );
   return ranked(
-    field.filter((r) => r.institutions.includes(institution)),
+    field.filter(
+      (r) => (institution == null || r.institutions.includes(institution)) && (members === null || members.has(r.accountId)),
+    ),
     basis,
   );
 }

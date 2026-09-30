@@ -1,0 +1,69 @@
+import Link from 'next/link';
+import { Fragment } from 'react';
+import { numberAffiliations } from '@/lib/authors';
+import { ui } from './ui';
+
+export interface Author {
+  name: string;
+  href: string;
+  isBot?: boolean;
+  affiliations: readonly string[];
+}
+
+/**
+ * An author line as a paper sets one: names, each with the small numbers of
+ * its affiliations, then the affiliations themselves, numbered, underneath
+ * (`lib/authors.ts`). A group's board uses it for its members. Past `limit`
+ * authors the line ends "and N others", and only the shown are numbered.
+ */
+export function Authors({
+  authors,
+  limit = 60,
+  affiliationHref,
+}: {
+  authors: readonly Author[];
+  limit?: number;
+  affiliationHref?: (name: string) => string;
+}) {
+  const shown = authors.slice(0, limit);
+  const { affiliations, marks } = numberAffiliations(shown);
+  const more = authors.length - shown.length;
+  return (
+    <>
+      <div>
+        {shown.map((a, i) => (
+          <Fragment key={a.href}>
+            {i > 0 && ', '}
+            <span className="whitespace-nowrap">
+              <Link href={a.href} className="text-ink">
+                {a.name}
+              </Link>
+              {a.isBot && <span className={ui.badge}>bot</span>}
+              {marks[i].length > 0 && <sup className="ml-px text-[10px]">{marks[i].join(',')}</sup>}
+            </span>
+          </Fragment>
+        ))}
+        {more > 0 && ` and ${more.toLocaleString('en')} ${more === 1 ? 'other' : 'others'}`}
+      </div>
+      {affiliations.length > 0 && (
+        <div className="mt-1 text-[13px] text-muted">
+          {affiliations.map((name, i) => (
+            <Fragment key={name}>
+              {i > 0 && ' '}
+              <span className="whitespace-nowrap">
+                <sup className="mr-px text-[10px]">{i + 1}</sup>
+                {affiliationHref ? (
+                  <Link href={affiliationHref(name)} className="text-muted">
+                    <i>{name}</i>
+                  </Link>
+                ) : (
+                  <i>{name}</i>
+                )}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

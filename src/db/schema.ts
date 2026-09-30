@@ -594,6 +594,49 @@ export const publicPositions = pgTable(
 );
 
 /**
+ * Leaderboard groups (#25): a named set of traders, ranked among themselves.
+ * Made by a trader, who is its admin and one of its members; joined by
+ * `invite_code`, which the admin can rotate. An institution is a group too,
+ * but a derived one (`accounts.institutions`), never a row here. Written
+ * only by `server/groups.ts`, never by the engine: no money lives on a group.
+ */
+export const groups = pgTable(
+  'groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    description: text('description'),
+    adminAccountId: uuid('admin_account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    inviteCode: text('invite_code').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('groups_invite_code_key').on(t.inviteCode),
+    index('groups_admin_idx').on(t.adminAccountId),
+    check('groups_name_length', sql`char_length(${t.name}) between 1 and 80`),
+    check('groups_description_length', sql`char_length(${t.description}) <= 500`),
+  ],
+);
+
+export const groupMembers = pgTable(
+  'group_members',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.accountId] }), index('group_members_account_idx').on(t.accountId)],
+);
+
+export type Group = typeof groups.$inferSelect;
+
+/**
  * One row per digest mail, keyed by the account and the digest's calendar
  * day (in `DIGEST_TIMEZONE`). Inserted **before** the mail is sent, so a
  * second run on the same day sends nothing: at most once (`server/digest.ts`).

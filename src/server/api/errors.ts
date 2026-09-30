@@ -37,6 +37,8 @@ export const API_ERROR_CODES = [
   'affiliation_taken',
   'primary_affiliation',
   'password_already_set',
+  'too_many_groups',
+  'group_admin',
   'method_not_allowed',
   'internal_error',
 ] as const;

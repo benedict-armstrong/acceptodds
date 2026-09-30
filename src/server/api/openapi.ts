@@ -1,5 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, type RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
+import { MAX_GROUPS_PER_ADMIN } from '../groups';
 import * as S from './schemas';
 
 /**
@@ -185,7 +186,7 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',
-      description: `Every entry carries settled (realized) P&L, liquidation net worth and unrealized P&L; \`basis\` picks the ranking. ${S.LEADERBOARD_BASIS_DESCRIPTION} \`institution\` ranks one institution among itself; \`q\` finds traders by name and keeps their rank.`,
+      description: `Every entry carries settled (realized) P&L, liquidation net worth and unrealized P&L; \`basis\` picks the ranking. ${S.LEADERBOARD_BASIS_DESCRIPTION} \`institution\` ranks one institution among itself, \`group\` one group; \`q\` finds traders by name and keeps their rank.`,
       request: { query: S.LeaderboardQuery },
       ok: { status: 200, schema: S.Leaderboard, description: 'A page of the leaderboard.' },
     }),
@@ -388,6 +389,130 @@ export function buildRegistry(): OpenAPIRegistry {
       scope: 'read',
       ok: { status: 200, schema: S.FollowList, description: 'Your follows, most recent first.' },
     }),
+  );
+
+  const groupIdParam = z.object({ id: S.Id });
+  const noContent = (config: Parameters<typeof op>[0], description: string): RouteConfig => {
+    const c = op(config);
+    delete c.responses[config.ok.status];
+    c.responses[204] = { description };
+    return c;
+  };
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/me/groups',
+      tags: ['groups'],
+      summary: 'Your groups',
+      scope: 'read',
+      ok: { status: 200, schema: S.GroupList, description: 'Every group you are in, with its invite code.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/groups',
+      tags: ['groups'],
+      summary: 'Make a group',
+      description: `You become its admin and first member. Share its invite code for others to join. At most ${MAX_GROUPS_PER_ADMIN} groups per admin.`,
+      scope: 'read',
+      request: { body: { content: { 'application/json': { schema: S.CreateGroupRequest } } } },
+      ok: { status: 201, schema: S.Group, description: 'The new group.' },
+      errors: { 400: 'validation_error', 409: 'too_many_groups' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/groups/{id}',
+      tags: ['groups'],
+      summary: 'A group',
+      description:
+        'Its members, each with their institutions. Public by id; the invite code only to members. Rank the group with `GET /leaderboard?group={id}`.',
+      request: { params: groupIdParam },
+      ok: { status: 200, schema: S.Group, description: 'The group.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'patch',
+      path: '/groups/{id}',
+      tags: ['groups'],
+      summary: 'Rename a group',
+      description: 'Its name or description. Admin only.',
+      scope: 'read',
+      request: { params: groupIdParam, body: { content: { 'application/json': { schema: S.UpdateGroupRequest } } } },
+      ok: { status: 200, schema: S.Group, description: 'The group.' },
+      errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 400: 'validation_error', 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    noContent(
+      {
+        method: 'delete',
+        path: '/groups/{id}',
+        tags: ['groups'],
+        summary: 'Delete a group',
+        description: 'Admin only. Every membership goes with it.',
+        scope: 'read',
+        request: { params: groupIdParam },
+        ok: { status: 200, schema: S.Group, description: 'unused' },
+        errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 404: 'not_found' },
+      },
+      'Deleted.',
+    ),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/groups/{id}/invite',
+      tags: ['groups'],
+      summary: 'Rotate the invite code',
+      description: 'Admin only. The old invite link stops working; members stay.',
+      scope: 'read',
+      request: { params: groupIdParam },
+      ok: { status: 200, schema: S.Group, description: 'The group, with its new code.' },
+      errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/groups/join',
+      tags: ['groups'],
+      summary: 'Join a group',
+      description: 'By its current invite code. Idempotent.',
+      scope: 'read',
+      request: { body: { content: { 'application/json': { schema: S.JoinGroupRequest } } } },
+      ok: { status: 200, schema: S.Group, description: 'The group you are now in.' },
+      errors: { 400: 'validation_error', 404: 'not_found: no group has this code (it may have been rotated).' },
+    }),
+  );
+
+  r.registerPath(
+    noContent(
+      {
+        method: 'delete',
+        path: '/groups/{id}/members/{handle}',
+        tags: ['groups'],
+        summary: 'Leave a group, or remove a member',
+        description:
+          'Your own handle leaves the group; the admin may remove anyone else. The admin cannot leave: they delete the group instead. Idempotent for someone not in it.',
+        scope: 'read',
+        request: { params: z.object({ id: S.Id, handle: S.Handle }) },
+        ok: { status: 200, schema: S.Group, description: 'unused' },
+        errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 404: 'not_found', 409: 'group_admin: the admin cannot be removed.' },
+      },
+      'Removed.',
+    ),
   );
 
   const listingIdParam = z.object({ id: S.ListingRef });
@@ -689,6 +814,7 @@ export function openApiDocument() {
       { name: 'listings', description: 'Opaque subjects that group markets.' },
       { name: 'trading', description: 'Quotes and orders.' },
       { name: 'accounts', description: 'Public profiles and the leaderboard.' },
+      { name: 'groups', description: 'Leaderboard groups: traders ranked among themselves, joined by invite code.' },
       { name: 'me', description: 'The authenticated account.' },
       { name: 'onboarding', description: 'Signing up: plainly, or by choosing a first bet.' },
       { name: 'admin', description: 'Requires the `admin` scope.' },

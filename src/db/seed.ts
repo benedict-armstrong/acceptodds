@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { asc, eq, sql } from 'drizzle-orm';
 import { createAccount, createHouse, ensureAccountForUser, startingBalanceMicro } from '@/server/accounts';
+import { createGroup, joinGroup } from '@/server/groups';
 import { createAuth } from '@/server/better-auth';
 import { closeMarket, createMarket, settle, trade } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
@@ -20,7 +21,8 @@ import { markets, orders } from './schema';
  *   market — the four outcomes `Oral, Spotlight, Poster, Reject`, best first
  *   (issue #11 §4) — and one with a second, binary market (a paper can have
  *   more than one); plus a few `ICLR 2026` papers already settled;
- * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is.
+ * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is,
+ *   running a group (#25) that a few of the bots have joined.
  *
  * The bots trade as a crowd would (`simulateCrowd`): each has noisy beliefs
  * about each paper and spends a slice of its own balance where it disagrees
@@ -54,7 +56,8 @@ async function main() {
   await createHouse(startingBalanceMicro() * 1000n, db);
   const bots = await seedBots(db);
   await seedPapers(db, bots);
-  await seedAdmin(db, adminPassword);
+  const admin = await seedAdmin(db, adminPassword);
+  if (admin) await seedGroup(db, admin.id, bots);
   await report(db);
   await pool.end();
 }
@@ -87,7 +90,7 @@ async function seedAdmin(db: Database, password: string) {
   const email = (process.env.ADMIN_EMAILS ?? '').split(',')[0]?.trim().toLowerCase();
   if (!email) {
     console.log('ADMIN_EMAILS is empty; no admin user seeded');
-    return;
+    return null;
   }
   const ctx = await createAuth(db).$context;
   const user = await ctx.internalAdapter.createUser(
@@ -103,6 +106,14 @@ async function seedAdmin(db: Database, password: string) {
   const account = await ensureAccountForUser({ id: user.id, name: user.name, email }, db);
   const shown = password === ADMIN_PASSWORD ? ` password ${password}` : '';
   console.log(`admin       ${email}  (${account.handle})${shown}`);
+  return account;
+}
+
+/** A group the admin runs, joined by every third bot, through `server/groups.ts` as the API would. */
+async function seedGroup(db: Database, adminId: string, bots: Bot[]) {
+  const group = await createGroup(adminId, { name: 'Reading group', description: 'Papers we argued about on Thursdays.' }, db);
+  for (const bot of bots.filter((_, i) => i % 3 === 0)) await joinGroup(bot.id, group.inviteCode, db);
+  console.log(`group       ${group.name}  /groups/join?code=${group.inviteCode}`);
 }
 
 /** Every trader's net worth, so a seed shows at a glance that the field is level. */

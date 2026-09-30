@@ -912,6 +912,38 @@ unpaginated, and 5 s for that search.
   makes a reader wait. An older computation never overwrites a newer row.
   A cache, not a source of truth: no foreign keys, and ranks never read it.
 
+### Groups (#25)
+
+- **A group is a board of its own**: `/leaderboard?group=<id>`, ranked
+  among its members exactly as `?institution=` ranks an institution
+  (`leaderboardStandings({ group })`, filtering the cached field; the API
+  takes `?group=` too, and it combines with `institution`). Either board
+  opens like a paper: its name as the title, its members as the author
+  line (`components/Authors`, affiliations numbered by first appearance,
+  `lib/authors.ts`), the description as the abstract, then Figure 1 of the
+  members' net worths (`field-snapshot.shapeOf`, live, uncached) and
+  Table 1. Under the title, the viewer's boards: everyone, their
+  institutions, their groups, "+ New group".
+- **Institutions are derived groups**: never a row, always
+  `accounts.institutions`, so they cannot drift from the affiliations and
+  nobody joins or leaves one by hand. Lab groups were deferred on the
+  owner's call.
+- **`groups` and `group_members`** are written only by `server/groups.ts`,
+  in single statements or short transactions of their own, never by the
+  engine; nothing there moves a balance or a share vector, so the standings
+  cache needs no bump. The maker is the admin (`admin_account_id`) and the
+  first member. The admin renames, rotates the invite code (the old link
+  dies, members stay), removes members and deletes; the admin can never
+  leave or be removed (`409 group_admin`) — they delete instead. At most
+  `MAX_GROUPS_PER_ADMIN` (20) per admin, checked under the admin's account
+  row lock (`409 too_many_groups`). Writes need only `read`, like follows.
+- **A group is public by id, its invite code is not.** `GET /groups/{id}`
+  lists members (their names and institutions are on the public board
+  anyway); `inviteCode` only to members. The invite link is
+  `/groups/join?code=` (`lib/links.groupInvitePath`): in the query, which
+  analytics never records, and joining is the page's POST button, never
+  the GET. `group` is deliberately not in `ANALYTICS_PARAMS`.
+
 ### Onboarding (`/welcome`)
 
 - **One question at a time**, each in `components/OnboardingCard`, the step

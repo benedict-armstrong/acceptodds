@@ -57,6 +57,24 @@ export async function fieldSnapshot(database: Database = getDb()): Promise<Field
   };
 }
 
+/**
+ * The shape of any set of net worths, as the snapshot stores the field's:
+ * sorted, with its density peaking at 1. A group's board (#25) draws its
+ * members' from the live board this way; they are few, so it is not cached.
+ */
+export function shapeOf(worths: readonly bigint[], computedAt: Date): FieldSnapshot {
+  const worthsMicro = [...worths].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  let curve: number[] = [];
+  let domain: [number, number] = [0, 0];
+  if (worthsMicro.length > 0) {
+    const d = density(worthsMicro.map(toUnits), CURVE_POINTS);
+    const peak = Math.max(...d.ys);
+    curve = d.ys.map((y) => (peak > 0 ? y / peak : 0));
+    domain = d.domain;
+  }
+  return { computedAt, worthsMicro, curve, domain };
+}
+
 let refreshing: Promise<FieldSnapshot> | null = null;
 
 /**
@@ -74,15 +92,10 @@ async function computeAndStore(database: Database): Promise<FieldSnapshot> {
   // Stamped before reading, so the stamp never claims more freshness than the data has.
   const computedAt = new Date();
   const field = await leaderboardStandings({ basis: BASIS }, database);
-  const worthsMicro = field.map((r) => r.netWorthMicro).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  let curve: number[] = [];
-  let domain: [number, number] = [0, 0];
-  if (worthsMicro.length > 0) {
-    const d = density(worthsMicro.map(toUnits), CURVE_POINTS);
-    const peak = Math.max(...d.ys);
-    curve = d.ys.map((y) => (peak > 0 ? y / peak : 0));
-    domain = d.domain;
-  }
+  const { worthsMicro, curve, domain } = shapeOf(
+    field.map((r) => r.netWorthMicro),
+    computedAt,
+  );
   const values = { computedAt, worthsMicro, curve, domainLo: domain[0], domainHi: domain[1] };
   await database
     .insert(fieldSnapshots)

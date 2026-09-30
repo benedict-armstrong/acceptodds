@@ -1,5 +1,9 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { notFound } from 'next/navigation';
+import { Fragment } from 'react';
+import { Authors } from '@/components/Authors';
+import { GroupActions, NewGroupButton } from '@/components/Groups';
 import { Pager } from '@/components/Pager';
 import { FieldCurve } from '@/components/FieldCurve';
 import { TableNotes } from '@/components/TableNotes';
@@ -7,11 +11,13 @@ import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { rep, signedRep } from '@/lib/format';
 import { leaderboardSegments } from '@/lib/leaderboard';
+import { groupPath, institutionPath } from '@/lib/links';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
-import { fieldSnapshot } from '@/server/field-snapshot';
+import { fieldSnapshot, shapeOf } from '@/server/field-snapshot';
+import { groupById, groupMembersOf, groupsOf, roleIn } from '@/server/groups';
 import {
   leaderboardStandings,
   matchingTraders,
@@ -41,10 +47,15 @@ function one(v: string | string[] | undefined): string | undefined {
  *
  * Opens compact: the top ten, then the viewer (or `?around=<handle>`, where a
  * people search leads) with two either side, then a pager into the whole
- * board (`?page=`). `?institution=` ranks one institution among itself;
- * `?q=` finds traders by name and `institution:` (`lib/trader-query.ts`),
- * each at their rank on the board.
+ * board (`?page=`). `?institution=` ranks one institution among itself,
+ * `?group=` one group (#25); either opens like a paper, its members as the
+ * author line, with its own Figure 1. `?q=` finds traders by name and
+ * `institution:` (`lib/trader-query.ts`), each at their rank on the board.
+ * Under the title, the viewer's boards: everyone, their institutions, their
+ * groups.
  */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function LeaderboardPage({
   searchParams,
 }: {
@@ -53,14 +64,27 @@ export default async function LeaderboardPage({
   const sp = await searchParams;
   const basis: LeaderboardBasis = one(sp.basis) === 'settled_pnl' ? 'settled_pnl' : 'net_worth';
   const institution = one(sp.institution)?.trim() || null;
+  const groupId = one(sp.group)?.trim() || null;
   const q = normalizeSearch(one(sp.q));
   const around = one(sp.around)?.trim() || null;
   const requested = Math.max(0, Number.parseInt(one(sp.page) ?? '0', 10) || 0);
 
   const viewer = await viewerFromHeaders(await headers());
-  const field = await leaderboardStandings({ basis, institution });
-  // The whole field's shape, shared by every viewer: only on the unfiltered net-worth board it describes.
-  const snapshot = basis === 'net_worth' && institution === null ? await fieldSnapshot() : null;
+  const group = groupId === null ? null : UUID.test(groupId) ? await groupById(groupId) : null;
+  if (groupId !== null && group === null) notFound();
+  const [field, members, role, myGroups] = await Promise.all([
+    leaderboardStandings({ basis, institution, group: group?.id }),
+    group ? groupMembersOf(group.id) : null,
+    group ? roleIn(group, viewer?.account.id ?? null) : null,
+    viewer ? groupsOf(viewer.account.id) : [],
+  ]);
+  const board = group !== null || institution !== null;
+  // A group's or an institution's members by net worth: its author line, and its figure.
+  const byWorth = board ? await leaderboardStandings({ basis: 'net_worth', institution, group: group?.id }) : null;
+  const boardName = group?.name ?? institution;
+  // The whole field's shape, shared by every viewer, on the unfiltered net-worth board; a board's own, live.
+  const snapshot =
+    basis !== 'net_worth' ? null : byWorth === null ? await fieldSnapshot() : shapeOf(byWorth.map((r) => r.netWorthMicro), new Date());
   const search = q === null ? null : parseTraderSearch(q);
   const matches = (await matchingTraders(field, search?.name)).filter((r) => search === null || institutionsMatch(r.institutions, search));
   events.log('leaderboard.read', { accountId: viewer?.account.id ?? null });
@@ -83,21 +107,83 @@ export default async function LeaderboardPage({
 
   const href = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams();
-    const all = { basis: basis === 'net_worth' ? null : basis, institution, q, around, ...patch };
+    const all = { basis: basis === 'net_worth' ? null : basis, institution, group: group?.id ?? null, q, around, ...patch };
     for (const [k, v] of Object.entries(all)) if (v) params.set(k, v);
     const s = params.toString();
     return s ? `/leaderboard?${s}` : '/leaderboard';
   };
-  const where = institution ? ` at ${institution}` : '';
+  const where = group ? ` in ${group.name}` : institution ? ` at ${institution}` : '';
   // The best figure in each column over the whole board, set in bold as a results table sets it.
   const best = bestOf(field);
 
   return (
     <main className={ui.page}>
-      <TitleBlock title="Leaderboard" />
+      {board ? (
+        <TitleBlock
+          above={group ? 'Leaderboard · group' : 'Leaderboard · institution'}
+          title={boardName}
+          byline={
+            <Authors
+              authors={(group
+                ? members!
+                : byWorth!
+              ).map((m) => ({
+                name: m.displayName,
+                href: `/people/${encodeURIComponent(m.handle)}`,
+                isBot: m.isBot,
+                affiliations: m.institutions,
+              }))}
+              affiliationHref={institutionPath}
+            />
+          }
+          abstract={group?.description}
+        >
+          {group && role && viewer && (
+            <GroupActions
+              group={{ id: group.id, name: group.name, description: group.description, inviteCode: group.inviteCode }}
+              role={role}
+              viewerHandle={viewer.account.handle}
+              members={members!.map((m) => ({
+                handle: m.handle,
+                displayName: m.displayName,
+                role: m.accountId === group.adminAccountId ? 'admin' : 'member',
+              }))}
+            />
+          )}
+        </TitleBlock>
+      ) : (
+        <TitleBlock title="Leaderboard" />
+      )}
+      <nav aria-label="Boards" className="mb-3 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-sans text-[13px] text-muted">
+        <span>Boards:</span>
+        {[
+          { key: 'everyone', label: 'Everyone', href: '/leaderboard', on: !board },
+          ...(viewer?.account.institutions ?? []).map((name) => ({
+            key: `i:${name}`,
+            label: name,
+            href: institutionPath(name),
+            on: group === null && institution === name,
+          })),
+          ...myGroups.map((g) => ({ key: `g:${g.group.id}`, label: g.group.name, href: groupPath(g.group.id), on: group?.id === g.group.id })),
+        ].map((b, i) => (
+          <Fragment key={b.key}>
+            {i > 0 && <span aria-hidden>·</span>}
+            <Link href={b.href} className={b.on ? ui.on : ''} aria-current={b.on ? 'page' : undefined}>
+              {b.label}
+            </Link>
+          </Fragment>
+        ))}
+        {viewer && (
+          <>
+            <span aria-hidden>·</span>
+            <NewGroupButton />
+          </>
+        )}
+      </nav>
       <form action="/leaderboard" method="get" role="search" className="flex gap-2">
         {basis !== 'net_worth' && <input type="hidden" name="basis" value={basis} />}
         {institution && <input type="hidden" name="institution" value={institution} />}
+        {group && <input type="hidden" name="group" value={group.id} />}
         <input
           type="search"
           name="q"
@@ -131,7 +217,9 @@ export default async function LeaderboardPage({
           </span>
         ) : viewer ? (
           <span>
-            {institution && !viewer.account.institutions.includes(institution)
+            {group && role === null
+              ? 'You are not in this group.'
+              : institution && !viewer.account.institutions.includes(institution)
               ? `You are not at ${institution}.`
               : basis === 'settled_pnl'
                 ? 'You are not on this board yet: it counts settled markets only.'
@@ -162,6 +250,13 @@ export default async function LeaderboardPage({
       {snapshot && (
         <FieldCurve
           field={snapshot}
+          of={
+            group
+              ? `the ${snapshot.worthsMicro.length.toLocaleString('en')} members of ${group.name}`
+              : institution
+                ? `the ${snapshot.worthsMicro.length.toLocaleString('en')} traders at ${institution}`
+                : undefined
+          }
           you={mine >= 0 ? field[mine].netWorthMicro : null}
           label={mine >= 0 ? (standing(mine) === null ? 'you' : `you · ahead of ${standing(mine)}%`) : null}
           other={
@@ -180,7 +275,7 @@ export default async function LeaderboardPage({
         <div className={ui.empty}>
           {q
             ? `No traders${where} match “${q}”.`
-            : institution
+            : board
               ? `Nobody${where} is on this board yet.`
               : basis === 'settled_pnl'
                 ? 'No markets have settled yet.'
@@ -220,7 +315,7 @@ export default async function LeaderboardPage({
                   me={me}
                   best={best}
                   focus={focus >= 0 ? field[focus].accountId : null}
-                  institutionHref={(name) => href({ institution: name, around: null, page: null })}
+                  institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
                 />
               ))}
             </tbody>
