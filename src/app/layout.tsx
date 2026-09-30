@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang="en">
       <body>
         {/* Wraps on a phone: the nav drops to its own row under the logo. */}
-        <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 border-b border-rule px-6 pt-4 pb-2.5 narrow:px-4">
+        <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 px-6 pt-4 pb-2.5 narrow:px-4">
           <Link href="/" className="text-[22px]">
             <LogoMark />
             <span>

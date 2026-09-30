@@ -171,7 +171,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   return (
     <main className={ui.page}>
       {/* The pitch is for visitors; a signed-in viewer has read it. */}
-      <TitleBlock title="Will this paper get accepted to ICLR?" abstract={!q && !viewer ? ABSTRACT : null} />
+      <TitleBlock
+        title={
+          <>
+            accept<i className="text-accent not-italic">odds</i>: Which papers will get accepted{kind ? ` at ${kind}` : ''}?
+          </>
+        }
+        abstract={!q && !viewer ? ABSTRACT : null} />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />
