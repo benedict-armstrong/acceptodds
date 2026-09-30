@@ -55,11 +55,11 @@ export function TraderHeader({
 
 /** Who the trader is, in a sentence or two, from the account row alone. */
 function abstract(a: Parameters<typeof TraderHeader>[0]['account'], admin: boolean): string {
-  const at = a.institutions.length ? ` at ${andList(a.institutions)}` : '';
+  const at = a.institutions.length ? ` of ${andList(a.institutions)}` : '';
   const parts = [
     a.isBot
       ? `${a.displayName} is a bot, trading since ${day(a.createdAt)}.`
-      : `${a.displayName} is a trader${at}, here since ${day(a.createdAt)}.`,
+      : `${a.displayName} is a member ${at}, here since ${day(a.createdAt)}.`,
   ];
   // Bots trade without verification, so it says nothing about them.
   if (!a.isBot) {

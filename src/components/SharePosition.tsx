@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { CopyButton } from '@/components/CopyButton';
 import { Modal, ModalContent, ModalTrigger } from '@/components/Modal';
+import { ShareIcon } from '@/components/icons';
 import { ui } from '@/components/ui';
 import { publicPositionPath } from '@/lib/links';
 
@@ -20,7 +21,7 @@ async function setPublic(outcomeId: string, on: boolean): Promise<string | null>
 }
 
 /**
- * A holding's Share button. A private position opens on what making it public
+ * A holding's share button, an icon (in the accent once public). A private position opens on what making it public
  * shows, and the warning that matters: comments show their author's stake,
  * so a public, named position of the same size tells readers which comments
  * on that market are yours. A public one opens on its link, to copy, and a
@@ -68,8 +69,9 @@ export function SharePositionModal({
       <ModalTrigger
         className={`${ui.btn({ ghost: true, inline: true, flush: true })} ml-1`}
         title={id ? 'This position is public' : 'Share this position'}
+        aria-label={id ? 'This position is public' : 'Share this position'}
       >
-        {id ? 'Public' : 'Share'}
+        <ShareIcon className={`inline-block size-3.5 align-[-2px] ${id ? 'text-accent' : ''}`} />
       </ModalTrigger>
       <ModalContent title={id ? `Your ${outcomeLabel} position is public` : `Share your ${outcomeLabel} position`}>
         {id ? (

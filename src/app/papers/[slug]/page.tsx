@@ -85,6 +85,7 @@ export default async function PaperPage({
         title={<MathText text={listing.title} />}
         byline={listing.authors.length > 0 ? listing.authors.join(', ') : null}
         abstract={listing.summary}
+        abstractMath
       >
         {listing.links.length > 0 && (
           <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 font-sans text-[13px]">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { MathText } from '@/components/MathText';
 import { ui } from '@/components/ui';
 
 /** Collapsed, the abstract shows this many lines. */
@@ -12,8 +13,12 @@ const COLLAPSED_LINES = 3;
  * paper's is; one shorter than a line is centred. One longer than three
  * lines at the current width starts collapsed to them until clicked; a
  * shorter one has no toggle.
+ *
+ * `math` renders inline TeX (`$…$`), as a paper's abstract carries it. Only
+ * for text that means it: elsewhere a `$` is literal (`$rep`, twice in one
+ * abstract, would read as math).
  */
-export function Abstract({ text }: { text: string }) {
+export function Abstract({ text, math = false }: { text: string; math?: boolean }) {
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const ref = useRef<HTMLParagraphElement>(null);
@@ -42,7 +47,7 @@ export function Abstract({ text }: { text: string }) {
       <h2 className={`${ui.boxHeading} text-center`}>Abstract</h2>
       <div className="inline-block max-w-full text-left">
         <p ref={ref} className={`whitespace-pre-line text-justify hyphens-auto ${open ? '' : 'line-clamp-3'}`}>
-          {text}
+          {math ? <MathText text={text} /> : text}
         </p>
         {overflows && (
           <button

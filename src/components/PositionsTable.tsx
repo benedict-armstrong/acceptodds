@@ -74,13 +74,13 @@ export function PositionsTable({
             <tr>
               {showMarket && <th className={ui.th()}>Paper</th>}
               <th className={ui.th()}>Outcome</th>
-              <th className={`${ui.th(true)}`}>
+              <th className={`${ui.th(true)} whitespace-nowrap`}>
                 Bought @<sup className={ui.mark}>a</sup>
               </th>
-              <th className={ui.th(true)}>
+              <th className={`${ui.th(true)} whitespace-nowrap`}>
                 Payout<sup className={ui.mark}>b</sup>
               </th>
-              <th className={ui.th(true)}>
+              <th className={`${ui.th(true)} whitespace-nowrap`}>
                 <button
                   className="cursor-pointer font-semibold hover:text-accent"
                   title={`Show in ${absolute ? 'percent' : REP}`}

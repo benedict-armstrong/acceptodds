@@ -482,23 +482,36 @@ function SearchSyntax() {
   );
 }
 
-/** One paper (or unlisted market) in a list. */
+/**
+ * One paper (or unlisted market) in a list. The whole row opens it: the
+ * title's link is stretched over the row (`after:inset-0`), since a row that
+ * is itself a link could not hold the paper's own PDF link, which sits above
+ * the stretched one, in a column of its own at the left so titles align.
+ */
 function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
   const look = likelihoodClass(marketLikelihood({ ...r.market, outcomes: r.outcomes }));
+  const pdf = r.listing?.links.find((l) => l.label.toLowerCase() === 'pdf');
+  const names = r.listing && r.listing.authors.length > 0 ? authors(r.listing.authors) : null;
   return (
-    <Link
-      href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
-      className="grid grid-cols-[3px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight hover:no-underline narrow:grid-cols-[3px_1fr_64px]"
-    >
+    <div className="relative grid grid-cols-[3px_34px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight narrow:grid-cols-[3px_34px_1fr_64px]">
       <span className={`self-stretch ${look.bar}`} aria-hidden />
+      <span className="font-sans text-xs">
+        {pdf && (
+          <a href={pdf.url} className="relative z-10 text-accent" rel="noopener noreferrer" target="_blank">
+            [{pdf.label}]
+          </a>
+        )}
+      </span>
       <span className="min-w-0 leading-[1.35]">
         {/* At most two lines; the whole title on hover. */}
-        <span className="line-clamp-2" title={r.listing ? r.listing.title : r.market.question}>
+        <Link
+          href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
+          className="line-clamp-2 after:absolute after:inset-0 hover:no-underline"
+          title={r.listing ? r.listing.title : r.market.question}
+        >
           <MathText text={r.listing ? r.listing.title : r.market.question} />
-        </span>
-        {r.listing && r.listing.authors.length > 0 && (
-          <span className="block font-sans text-xs text-muted">{authors(r.listing.authors)}</span>
-        )}
+        </Link>
+        {names && <span className="block font-sans text-xs text-muted">{names}</span>}
       </span>
       <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
         {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} ${REP}` : ''}
@@ -509,7 +522,7 @@ function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
       <span className={`text-right font-mono text-sm ${look.text}`} title={r.listing ? `${r.market.question} · chance of acceptance` : undefined}>
         {headline(r)}
       </span>
-    </Link>
+    </div>
   );
 }
 

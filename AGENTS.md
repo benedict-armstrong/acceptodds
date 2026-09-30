@@ -833,7 +833,7 @@ unpaginated, and 5 s for that search.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** wipes every table, then gives a venue of invented
-  papers with four-outcome markets, three settled ones, and the admin. A field
+  papers under `ICLR 2027` with four-outcome markets, and the admin. A field
   of seed bots, each funded exactly as a signup is, trades them as a crowd, so
   net worths stay around the starting balance. Only a local database without
   `--allow-remote`; a remote one also needs `SEED_ADMIN_PASSWORD`. It back-dates their

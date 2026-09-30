@@ -5,19 +5,22 @@ import { Abstract } from './Abstract';
  * A page opened like a paper's first page: an optional line above the title
  * (the venue), the title, the author line, then anything the page adds
  * (`children`: links, actions), then the abstract. Papers, trader pages and
- * `/how-it-works` open with it.
+ * `/how-it-works` open with it. `abstractMath` renders the abstract's inline
+ * TeX (see `Abstract`).
  */
 export function TitleBlock({
   above,
   title,
   byline,
   abstract,
+  abstractMath,
   children,
 }: {
   above?: ReactNode;
   title: ReactNode;
   byline?: ReactNode;
   abstract?: string | null;
+  abstractMath?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -26,7 +29,7 @@ export function TitleBlock({
       <h1 className="mt-2 mb-3 text-[30px] leading-snug font-normal narrow:text-2xl">{title}</h1>
       {byline && <div className="mx-auto max-w-[680px] text-[15px] text-subtle">{byline}</div>}
       {children}
-      {abstract && <Abstract text={abstract} />}
+      {abstract && <Abstract text={abstract} math={abstractMath} />}
     </header>
   );
 }

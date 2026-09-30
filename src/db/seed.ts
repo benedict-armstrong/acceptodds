@@ -20,7 +20,7 @@ import { markets, orders } from './schema';
  * - a few invented papers under `ICLR 2027`, each with the default single
  *   market — the four outcomes `Oral, Spotlight, Poster, Reject`, best first
  *   (issue #11 §4) — and one with a second, binary market (a paper can have
- *   more than one); plus a few `ICLR 2026` papers already settled;
+ *   more than one);
  * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is,
  *   running a group (#25) that a few of the bots have joined.
  *
@@ -34,7 +34,8 @@ import { markets, orders } from './schema';
  * seed also needs `SEED_ADMIN_PASSWORD` (a local one defaults to
  * `ADMIN_PASSWORD`).
  *
- * The titles are invented. The platform still knows nothing about papers:
+ * The papers are real (arXiv, often historical), posed as ICLR submissions;
+ * the decisions and awards are invented. The platform still knows nothing about papers:
  * everything here goes in through the same engine and listing calls a client
  * would make. The one exception is `spreadOverTime`, a seed-only rewrite of
  * fill timestamps so charts have a history — see there.
@@ -145,6 +146,8 @@ const DAY = 24 * 60 * 60 * 1000;
 interface Paper {
   slug: string;
   title: string;
+  /** The paper's arXiv id: the listing links its abstract page and its PDF. */
+  arxiv: string;
   /** Where the crowd's beliefs drift to, best first: oral, spotlight, poster, reject. Normalised on use. */
   target: [number, number, number, number];
   summary: string;
@@ -158,96 +161,193 @@ interface Paper {
 
 const ICLR_2027: Paper[] = [
   {
-    slug: 'sparse-moe-sublinear',
-    title: 'Sparse Mixtures of Experts Scale Sublinearly in Active Parameters',
-    target: [0.07, 0.18, 0.42, 0.33],
-    award: 0.12,
+    slug: 'attention-is-all-you-need',
+    title: 'Attention Is All You Need',
+    arxiv: '1706.03762',
+    target: [0.35, 0.3, 0.3, 0.05],
+    award: 0.3,
     summary:
-      'We train 212 mixture-of-experts language models from 150M to 30B active parameters and find that loss scales ' +
-      'with a smaller exponent in active parameters than dense models do, once routing entropy is held fixed. We give ' +
-      'a simple correction to compute-optimal allocation and release all checkpoints.',
+      'The dominant sequence transduction models are based on complex recurrent or convolutional neural ' +
+      'networks in an encoder-decoder configuration. The best performing models also connect the encoder and ' +
+      'decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, ' +
+      'based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments ' +
+      'on two machine translation tasks show these models to be superior in quality while being more ' +
+      'parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT ' +
+      '2014 English-to-German translation task, improving over the existing best results, including ensembles ' +
+      'by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-' +
+      'model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of' +
+      ' the training costs of the best models from the literature. We show that the Transformer generalizes ' +
+      'well to other tasks by applying it successfully to English constituency parsing both with large and ' +
+      'limited training data.',
   },
   {
-    slug: 'curriculum-free-rl',
-    title: 'Curriculum-Free Reinforcement Learning via Self-Generated Goals',
-    target: [0.12, 0.21, 0.45, 0.22],
+    slug: 'lora',
+    title: 'LoRA: Low-Rank Adaptation of Large Language Models',
+    arxiv: '2106.09685',
+    target: [0.12, 0.28, 0.45, 0.15],
     summary:
-      'An agent that proposes its own goals from a learned model of what it can almost do matches hand-designed ' +
-      'curricula on eleven sparse-reward benchmarks without any task-specific tuning.',
+      'An important paradigm of natural language processing consists of large-scale pre-training on general ' +
+      'domain data and adaptation to particular tasks or domains. As we pre-train larger models, full fine-' +
+      'tuning, which retrains all model parameters, becomes less feasible. Using GPT-3 175B as an example -- ' +
+      'deploying independent instances of fine-tuned models, each with 175B parameters, is prohibitively ' +
+      'expensive. We propose Low-Rank Adaptation, or LoRA, which freezes the pre-trained model weights and ' +
+      'injects trainable rank decomposition matrices into each layer of the Transformer architecture, greatly ' +
+      'reducing the number of trainable parameters for downstream tasks. Compared to GPT-3 175B fine-tuned with' +
+      ' Adam, LoRA can reduce the number of trainable parameters by 10,000 times and the GPU memory requirement' +
+      ' by 3 times. LoRA performs on-par or better than fine-tuning in model quality on RoBERTa, DeBERTa, ' +
+      'GPT-2, and GPT-3, despite having fewer trainable parameters, a higher training throughput, and, unlike ' +
+      'adapters, no additional inference latency. We also provide an empirical investigation into rank-' +
+      'deficiency in language model adaptation, which sheds light on the efficacy of LoRA. We release a package' +
+      ' that facilitates the integration of LoRA with PyTorch models and provide our implementations and model ' +
+      'checkpoints for RoBERTa, DeBERTa, and GPT-2 at https://github.com/microsoft/LoRA.',
   },
   {
-    slug: 'linear-probes-overstate',
-    title: 'Linear Probes Overstate What Representations Encode',
-    target: [0.02, 0.1, 0.5, 0.38],
+    slug: 'scaling-laws-neural-lms',
+    title: 'Scaling Laws for Neural Language Models',
+    arxiv: '2001.08361',
+    target: [0.1, 0.22, 0.4, 0.28],
     summary:
-      'Probing accuracy is routinely read as evidence that a concept is encoded. We show that probes trained on ' +
-      'random directions of equal norm reach comparable accuracy on 14 of 20 published probing tasks, and propose a ' +
-      'control that separates the two.',
+      'We study empirical scaling laws for language model performance on the cross-entropy loss. The loss ' +
+      'scales as a power-law with model size, dataset size, and the amount of compute used for training, with ' +
+      'some trends spanning more than seven orders of magnitude. Other architectural details such as network ' +
+      'width or depth have minimal effects within a wide range. Simple equations govern the dependence of ' +
+      'overfitting on model/dataset size and the dependence of training speed on model size. These ' +
+      'relationships allow us to determine the optimal allocation of a fixed compute budget. Larger models are ' +
+      'significantly more sample-efficient, such that optimally compute-efficient training involves training ' +
+      'very large models on a relatively modest amount of data and stopping significantly before convergence.',
   },
   {
-    slug: 'agent-benchmark-leaks',
-    title: 'Agent Benchmarks Leak Their Answers Through Tool Outputs',
-    target: [0.06, 0.16, 0.31, 0.47],
+    slug: 'lottery-ticket-hypothesis',
+    title: 'The Lottery Ticket Hypothesis: Finding Sparse, Trainable Neural Networks',
+    arxiv: '1803.03635',
+    target: [0.08, 0.2, 0.42, 0.3],
     summary:
-      'In six popular agent benchmarks, tool outputs contain the gold answer verbatim for between 3% and 41% of ' +
-      'tasks. We release patched versions and re-rank twelve published agents.',
+      'Neural network pruning techniques can reduce the parameter counts of trained networks by over 90%, ' +
+      'decreasing storage requirements and improving computational performance of inference without ' +
+      'compromising accuracy. However, contemporary experience is that the sparse architectures produced by ' +
+      'pruning are difficult to train from the start, which would similarly improve training performance. We ' +
+      'find that a standard pruning technique naturally uncovers subnetworks whose initializations made them ' +
+      'capable of training effectively. Based on these results, we articulate the "lottery ticket hypothesis:" ' +
+      'dense, randomly-initialized, feed-forward networks contain subnetworks ("winning tickets") that - when ' +
+      'trained in isolation - reach test accuracy comparable to the original network in a similar number of ' +
+      'iterations. The winning tickets we find have won the initialization lottery: their connections have ' +
+      'initial weights that make training particularly effective. We present an algorithm to identify winning ' +
+      'tickets and a series of experiments that support the lottery ticket hypothesis and the importance of ' +
+      'these fortuitous initializations. We consistently find winning tickets that are less than 10-20% of the ' +
+      'size of several fully-connected and convolutional feed-forward architectures for MNIST and CIFAR10. ' +
+      'Above this size, the winning tickets that we find learn faster than the original network and reach ' +
+      'higher test accuracy.',
   },
   {
-    slug: 'lora-rank-myth',
-    title: 'The Low-Rank Myth: Fine-Tuning Updates Are Not Low Rank',
-    target: [0.01, 0.04, 0.26, 0.69],
+    slug: 'rethinking-generalization',
+    title: 'Understanding Deep Learning Requires Rethinking Generalization',
+    arxiv: '1611.03530',
+    target: [0.06, 0.16, 0.36, 0.42],
     summary:
-      'Full fine-tuning updates of large language models have slowly decaying spectra; LoRA works despite this, ' +
-      'not because of it.',
+      'Despite their massive size, successful deep artificial neural networks can exhibit a remarkably small ' +
+      'difference between training and test performance. Conventional wisdom attributes small generalization ' +
+      'error either to properties of the model family, or to the regularization techniques used during ' +
+      'training. Through extensive systematic experiments, we show how these traditional approaches fail to ' +
+      'explain why large neural networks generalize well in practice. Specifically, our experiments establish ' +
+      'that state-of-the-art convolutional networks for image classification trained with stochastic gradient ' +
+      'methods easily fit a random labeling of the training data. This phenomenon is qualitatively unaffected ' +
+      'by explicit regularization, and occurs even if we replace the true images by completely unstructured ' +
+      'random noise. We corroborate these experimental findings with a theoretical construction showing that ' +
+      'simple depth two neural networks already have perfect finite sample expressivity as soon as the number ' +
+      'of parameters exceeds the number of data points as it usually does in practice. We interpret our ' +
+      'experimental findings by comparison with traditional models.',
   },
   {
-    slug: 'grokking-optimiser',
-    title: 'Grokking Is an Artefact of the Optimiser',
-    target: [0.01, 0.02, 0.09, 0.88],
-    summary: 'With a second-order optimiser, delayed generalisation disappears on every task we could reproduce it on.',
+    slug: 'mamba',
+    title: 'Mamba: Linear-Time Sequence Modeling with Selective State Spaces',
+    arxiv: '2312.00752',
+    target: [0.05, 0.14, 0.37, 0.44],
+    summary:
+      'Foundation models, now powering most of the exciting applications in deep learning, are almost ' +
+      'universally based on the Transformer architecture and its core attention module. Many subquadratic-time ' +
+      'architectures such as linear attention, gated convolution and recurrent models, and structured state ' +
+      'space models (SSMs) have been developed to address Transformers\' computational inefficiency on long ' +
+      'sequences, but they have not performed as well as attention on important modalities such as language. We' +
+      ' identify that a key weakness of such models is their inability to perform content-based reasoning, and ' +
+      'make several improvements. First, simply letting the SSM parameters be functions of the input addresses ' +
+      'their weakness with discrete modalities, allowing the model to selectively propagate or forget ' +
+      'information along the sequence length dimension depending on the current token. Second, even though this' +
+      ' change prevents the use of efficient convolutions, we design a hardware-aware parallel algorithm in ' +
+      'recurrent mode. We integrate these selective SSMs into a simplified end-to-end neural network ' +
+      'architecture without attention or even MLP blocks (Mamba). Mamba enjoys fast inference (5$\\times$ higher' +
+      ' throughput than Transformers) and linear scaling in sequence length, and its performance improves on ' +
+      'real data up to million-length sequences. As a general sequence model backbone, Mamba achieves state-of-' +
+      'the-art performance across several modalities such as language, audio, and genomics. On language ' +
+      'modeling, our Mamba-3B model outperforms Transformers of the same size and matches Transformers twice ' +
+      'its size, both in pretraining and downstream evaluation.',
   },
   {
     // A title with inline TeX.
-    slug: 'epsilon-greedy-regret',
-    title: 'An $O(\\sqrt{T \\log |\\mathcal{A}|})$ Regret Bound for $\\epsilon$-Greedy Exploration',
-    target: [0.09, 0.2, 0.38, 0.33],
-    summary: 'A tight regret bound for epsilon-greedy with a decaying schedule, closing a gap open since 2002.',
+    slug: 'infinity-former',
+    title: '$\\infty$-former: Infinite Memory Transformer',
+    arxiv: '2109.00301',
+    target: [0.02, 0.06, 0.3, 0.62],
+    summary:
+      'Transformers are unable to model long-term memories effectively, since the amount of computation they ' +
+      'need to perform grows with the context length. While variations of efficient transformers have been ' +
+      'proposed, they all have a finite memory capacity and are forced to drop old information. In this paper, ' +
+      'we propose the $\\infty$-former, which extends the vanilla transformer with an unbounded long-term ' +
+      'memory. By making use of a continuous-space attention mechanism to attend over the long-term memory, the' +
+      ' $\\infty$-former\'s attention complexity becomes independent of the context length, trading off memory ' +
+      'length with precision. In order to control where precision is more important, $\\infty$-former maintains ' +
+      '"sticky memories" being able to model arbitrarily long contexts while keeping the computation budget ' +
+      'fixed. Experiments on a synthetic sorting task, language modeling, and document grounded dialogue ' +
+      'generation demonstrate the $\\infty$-former\'s ability to retain information from long sequences.',
   },
   {
     // A title long enough to be cut to two lines in lists and in the share text.
-    slug: 'very-long-titles',
-    title:
-      'On the Surprising Effectiveness of Very Long Titles: A Large-Scale Empirical Study of How Paper Titles ' +
-      'Grow Across Venues, Years and Subfields, With Implications for Reviewers, Readers and Layout Engines',
-    target: [0.02, 0.05, 0.28, 0.65],
-    summary: 'Titles have grown by 1.4 words per decade. We find no evidence this helps anyone.',
-  },
-];
-
-const ICLR_2026: Paper[] = [
-  {
-    slug: 'diffusion-forcing-lm',
-    title: 'Diffusion Forcing for Language Models',
-    target: [0.2, 0.3, 0.35, 0.15],
-    decided: 1,
-    authors: ['Mara Ilves', 'Tomás Reyes', 'Anjali Kapoor'],
-    summary: 'Per-token noise levels let one model interpolate between autoregressive and diffusion decoding.',
-  },
-  {
-    slug: 'reward-hacking-taxonomy',
-    title: 'A Taxonomy of Reward Hacking in Reasoning Models',
-    target: [0.03, 0.1, 0.42, 0.45],
-    decided: 2,
-    authors: ['Jonas Weber', 'Lin Qiao'],
-    summary: 'We catalogue 31 distinct reward hacks found in RL-trained reasoning models and how often each recurs.',
+    slug: 't5',
+    title: 'Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer',
+    arxiv: '1910.10683',
+    target: [0.07, 0.18, 0.45, 0.3],
+    summary:
+      'Transfer learning, where a model is first pre-trained on a data-rich task before being fine-tuned on a ' +
+      'downstream task, has emerged as a powerful technique in natural language processing (NLP). The ' +
+      'effectiveness of transfer learning has given rise to a diversity of approaches, methodology, and ' +
+      'practice. In this paper, we explore the landscape of transfer learning techniques for NLP by introducing' +
+      ' a unified framework that converts all text-based language problems into a text-to-text format. Our ' +
+      'systematic study compares pre-training objectives, architectures, unlabeled data sets, transfer ' +
+      'approaches, and other factors on dozens of language understanding tasks. By combining the insights from ' +
+      'our exploration with scale and our new ``Colossal Clean Crawled Corpus\'\', we achieve state-of-the-art ' +
+      'results on many benchmarks covering summarization, question answering, text classification, and more. To' +
+      ' facilitate future work on transfer learning for NLP, we release our data set, pre-trained models, and ' +
+      'code.',
   },
   {
-    slug: 'attention-sinks-free',
-    title: 'Attention Sinks Are Free Registers',
-    target: [0.02, 0.08, 0.35, 0.55],
-    decided: 3,
-    authors: ['Priya Natarajan', 'Olle Berg'],
-    summary: 'Attention sinks behave like learned register tokens; adding registers removes them.',
+    slug: 'ddpm',
+    title: 'Denoising Diffusion Probabilistic Models',
+    arxiv: '2006.11239',
+    target: [0.15, 0.3, 0.4, 0.15],
+    summary:
+      'We present high quality image synthesis results using diffusion probabilistic models, a class of latent ' +
+      'variable models inspired by considerations from nonequilibrium thermodynamics. Our best results are ' +
+      'obtained by training on a weighted variational bound designed according to a novel connection between ' +
+      'diffusion probabilistic models and denoising score matching with Langevin dynamics, and our models ' +
+      'naturally admit a progressive lossy decompression scheme that can be interpreted as a generalization of ' +
+      'autoregressive decoding. On the unconditional CIFAR10 dataset, we obtain an Inception score of 9.46 and ' +
+      'a state-of-the-art FID score of 3.17. On 256x256 LSUN, we obtain sample quality similar to ' +
+      'ProgressiveGAN. Our implementation is available at https://github.com/hojonathanho/diffusion',
+  },
+  {
+    slug: 'grokking',
+    title: 'Grokking: Generalization Beyond Overfitting on Small Algorithmic Datasets',
+    arxiv: '2201.02177',
+    target: [0.01, 0.04, 0.2, 0.75],
+    summary:
+      'In this paper we propose to study generalization of neural networks on small algorithmically generated ' +
+      'datasets. In this setting, questions about data efficiency, memorization, generalization, and speed of ' +
+      'learning can be studied in great detail. In some situations we show that neural networks learn through a' +
+      ' process of "grokking" a pattern in the data, improving generalization performance from random chance ' +
+      'level to perfect generalization, and that this improvement in generalization can happen well past the ' +
+      'point of overfitting. We also study generalization as a function of dataset size and find that smaller ' +
+      'datasets require increasing amounts of optimization for generalization. We argue that these datasets ' +
+      'provide a fertile ground for studying a poorly understood aspect of deep learning: generalization of ' +
+      'overparametrized neural networks beyond memorization of the finite training dataset.',
   },
 ];
 
@@ -334,13 +434,8 @@ interface Board {
 
 async function seedPapers(db: Database, bots: Bot[]) {
   const boards: Board[] = [];
-  for (const [kind, papers, closesInDays] of [
-    ['ICLR 2027', ICLR_2027, 110],
-    ['ICLR 2026', ICLR_2026, 30],
-  ] as const) {
-    for (const [i, p] of papers.entries()) {
-      boards.push(...(await seedPaper(db, p, kind, closesInDays, 1000 + i + (kind === 'ICLR 2026' ? 500 : 0))));
-    }
+  for (const [i, p] of ICLR_2027.entries()) {
+    boards.push(...(await seedPaper(db, p, 'ICLR 2027', 110, 1000 + i)));
   }
   await simulateCrowd(db, boards, bots, rng(42));
 
@@ -354,7 +449,7 @@ async function seedPapers(db: Database, bots: Bot[]) {
     const end = lmsrPrices(board.q, board.b).map((x) => Math.round(x * 100));
     console.log(`  ${board.marketId}  ${end.map((x) => `${x}%`).join(' · ')}`);
   }
-  console.log(`papers: ${ICLR_2027.length + ICLR_2026.length}, markets: ${boards.length}`);
+  console.log(`papers: ${ICLR_2027.length}, markets: ${boards.length}`);
 }
 
 async function seedPaper(
@@ -370,7 +465,10 @@ async function seedPaper(
       title: p.title,
       summary: p.summary,
       authors: p.authors ?? [],
-      links: [{ label: 'OpenReview', url: `https://example.org/forum?id=${p.slug}` }],
+      links: [
+        { label: 'arXiv', url: `https://arxiv.org/abs/${p.arxiv}` },
+        { label: 'PDF', url: `https://arxiv.org/pdf/${p.arxiv}` },
+      ],
       kind,
     },
     db,
