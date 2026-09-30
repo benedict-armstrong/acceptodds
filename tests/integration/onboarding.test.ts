@@ -36,7 +36,6 @@ function start(email: string, extra: Record<string, unknown> = {}) {
       outcomeId: fx.outcomeIds[0],
       stakeMicro: STAKE.toString(),
       seenOrderCount: 0,
-      comment: 'Strong ablations.',
       ...extra,
     },
   });
@@ -71,7 +70,6 @@ describe('onboarding', () => {
       outcomeId: fx.outcomeIds[0],
       stakeMicro: STAKE,
       seenOrderCount: 0,
-      comment: 'Strong ablations.',
     });
 
     const mail = devOutbox().find((m) => m.to === 'ada@example.org')!;
@@ -159,9 +157,9 @@ describe('onboarding', () => {
 
   it('replaces the bet of an address not yet confirmed, and resends', async () => {
     await start('ada@example.org');
-    await start('ada@example.org', { outcomeId: fx.outcomeIds[1], comment: null });
+    await start('ada@example.org', { outcomeId: fx.outcomeIds[1] });
     const rows = await db.select().from(pendingBets);
-    expect(rows).toEqual([expect.objectContaining({ outcomeId: fx.outcomeIds[1], comment: null })]);
+    expect(rows).toEqual([expect.objectContaining({ outcomeId: fx.outcomeIds[1] })]);
     expect(devOutbox().filter((m) => m.to === 'ada@example.org')).toHaveLength(2);
   });
 

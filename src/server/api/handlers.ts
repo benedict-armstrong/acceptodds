@@ -423,7 +423,7 @@ export const deleteMyAffiliation = route(async (req, params) => {
 export const postOnboarding = route(async (req) => {
   const principal = await authenticate(req);
   const body = await parseBody(req, S.OnboardingRequest);
-  await startOnboarding({ ...body, comment: body.comment ?? null });
+  await startOnboarding(body);
   events.log('onboarding.started', { accountId: null, marketId: body.marketId });
   return respond(S.OnboardingStarted, { email: body.email }, { principal });
 });

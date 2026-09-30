@@ -52,7 +52,6 @@ export default async function WelcomePage({
             outcomeId: bet.outcomeId,
             stakeMicro: bet.stakeMicro.toString(),
             seenOrderCount: bet.seenOrderCount,
-            comment: bet.comment,
             title: listing?.title ?? market.question,
             href: marketHref({ marketSlug: market.slug, listingSlug: listing?.slug ?? null }),
           }}

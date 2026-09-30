@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { parseChosenBet, welcomeBetHref } from '@/lib/onboarding';
 
 describe('welcomeBetHref / parseChosenBet', () => {
-  it('round-trips a bet through the URL, starting at the comment', () => {
+  it('round-trips a bet through the URL, starting at the email', () => {
     const bet = { marketId: 'm-1', outcomeId: 'o-2', stakeMicro: 100_000_000n, seenOrderCount: 7 };
     const url = new URL(welcomeBetHref(bet), 'https://x.test');
     expect(url.pathname).toBe('/welcome');
-    expect(url.searchParams.get('step')).toBe('comment');
+    expect(url.searchParams.get('step')).toBe('email');
     expect(parseChosenBet(Object.fromEntries(url.searchParams))).toEqual(bet);
   });
 

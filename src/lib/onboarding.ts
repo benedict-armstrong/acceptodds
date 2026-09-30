@@ -27,11 +27,11 @@ export interface ChosenBet {
 
 /**
  * `/welcome` for a visitor who already chose a bet on a market's page: the
- * flow starts after the paper and bet steps, at the comment.
+ * flow starts after the paper and bet steps, at the email.
  */
 export function welcomeBetHref(bet: ChosenBet): string {
   const q = new URLSearchParams({
-    step: 'comment',
+    step: 'email',
     market: bet.marketId,
     outcome: bet.outcomeId,
     stake: bet.stakeMicro.toString(),

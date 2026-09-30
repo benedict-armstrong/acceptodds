@@ -769,9 +769,6 @@ export const OnboardingRequest = z
       description:
         "The market's `orderCount` on the board the bet was chosen from. Unchanged at confirmation, the bet is placed without asking again.",
     }),
-    comment: z.string().trim().max(2000).nullable().optional().meta({
-      description: 'A justification, posted as a comment once the bet is placed.',
-    }),
   })
   .strict()
   .meta({ id: 'OnboardingRequest' });

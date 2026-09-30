@@ -12,8 +12,8 @@ import { institutionForEmail } from './institution-domains';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 
 /**
- * Onboarding (`/welcome`): someone with no account picks a paper, a bet and
- * a justification, then gives an email and a name — no password. That makes
+ * Onboarding (`/welcome`): someone with no account picks a paper and a bet,
+ * then gives an email and a name — no password. That makes
  * a Better Auth user **without a credential**, stores the bet in
  * `pending_bets`, and sends the usual confirmation mail (link and code).
  *
@@ -43,7 +43,6 @@ export interface StartOnboarding {
   outcomeId: string;
   stakeMicro: bigint;
   seenOrderCount: number;
-  comment: string | null;
 }
 
 export async function startOnboarding(input: StartOnboarding, database: Database = getDb()): Promise<void> {
@@ -97,7 +96,6 @@ export async function startOnboarding(input: StartOnboarding, database: Database
     outcomeId: input.outcomeId,
     stakeMicro: input.stakeMicro,
     seenOrderCount: input.seenOrderCount,
-    comment: input.comment?.trim() || null,
   };
   await database
     .insert(pendingBets)

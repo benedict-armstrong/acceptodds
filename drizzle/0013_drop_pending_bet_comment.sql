@@ -1,0 +1,1 @@
+ALTER TABLE "pending_bets" DROP COLUMN "comment";

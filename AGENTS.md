@@ -819,18 +819,17 @@ unpaginated, and 5 s for that search.
 - **One question at a time**, each in `components/OnboardingCard`, the step
   in `?step=` so back works: which paper (search in `DEFAULT_MARKET_KIND`,
   the most traded open ones before anything is typed), the bet (the market's
-  own `TradeBox`), an optional justification, then name and email. A
-  signed-in viewer's bet and comment go straight through the API and the
-  flow ends at the paper. What the steps collect is client state; a reload
+  own `TradeBox`), then name and email. No comment step: it was dropped to
+  keep the way in short. A signed-in viewer's bet goes straight through the
+  API and the flow ends at the paper. What the steps collect is client state; a reload
   falls back to the search.
 - **A visitor who bets on a market's own page skips the paper and the bet**
-  (#39): its trade box hands the choice to `/welcome?step=comment` with the
+  (#39): its trade box hands the choice to `/welcome?step=email` with the
   market, outcome and stake in the URL (`lib/onboarding.ts`
   `welcomeBetHref`), sized against the starting balance. The page re-checks
   it against the market (open, before `closes_at`, its outcome, within the
   starting balance) and otherwise falls back to the full flow. The steps
-  are then comment, email, confirm; back from the comment is the market's
-  page. Any market works there, not only a paper's main one.
+  are then email, confirm; back from the email is the market's page. Any market works there, not only a paper's main one.
 - **A visitor's bet is stored, never placed, until they confirm**
   (`pending_bets`, one per Better Auth user, `server/onboarding.ts`).
   `POST /onboarding` makes a Better Auth user **with no credential** and
@@ -840,8 +839,7 @@ unpaginated, and 5 s for that search.
   (`POST /me/password`, Better Auth's server-only `setPassword`; forgot
   password also works for a user without one) and places the bet as an
   ordinary order: **the stake is kept, not the share count**, sized on the
-  board then and bounded by its quote. Then the comment, then
-  `DELETE /me/pending-bet`. It is shown before it is placed, so another
+  board then and bounded by its quote. Then `DELETE /me/pending-bet`. It is shown before it is placed, so another
   onboarding with the same unconfirmed address may replace it.
 - **An unmoved bet is placed without asking** (`pending_bets.seen_order_count`,
   `seenOrderCount` in `POST /onboarding`): the market's `orderCount` on the

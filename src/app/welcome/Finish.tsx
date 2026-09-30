@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
-import { Markdown } from '@/components/Markdown';
 import { MathText } from '@/components/MathText';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { useOrder } from '@/components/orders';
@@ -21,7 +20,6 @@ export interface PendingBet {
   stakeMicro: string;
   /** The market's `orderCount` when the bet was chosen; `null` when not recorded. */
   seenOrderCount: number | null;
-  comment: string | null;
   /** The paper's title (a standalone market's question). */
   title: string;
   href: string;
@@ -32,7 +30,7 @@ export interface PendingBet {
  * signing up — through the API like any order, at the price now — and
  * choose a password. The stake is kept, not the share count: it is sized on
  * the fresh board, quoted, and sent with that quote as its bound. Then the
- * comment, then the pending bet is dropped. "Skip" drops it unplaced.
+ * pending bet is dropped. "Skip" drops it unplaced.
  *
  * If no fill has moved the market since the bet was chosen (its
  * `orderCount` is the one seen then), the board is the one the person saw,
@@ -119,13 +117,6 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
       return 'failed';
     }
     setPlaced(result.text);
-    if (bet.comment) {
-      await fetch(`/api/v1/markets/${market.id}/comments`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ body: bet.comment }),
-      }).catch(() => null);
-    }
     return 'placed';
   }
 
@@ -191,7 +182,7 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
   );
 }
 
-/** The bet as chosen: the paper, the stake and outcome, the justification. */
+/** The bet as chosen: the paper, the stake and outcome. */
 function BetSummary({ bet, label }: { bet: PendingBet; label: string }) {
   return (
     <div className="mb-4">
@@ -204,7 +195,6 @@ function BetSummary({ bet, label }: { bet: PendingBet; label: string }) {
         </b>{' '}
         on <b>{label}</b>
       </div>
-      {bet.comment && <Markdown className="mt-2 border-l-2 border-rule pl-2 text-sm text-muted">{bet.comment}</Markdown>}
     </div>
   );
 }

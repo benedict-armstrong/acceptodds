@@ -605,8 +605,6 @@ export const pendingBets = pgTable(
      * it was recorded: treated as moved.
      */
     seenOrderCount: integer('seen_order_count'),
-    /** The justification, posted as a comment once the bet is placed. */
-    comment: text('comment'),
     createdAt: createdAt(),
   },
   (t) => [check('pending_bets_stake_positive', sql`${t.stakeMicro} > 0`)],

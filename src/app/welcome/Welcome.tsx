@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
-import { MARKDOWN_HINT, MarkdownEditor } from '@/components/MarkdownEditor';
 import { MathText } from '@/components/MathText';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { MESSAGES } from '@/components/orders';
@@ -23,13 +22,13 @@ import { TradeBox, type Choice } from '../markets/[slug]/TradeBox';
 type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
 
-export type Step = 'intro' | 'search' | 'bet' | 'comment' | 'email' | 'confirm';
+export type Step = 'intro' | 'search' | 'bet' | 'email' | 'confirm';
 
-/** A visitor's steps; a signed-in viewer's stop at the comment, their bet already placed. */
-const ANON: Step[] = ['intro', 'search', 'bet', 'comment', 'email', 'confirm'];
-const SIGNED_IN: Step[] = ['search', 'bet', 'comment'];
+/** A visitor's steps; a signed-in viewer's end with the bet, placed, at the paper. */
+const ANON: Step[] = ['intro', 'search', 'bet', 'email', 'confirm'];
+const SIGNED_IN: Step[] = ['search', 'bet'];
 /** A visitor who chose the paper and the bet on the market's own page. */
-const CHOSEN: Step[] = ['comment', 'email', 'confirm'];
+const CHOSEN: Step[] = ['email', 'confirm'];
 
 /** The market bet on, and the paper it is read under. */
 interface Pick {
@@ -48,7 +47,6 @@ export interface Chosen {
 /** What a step needs from the ones before it, so a reload or a deep link falls back to where it can start. */
 const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
   bet: 'pick',
-  comment: 'choice',
   email: 'choice',
   confirm: 'choice',
 };
@@ -67,12 +65,12 @@ function tradable(l: Listing): Market | null {
  * here and is lost on a reload; a step whose inputs are gone falls back to
  * the search.
  *
- * Nothing is placed for a visitor: the bet and the comment go to
- * `POST /onboarding` with their email, and are placed after they confirm
- * (`Finish`). A signed-in viewer's bet and comment go straight to the API.
+ * Nothing is placed for a visitor: the bet goes to `POST /onboarding` with
+ * their email, and is placed after they confirm (`Finish`). A signed-in
+ * viewer's bet goes straight to the API.
  *
  * A visitor who chose a bet on a market's page (`chosen`) skips the paper
- * and the bet, starting at the comment; back returns to that page.
+ * and the bet, starting at the email; back returns to that page.
  */
 export function Welcome({
   kind,
@@ -94,7 +92,6 @@ export function Welcome({
   const steps = viewer.signedIn ? SIGNED_IN : chosen ? CHOSEN : ANON;
   const [pick, setPick] = useState<Pick | null>(chosen?.pick ?? null);
   const [choice, setChoice] = useState<Choice | null>(chosen?.choice ?? null);
-  const [comment, setComment] = useState('');
   const [email, setEmail] = useState('');
 
   function reachable(s: Step | null): Step {
@@ -186,25 +183,10 @@ export function Welcome({
               ? undefined
               : (c) => {
                   setChoice(c);
-                  go('comment');
+                  go('email');
                 }
           }
-          onFilled={(c) => {
-            setChoice(c);
-            go('comment');
-          }}
-        />,
-      );
-
-    case 'comment':
-      return card(
-        <>Why {pick!.market.outcomes.find((o) => o.id === choice!.outcomeId)?.label}? (optional)</>,
-        <CommentStep
-          marketId={pick!.market.id}
-          post={viewer.signedIn}
-          value={comment}
-          onChange={setComment}
-          onDone={() => (viewer.signedIn ? router.push(pick!.href) : go('email'))}
+          onFilled={() => router.push(pick!.href)}
         />,
       );
 
@@ -214,7 +196,6 @@ export function Welcome({
         <EmailStep
           market={pick!.market}
           choice={choice!}
-          comment={comment}
           onSent={(address) => {
             setEmail(address);
             go('confirm');
@@ -305,71 +286,14 @@ function BetStep({
   );
 }
 
-/** A justification. Posted now for a viewer; for a visitor, kept for after they confirm. */
-function CommentStep({
-  marketId,
-  post,
-  value,
-  onChange,
-  onDone,
-}: {
-  marketId: string;
-  post: boolean;
-  value: string;
-  onChange: (v: string) => void;
-  onDone: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit() {
-    if (!post || !value.trim()) return onDone();
-    setBusy(true);
-    setError(null);
-    const res = await fetch(`/api/v1/markets/${marketId}/comments`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body: value }),
-    }).catch(() => null);
-    setBusy(false);
-    if (res?.ok) return onDone();
-    const body = await res?.json().catch(() => null);
-    setError(MESSAGES[body?.error?.code] ?? body?.error?.message ?? 'Could not post it.');
-  }
-
-  return (
-    <>
-      <MarkdownEditor value={value} onChange={onChange} preview={preview} autoFocus />
-      <div className={`${ui.fine} flex items-baseline justify-between gap-3`}>
-        <span>{MARKDOWN_HINT} Anonymous: others see only your stake.</span>
-        <button type="button" className={ui.linkBtn} disabled={!value.trim() && !preview} onClick={() => setPreview((p) => !p)}>
-          {preview ? 'edit' : 'preview'}
-        </button>
-      </div>
-      <div className="flex gap-2">
-        <button className={ui.btn({ ghost: true })} disabled={busy} onClick={() => (onChange(''), onDone())}>
-          Skip
-        </button>
-        <button className={ui.btn()} disabled={busy || !value.trim()} onClick={submit}>
-          {post ? 'Post' : 'Next'}
-        </button>
-      </div>
-      {error && <div className={ui.note(false)}>{error}</div>}
-    </>
-  );
-}
-
 /** Name and institutional email: `POST /onboarding` stores the bet and mails a link and a code. */
 function EmailStep({
   market,
   choice,
-  comment,
   onSent,
 }: {
   market: Market;
   choice: Choice;
-  comment: string;
   onSent: (email: string) => void;
 }) {
   const [name, setName] = useState('');
@@ -396,7 +320,6 @@ function EmailStep({
             outcomeId: choice.outcomeId,
             stakeMicro: choice.stakeMicro.toString(),
             seenOrderCount: choice.seenOrderCount,
-            comment: comment.trim() || null,
           }),
         }).catch(() => null);
         setBusy(false);
