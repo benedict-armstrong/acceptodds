@@ -46,9 +46,16 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   return (
     <main className={ui.page}>
       <TitleBlock title="Portfolio" byline={`${viewer.account.displayName}, @${viewer.account.handle}`} />
+      <p className="mt-1 mb-2 text-[15px] text-subtle">
+        Your cash, what your positions would sell for now, and what you have made or lost so far.
+      </p>
       <WorthTable n={1} caption="Your reputation now." worth={s} />
 
       <h2 className={ui.groupHeading}>Open positions</h2>
+      <p className="mt-1 mb-2 text-[15px] text-subtle">
+        The outcomes you hold shares in. Each share pays 1 {REP} if its outcome wins. You can sell a position, or
+        share it publicly.
+      </p>
       {p.holdings.length === 0 ? (
         <div className={ui.empty}>No open positions.</div>
       ) : (
@@ -65,6 +72,10 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       )}
 
       <h2 className={ui.groupHeading}>Closed positions</h2>
+      <p className="mt-1 mb-2 text-[15px] text-subtle">
+        The outcomes you no longer hold, either because you sold them or because the market was settled, and what
+        each one made or lost.
+      </p>
       {closed.total === 0 ? (
         <div className={ui.empty}>No closed positions yet.</div>
       ) : (

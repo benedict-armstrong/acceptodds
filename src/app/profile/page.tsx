@@ -49,9 +49,6 @@ export default async function ProfilePage() {
         admin={viewer.isAdmin}
       />
 
-      <p className="mt-1 mb-2 text-[15px] text-subtle">
-        Where you stand among all traders, by net worth: your cash plus what your positions would sell for now.
-      </p>
       <FieldCurve
         field={snapshot}
         you={row?.netWorthMicro ?? null}
@@ -124,9 +121,8 @@ export default async function ProfilePage() {
                       </td>
                       <td className={`${ui.td} ${ui.num}`}>{f.move && f.main ? pct(f.move.now) : '—'}</td>
                       <td
-                        className={`${ui.td} ${ui.num} whitespace-nowrap ${
-                          pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'
-                        }`}
+                        className={`${ui.td} ${ui.num} whitespace-nowrap ${pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'
+                          }`}
                       >
                         {f.move && f.main ? `${pp > 0 ? '+' : pp < 0 ? '−' : '±'}${Math.abs(pp)} pp` : '—'}
                       </td>
