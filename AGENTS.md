@@ -637,6 +637,17 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   has foreign keys (unlike `events`) because it is written in its own tiny
   transaction, never inside a trade. `comment_backings` is the exception
   (below): the engine trims it inside `trade()`.
+- **Replies nest** (#31): `comments.parent_id` names the comment answered,
+  on the same market, at any depth; the UI indents each level. A
+  discussion is never read whole: `GET /markets/{id}/comments` pages
+  top-level comments only (20 a page in the UI, "Load more") and adds
+  `replies`, a flat preview of the trees under them — the first 3 replies
+  to each comment, 3 levels down, one recursive query
+  (`comments.previewTree`). `GET /comments/{id}/replies?after=` pages a
+  comment's direct replies after the last one loaded (an id, compared in
+  SQL at microseconds), each with a 2-level preview; more remain while
+  `replyCount` exceeds what is loaded. The relevance sort ranks top-level
+  comments only. `total` counts replies too.
 - **Comment bodies are Markdown with TeX math**, stored as raw text and
   rendered by `components/Markdown.tsx` (react-markdown + remark-gfm +
   remark-math + rehype-katex; KaTeX's CSS is imported in `app/layout.tsx`).

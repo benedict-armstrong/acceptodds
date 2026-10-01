@@ -832,10 +832,14 @@ export const CommentBacking = z
 export const Comment = z
   .object({
     id: Id,
+    parentId: Id.nullable().meta({ description: 'The comment this replies to; `null` on a top-level comment.' }),
     body: z
       .string()
       .meta({ description: 'Raw text, as posted. Clients render it as Markdown (GFM) with $…$ / $$…$$ TeX math.' }),
     createdAt: Timestamp,
+    replyCount: z.number().int().min(0).meta({
+      description: 'Direct replies to this comment. More than are loaded: fetch `GET /comments/{id}/replies`.',
+    }),
     author: z
       .object({
         isBot: z.boolean(),
@@ -871,15 +875,43 @@ export const CommentListQuery = PaginationQuery.extend({
 
 export const CommentList = z
   .object({
-    comments: z.array(Comment).meta({ description: 'In the requested `sort` order.' }),
+    comments: z.array(Comment).meta({ description: 'Top-level comments, in the requested `sort` order.' }),
+    replies: z.array(Comment).meta({
+      description:
+        'A preview of the replies under them, flat, oldest first: the first 3 replies to each comment, 3 levels down. `parentId` makes the tree.',
+    }),
     nextCursor: Cursor,
+    total: z.number().int().min(0).meta({ description: 'Every comment on the market, replies included.' }),
     viewer: CommentViewer.nullable().meta({
       description: "The caller's stake available for backing. `null` when anonymous.",
     }),
   })
   .meta({ id: 'CommentList' });
 
-export const CommentRequest = z.object({ body: z.string().trim().min(1).max(2000) }).meta({ id: 'CommentRequest' });
+export const CommentRequest = z
+  .object({
+    body: z.string().trim().min(1).max(2000),
+    parentId: Id.optional().meta({
+      description: 'Reply to this comment, on the same market, at any depth.',
+    }),
+  })
+  .meta({ id: 'CommentRequest' });
+
+export const CommentRepliesQuery = z.object({
+  after: Id.optional().meta({
+    description: 'A direct reply to this comment: start after it. Usually the last one loaded.',
+  }),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
+});
+
+export const CommentReplies = z
+  .object({
+    replies: z.array(Comment).meta({
+      description:
+        'Up to `limit` direct replies, oldest first, then a preview of the replies under each (3 per comment, 2 levels down). Flat: `parentId` makes the tree. More remain while `replyCount` exceeds the direct replies loaded.',
+    }),
+  })
+  .meta({ id: 'CommentReplies' });
 
 export const CommentBackingRequest = z
   .object({

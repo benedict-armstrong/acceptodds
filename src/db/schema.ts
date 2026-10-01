@@ -16,6 +16,7 @@ import {
   uniqueIndex,
   jsonb,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { user } from './auth-schema';
 
@@ -429,6 +430,11 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
  * author is a bot, and the author's *current* stake in that market — never a
  * handle or an account id (see `server/comments.ts`). `account_id` is here so
  * the stake can be computed and so moderation is possible, not for display.
+ *
+ * **Threads are one level deep.** `parent_id` is null on a top-level comment
+ * and names a top-level comment on a reply, on the same market; a reply to a
+ * reply joins its thread (`server/comments.ts`). Top-level comments page on
+ * their own; each thread's replies page separately, oldest first.
  */
 export const comments = pgTable(
   'comments',
@@ -440,12 +446,16 @@ export const comments = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
+    parentId: uuid('parent_id').references((): AnyPgColumn => comments.id, { onDelete: 'cascade' }),
     body: text('body').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`clock_timestamp()`),
   },
-  (t) => [index('comments_market_created_idx').on(t.marketId, t.createdAt)],
+  (t) => [
+    index('comments_market_created_idx').on(t.marketId, t.createdAt),
+    index('comments_parent_created_idx').on(t.parentId, t.createdAt, t.id),
+  ],
 );
 
 /**

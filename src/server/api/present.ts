@@ -216,8 +216,10 @@ export function presentToken(t: TokenRecord): z.input<typeof S.TokenInfo> {
 export function presentComment(c: CommentView): z.input<typeof S.Comment> {
   return {
     id: c.id,
+    parentId: c.parentId,
     body: c.body,
     createdAt: toIso(c.createdAt),
+    replyCount: c.replyCount,
     author: {
       isBot: c.author.isBot,
       isYou: c.author.isYou,
@@ -238,12 +240,16 @@ export function presentComment(c: CommentView): z.input<typeof S.Comment> {
 
 export function presentComments(page: {
   comments: CommentView[];
+  replies: CommentView[];
   nextCursor: string | null;
+  total: number;
   viewer: ViewerStake | null;
 }): z.input<typeof S.CommentList> {
   return {
     comments: page.comments.map(presentComment),
+    replies: page.replies.map(presentComment),
     nextCursor: page.nextCursor,
+    total: page.total,
     viewer: page.viewer
       ? {
           available: page.viewer.available.map((a) => ({

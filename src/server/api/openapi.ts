@@ -239,7 +239,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['markets'],
       summary: 'Comments',
       description:
-        'Newest first, or by backing with `sort=relevance`. Anonymous: each comment shows only whether its author is a bot, their current stake in this market, and how much stake others have put behind it (never by whom). Bodies are raw Markdown with TeX math.',
+        'Top-level comments, newest first, or by backing with `sort=relevance`, with a preview of the replies under them in `replies` (the rest from `GET /comments/{id}/replies`). Anonymous: each comment shows only whether its author is a bot, their current stake in this market, and how much stake others have put behind it (never by whom). Bodies are raw Markdown with TeX math.',
       request: { params: idParam, query: S.CommentListQuery },
       ok: { status: 200, schema: S.CommentList, description: 'A page of comments.' },
       errors: { 404: 'not_found' },
@@ -252,15 +252,33 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/markets/{id}/comments',
       tags: ['markets'],
       summary: 'Post a comment',
-      description: 'Needs the `trade` scope and a trading-eligible (verified or bot) account.',
+      description:
+        'With `parentId`, a reply. Needs the `trade` scope and a trading-eligible (verified or bot) account.',
       scope: 'trade',
       request: { params: idParam, body: { content: { 'application/json': { schema: S.CommentRequest } } } },
       ok: { status: 201, schema: S.Comment, description: 'The comment, as others will see it.' },
-      errors: { 403: 'forbidden | not_verified', 404: 'not_found' },
+      errors: {
+        403: 'forbidden | not_verified',
+        404: 'not_found: no such market, or `parentId` is not a comment on it.',
+      },
     }),
   );
 
   const commentIdParam = z.object({ id: S.CommentId });
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/comments/{id}/replies',
+      tags: ['markets'],
+      summary: 'Replies to a comment',
+      description:
+        'Direct replies, oldest first, after `after` (the last one loaded), each with a preview of the replies under it. Replies nest to any depth.',
+      request: { params: commentIdParam, query: S.CommentRepliesQuery },
+      ok: { status: 200, schema: S.CommentReplies, description: 'A page of replies.' },
+      errors: { 400: 'validation_error: `after` is not a reply to this comment.', 404: 'not_found' },
+    }),
+  );
 
   r.registerPath(
     op({

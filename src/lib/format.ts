@@ -31,12 +31,15 @@ export function signedRep(micro: string | bigint, decimals = 2): string {
   return `${v > 0n ? '+' : ''}${rep(v, decimals)}`;
 }
 
-/** Share counts: "40000000" -> "40", "12500000" -> "12.5". */
-export function shares(micro: string | bigint): string {
+/**
+ * Share counts: "40000000" -> "40", "12500000" -> "12.5". With `maxDecimals`,
+ * truncated, never rounded up: a holding is never shown as more than it is.
+ */
+export function shares(micro: string | bigint, maxDecimals = 6): string {
   const v = typeof micro === 'bigint' ? micro : BigInt(micro);
   const neg = v < 0n;
   const abs = neg ? -v : v;
-  const frac = (abs % MICRO).toString().padStart(6, '0').replace(/0+$/, '');
+  const frac = (abs % MICRO).toString().padStart(6, '0').slice(0, maxDecimals).replace(/0+$/, '');
   return `${neg ? '−' : ''}${group((abs / MICRO).toString())}${frac ? '.' + frac : ''}`;
 }
 

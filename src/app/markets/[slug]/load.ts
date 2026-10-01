@@ -7,6 +7,7 @@ import { listComments } from '@/server/comments';
 import * as events from '@/server/events';
 import { marketTape, marketView, priceHistory } from '@/server/views';
 import type { Initial } from './MarketLive';
+import { COMMENT_PAGE } from './comment-page';
 import { TAPE_LIMIT } from './tape';
 
 /**
@@ -22,7 +23,7 @@ export async function loadMarketLive(market: Market, viewer: { account: Account 
     marketView(market),
     priceHistory(market, { limit: 10_000 }),
     marketTape(market, { limit: TAPE_LIMIT }),
-    listComments(market.id, { limit: 50, viewerAccountId: viewer?.account.id ?? null }),
+    listComments(market.id, { limit: COMMENT_PAGE, viewerAccountId: viewer?.account.id ?? null }),
     viewer ? getPortfolio(viewer.account.id) : null,
   ]);
   events.log('market.read', { accountId: viewer?.account.id ?? null, marketId: market.id });

@@ -183,7 +183,13 @@ export default async function Home({
       <TitleBlock
         title={
           <>
-            accept<i className="text-accent not-italic">odds</i>: Which papers will get accepted
+            accept<i className="text-accent not-italic">odds</i>
+            <sup className="text-[0.5em]">
+              <a href="#credit" className="text-accent hover:underline">
+                1
+              </a>
+            </sup>
+            : Which papers will get accepted
             {kind ? ` at ${kind}` : ''}?
           </>
         }
@@ -441,6 +447,15 @@ export default async function Home({
           <Pager page={all.page} pages={all.pages} href={pageHref('page', pinnedCount > 0 ? '#all' : '')} />
         </section>
       )}
+
+      {/* The footnote to the title's marker, set like a paper's. */}
+      <footer id="credit" className="mt-10 w-1/3 min-w-48 border-t border-rule pt-1.5 text-[13px] text-muted">
+        <sup>1</sup> created by{' '}
+        <a href="https://github.com/benedict-armstrong" className="text-accent hover:underline">
+          @benedict-armstrong
+        </a>{' '}
+        in Zürich
+      </footer>
     </main>
   );
 }

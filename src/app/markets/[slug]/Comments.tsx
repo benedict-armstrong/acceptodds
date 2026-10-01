@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import useSWR from 'swr';
+import useSWRInfinite from 'swr/infinite';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { Markdown } from '@/components/Markdown';
@@ -11,9 +11,11 @@ import { ui } from '@/components/ui';
 import { ago, rep, REP, shares } from '@/lib/format';
 import { parseUnits } from '@/lib/money';
 import type * as S from '@/server/api/schemas';
+import { COMMENT_PAGE, REPLY_PAGE } from './comment-page';
 
 type CommentList = z.output<typeof S.CommentList>;
 type Comment = z.output<typeof S.Comment>;
+type Replies = z.output<typeof S.CommentReplies>;
 type Sort = (typeof S.COMMENT_SORTS)[number];
 type Available = { outcomeId: string; outcomeLabel: string; freeMicro: bigint };
 
@@ -41,6 +43,12 @@ async function errorText(res: Response, fallback: string): Promise<string> {
  * Traders can put shares they hold behind other people's comments. The
  * backing figure is those shares marked at the current price — a relevance
  * weight, not a sale price. A sell trims the seller's backings newest first.
+ *
+ * Replies nest, each level indented under the comment it answers. Never
+ * read whole: top-level comments come {@link COMMENT_PAGE} at a time with a
+ * preview of the replies under them (a flat list the tree is built from by
+ * `parentId`), and "more replies" on any comment fetches its next
+ * {@link REPLY_PAGE}, each with its own preview.
  */
 export function Comments({
   marketId,
@@ -64,39 +72,41 @@ export function Comments({
   onChanged: () => void;
 }) {
   const [sort, setSort] = useState<Sort>('newest');
-  const { data = initial, mutate } = useSWR<CommentList>(
-    `/api/v1/markets/${marketId}/comments?limit=50&sort=${sort}`,
+  const base = `/api/v1/markets/${marketId}/comments?limit=${COMMENT_PAGE}&sort=${sort}`;
+  const { data, mutate, size, setSize, isValidating } = useSWRInfinite<CommentList>(
+    (i, previous: CommentList | null) =>
+      i === 0 ? base : previous?.nextCursor ? `${base}&cursor=${encodeURIComponent(previous.nextCursor)}` : null,
     fetchJson,
-    { fallbackData: sort === 'newest' ? initial : undefined, refreshInterval: 10_000 },
+    { fallbackData: sort === 'newest' ? [initial] : undefined, refreshInterval: 10_000 },
   );
   useEffect(() => {
     if (version > 0) void mutate();
   }, [version, mutate]);
 
-  const [body, setBody] = useState('');
-  const [preview, setPreview] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const pages = data ?? [];
+  const first = pages[0];
+  const last = pages[pages.length - 1];
+  const threads = pages.flatMap((p) => p.comments);
 
-  async function post() {
-    setBusy(true);
-    setError(null);
-    const res = await fetch(`/api/v1/markets/${marketId}/comments`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body }),
-    });
-    setBusy(false);
-    if (res.ok) {
-      setBody('');
-      setPreview(false);
-      void mutate();
-    } else {
-      setError(await errorText(res, 'Could not post.'));
-    }
+  // Replies fetched by "more replies" or posted here, merged with the polled ones (which win: fresher).
+  const [extra, setExtra] = useState<Map<string, Comment>>(new Map());
+  // Replies posted here, which can land past a gap: "more replies" must not continue after one.
+  const [posted, setPosted] = useState<Set<string>>(new Set());
+  const known = new Map(extra);
+  for (const p of pages) for (const c of [...p.comments, ...p.replies]) known.set(c.id, c);
+  const children = new Map<string, Comment[]>();
+  for (const c of known.values()) {
+    if (c.parentId) children.set(c.parentId, [...(children.get(c.parentId) ?? []), c]);
   }
+  for (const list of children.values()) list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const add = (cs: Comment[]) =>
+    setExtra((m) => {
+      const next = new Map(m);
+      for (const c of cs) next.set(c.id, c);
+      return next;
+    });
 
-  const available: Available[] = (data.viewer?.available ?? [])
+  const available: Available[] = (first?.viewer?.available ?? [])
     .map((a) => ({
       outcomeId: a.outcomeId,
       outcomeLabel: a.outcomeLabel,
@@ -113,10 +123,7 @@ export function Comments({
   return (
     <section className="mt-12">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 className={ui.section}>
-          Discussion ({data.comments.length}
-          {data.nextCursor ? '+' : ''})
-        </h3>
+        <h3 className={ui.section}>Discussion{first ? ` (${first.total})` : ''}</h3>
         <span className="font-sans text-xs text-muted">
           {(['relevance', 'newest'] as const).map((s, i) => (
             <span key={s}>
@@ -134,25 +141,7 @@ export function Comments({
       </div>
 
       {viewer.canTrade ? (
-        <div>
-          <MarkdownEditor value={body} onChange={setBody} preview={preview} placeholder="Add a comment" />
-          <div className="flex items-center justify-between gap-3">
-            <span className={ui.fine}>Shown anonymously, with your position in this market. {MARKDOWN_HINT}</span>
-            <span className="flex gap-2">
-              <button
-                className={ui.btn({ inline: true, ghost: true })}
-                disabled={body.trim().length === 0 && !preview}
-                onClick={() => setPreview((p) => !p)}
-              >
-                {preview ? 'Edit' : 'Preview'}
-              </button>
-              <button className={ui.btn({ inline: true })} disabled={busy || body.trim().length === 0} onClick={post}>
-                Post
-              </button>
-            </span>
-          </div>
-          {error && <div className={ui.note(false)}>{error}</div>}
-        </div>
+        <CommentForm marketId={marketId} placeholder="Add a comment" onPosted={() => void mutate()} />
       ) : (
         <div className={ui.fine}>
           {viewer.signedIn ? (
@@ -165,21 +154,207 @@ export function Comments({
         </div>
       )}
 
-      {sort === 'relevance' && data.comments.length > 0 && (
+      {sort === 'relevance' && threads.length > 0 && (
         <div className={ui.fine}>Most backed first, among the 200 most recent comments.</div>
       )}
 
-      {data.comments.map((c) => (
-        <CommentItem
-          key={c.id}
-          c={c}
-          outcomeIds={outcomeIds}
-          canBack={canBack}
-          available={available}
-          onChanged={changed}
-        />
+      {threads.map((t) => (
+        // One rule under the whole thread, so its replies read as part of it.
+        <div key={t.id} className="border-b border-dotted border-rule-strong">
+          <Thread
+            c={t}
+            tree={{
+              marketId,
+              outcomeIds,
+              canReply: viewer.canTrade,
+              canBack,
+              available,
+              onChanged: changed,
+              children: (id) => children.get(id) ?? [],
+              loaded: (cs) => add(cs),
+              posted: (c) => {
+                setPosted((xs) => new Set(xs).add(c.id));
+                add([c]);
+              },
+              isPosted: (id) => posted.has(id),
+            }}
+          />
+        </div>
       ))}
+
+      {last?.nextCursor && size === pages.length && (
+        <button
+          type="button"
+          className={`mt-3 ${ui.btn({ inline: true, ghost: true })}`}
+          disabled={isValidating}
+          onClick={() => void setSize(size + 1)}
+        >
+          Load more comments
+        </button>
+      )}
     </section>
+  );
+}
+
+/** What every comment in the tree needs from the discussion. */
+interface Tree {
+  marketId: string;
+  outcomeIds: string[];
+  canReply: boolean;
+  canBack: boolean;
+  available: Available[];
+  onChanged: () => void;
+  /** The loaded direct replies to a comment, oldest first. */
+  children: (id: string) => Comment[];
+  /** Replies fetched by "more replies". */
+  loaded: (cs: Comment[]) => void;
+  /** A reply posted here. */
+  posted: (c: Comment) => void;
+  isPosted: (id: string) => boolean;
+}
+
+/**
+ * A comment and, indented under it, its replies — each one a `Thread` of its
+ * own, so every level of an answer is indented again.
+ */
+function Thread({ c, tree }: { c: Comment; tree: Tree }) {
+  const [busy, setBusy] = useState(false);
+  const [replying, setReplying] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const replies = tree.children(c.id);
+  const remaining = Math.max(0, c.replyCount - replies.length);
+
+  async function more() {
+    setBusy(true);
+    setNote(null);
+    // Continue after the last reply that came from the server: one posted here may sit past a gap.
+    const after = replies.filter((r) => !tree.isPosted(r.id)).at(-1);
+    const res = await fetch(`/api/v1/comments/${c.id}/replies?limit=${REPLY_PAGE}${after ? `&after=${after.id}` : ''}`);
+    setBusy(false);
+    if (!res.ok) return setNote(await errorText(res, 'Could not load replies.'));
+    const page: Replies = await res.json();
+    tree.loaded(page.replies);
+  }
+
+  return (
+    <>
+      <CommentItem
+        c={c}
+        outcomeIds={tree.outcomeIds}
+        canBack={tree.canBack}
+        available={tree.available}
+        onChanged={tree.onChanged}
+        onReply={tree.canReply ? () => setReplying(true) : undefined}
+      />
+      {(replies.length > 0 || replying || remaining > 0 || note) && (
+        <div className="mb-2 ml-1.5 border-l-2 border-rule-strong pl-5 narrow:pl-3">
+          {replies.map((r) => (
+            <Thread key={r.id} c={r} tree={tree} />
+          ))}
+          {remaining > 0 && (
+            <button
+              type="button"
+              className="cursor-pointer py-1.5 font-sans text-xs text-muted underline disabled:opacity-50"
+              disabled={busy}
+              onClick={more}
+            >
+              {remaining === 1 ? '1 more reply' : `${remaining} more replies`}
+            </button>
+          )}
+          {note && <div className={ui.note(false)}>{note}</div>}
+          {replying && (
+            <div className="py-2">
+              <CommentForm
+                marketId={tree.marketId}
+                parentId={c.id}
+                placeholder="Reply"
+                autoFocus
+                onPosted={(r) => {
+                  tree.posted(r);
+                  setReplying(false);
+                  tree.onChanged();
+                }}
+                onCancel={() => setReplying(false)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The editor for a new comment, or with `parentId` a reply. */
+function CommentForm({
+  marketId,
+  parentId,
+  placeholder,
+  autoFocus,
+  onPosted,
+  onCancel,
+}: {
+  marketId: string;
+  parentId?: string;
+  placeholder: string;
+  autoFocus?: boolean;
+  onPosted: (c: Comment) => void;
+  onCancel?: () => void;
+}) {
+  const [body, setBody] = useState('');
+  const [preview, setPreview] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function post() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/v1/markets/${marketId}/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body, parentId }),
+    });
+    setBusy(false);
+    if (res.ok) {
+      setBody('');
+      setPreview(false);
+      onPosted(await res.json());
+    } else {
+      setError(await errorText(res, 'Could not post.'));
+    }
+  }
+
+  return (
+    <div>
+      <MarkdownEditor
+        value={body}
+        onChange={setBody}
+        preview={preview}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+      />
+      <div className="flex items-center justify-between gap-3">
+        <span className={ui.fine}>Shown anonymously, with your position in this market. {MARKDOWN_HINT}</span>
+        <span className="flex gap-2">
+          {onCancel && (
+            <button className={ui.btn({ inline: true, ghost: true })} disabled={busy} onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+          <button
+            className={ui.btn({ inline: true, ghost: true })}
+            disabled={body.trim().length === 0 && !preview}
+            onClick={() => setPreview((p) => !p)}
+          >
+            {preview ? 'Edit' : 'Preview'}
+          </button>
+          <button className={ui.btn({ inline: true })} disabled={busy || body.trim().length === 0} onClick={post}>
+            {parentId ? 'Reply' : 'Post'}
+          </button>
+        </span>
+      </div>
+      {error && <div className={ui.note(false)}>{error}</div>}
+    </div>
   );
 }
 
@@ -189,12 +364,15 @@ function CommentItem({
   canBack,
   available,
   onChanged,
+  onReply,
 }: {
   c: Comment;
   outcomeIds: string[];
   canBack: boolean;
   available: Available[];
   onChanged: () => void;
+  /** Opens the thread's reply form; absent when the viewer cannot comment. */
+  onReply?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -212,7 +390,7 @@ function CommentItem({
   }
 
   return (
-    <div className="border-b border-dotted border-rule-strong py-2.5">
+    <div className="py-2.5">
       {/* Headed as OpenReview heads a comment: who, what they hold, when. */}
       <div className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted">
         <span className={ui.runIn}>{c.author.isYou ? 'Your comment' : 'Anonymous trader'}</span>
@@ -226,7 +404,7 @@ function CommentItem({
               {c.author.stake.map((s, i) => (
                 <span key={s.outcomeId}>
                   {i > 0 && ', '}
-                  <span className="font-mono text-ink">{shares(s.sharesMicro)}</span>{' '}
+                  <span className="font-mono text-ink">{shares(s.sharesMicro, 1)}</span>{' '}
                   <OutcomeSwatch ordinal={outcomeIds.indexOf(s.outcomeId)} outcomes={outcomeIds.length} />
                   {s.outcomeLabel}
                 </span>
@@ -268,6 +446,11 @@ function CommentItem({
               withdraw
             </button>
           </span>
+        )}
+        {onReply && (
+          <button type="button" className="cursor-pointer underline" onClick={onReply}>
+            reply
+          </button>
         )}
         {offerBack && !open && (
           <button type="button" className="cursor-pointer underline" onClick={() => setOpen(true)}>

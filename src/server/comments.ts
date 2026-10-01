@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { accounts, commentBackings, comments, markets, outcomes, positions, type Market } from '@/db/schema';
 import { prices } from '@/lib/lmsr';
@@ -24,6 +24,14 @@ import { encodeCursor } from './views';
  * market's backings are worth 0. Backers are never identified; the reader gets
  * a count, and the viewer their own share.
  *
+ * **Replies nest.** A reply names the comment it answers, at any depth. A
+ * discussion is never read whole: the top level pages on its own (newest
+ * first, or by backing), and comes with a preview of each tree — the first
+ * {@link REPLY_PREVIEW} replies to each comment, {@link LIST_DEPTH} levels
+ * down. `listReplies` pages the rest of any comment's replies, oldest first,
+ * each with its own preview. Previews are flat lists; `parentId` makes the
+ * tree.
+ *
  * Not market state, so not the engine's: this module writes `comments` only.
  * Comment bodies are stored as raw text (Markdown, rendered by the client).
  */
@@ -32,6 +40,13 @@ export const MAX_COMMENT_LENGTH = 2000;
 
 /** How many recent comments a `relevance` sort considers. It is not paginated. */
 export const RELEVANCE_WINDOW = 200;
+
+/** How many replies to each comment, oldest first, a preview carries. */
+export const REPLY_PREVIEW = 3;
+/** How many levels of replies come with a page of top-level comments. */
+export const LIST_DEPTH = 3;
+/** How many levels below each reply come with a page of `listReplies`. */
+export const REPLIES_DEPTH = 2;
 
 export type CommentSort = 'newest' | 'relevance';
 
@@ -47,8 +62,12 @@ export interface CommentBackingView {
 
 export interface CommentView {
   id: string;
+  /** The comment it answers; null on a top-level comment. */
+  parentId: string | null;
   body: string;
   createdAt: Date;
+  /** Direct replies to it. */
+  replyCount: number;
   author: {
     isBot: boolean;
     /** True when the viewer wrote it. Lets a client say "you" without revealing anyone else. */
@@ -63,17 +82,26 @@ export interface ViewerStake {
   available: { outcomeId: string; outcomeLabel: string; heldMicro: bigint; allocatedMicro: bigint }[];
 }
 
+/** A top-level comment, or with `parentId` a reply to a comment on the same market. */
 export async function postComment(
-  input: { marketId: string; accountId: string; body: string },
+  input: { marketId: string; accountId: string; body: string; parentId?: string | null },
   database: Database = getDb(),
 ): Promise<{ id: string; createdAt: Date }> {
   const body = input.body.trim();
   if (body.length === 0 || body.length > MAX_COMMENT_LENGTH) {
     throw new ApiError(400, 'validation_error', `a comment is 1–${MAX_COMMENT_LENGTH} characters`);
   }
+  const parentId = input.parentId ?? null;
+  if (parentId) {
+    const [parent] = await database
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.id, parentId), eq(comments.marketId, input.marketId)));
+    if (!parent) throw new ApiError(404, 'not_found', `no comment ${parentId} on this market`);
+  }
   const [row] = await database
     .insert(comments)
-    .values({ marketId: input.marketId, accountId: input.accountId, body })
+    .values({ marketId: input.marketId, accountId: input.accountId, parentId, body })
     .returning({ id: comments.id, createdAt: comments.createdAt });
   return row;
 }
@@ -99,20 +127,41 @@ const commentColumns = {
   ts: sql<string>`to_char(${comments.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
   accountId: comments.accountId,
   isBot: accounts.isBot,
+  parentId: comments.parentId,
+  // Uses comments_parent_created_idx. `r` is the reply; the outer row is `comments`.
+  replyCount: sql<number>`(select count(*)::int from comments r where r.parent_id = ${comments.id})`,
 };
 
-type CommentRow = { id: string; body: string; createdAt: Date; ts: string; accountId: string; isBot: boolean };
+type CommentRow = {
+  id: string;
+  body: string;
+  createdAt: Date;
+  ts: string;
+  accountId: string;
+  isBot: boolean;
+  parentId: string | null;
+  replyCount: number;
+};
 
 /**
+ * A page of top-level comments, and in `replies` a preview of the replies
+ * under them ({@link previewTree}).
  * `newest` (default): newest first, keyset-paginated like every other list.
- * `relevance`: the {@link RELEVANCE_WINDOW} most recent comments, by backing
- * value (highest first), ties newest first; one page, `nextCursor` null.
+ * `relevance`: the {@link RELEVANCE_WINDOW} most recent, by backing value
+ * (highest first), ties newest first; one page, `nextCursor` null.
+ * `total` counts every comment on the market, replies included.
  */
 export async function listComments(
   marketId: string,
   q: { cursor?: string; limit: number; viewerAccountId?: string | null; sort?: CommentSort },
   database: Database = getDb(),
-): Promise<{ comments: CommentView[]; nextCursor: string | null; viewer: ViewerStake | null }> {
+): Promise<{
+  comments: CommentView[];
+  replies: CommentView[];
+  nextCursor: string | null;
+  total: number;
+  viewer: ViewerStake | null;
+}> {
   const sort = q.sort ?? 'newest';
   if (sort === 'relevance' && q.cursor !== undefined) {
     throw new ApiError(400, 'validation_error', 'the relevance sort is a single page and takes no cursor');
@@ -121,41 +170,143 @@ export async function listComments(
   const [market] = await database.select().from(markets).where(eq(markets.id, marketId));
   if (!market) throw new ApiError(404, 'not_found', `no market ${marketId}`);
 
-  const rows: CommentRow[] = await database
-    .select(commentColumns)
-    .from(comments)
-    .innerJoin(accounts, eq(accounts.id, comments.accountId))
-    .where(
-      and(
-        eq(comments.marketId, marketId),
-        before
-          ? sql`(${comments.createdAt}, ${comments.id}) < (${before.t}::timestamptz, ${before.id}::uuid)`
-          : undefined,
-      ),
-    )
-    .orderBy(desc(comments.createdAt), desc(comments.id))
-    .limit(sort === 'relevance' ? RELEVANCE_WINDOW : q.limit + 1);
+  const [rows, [{ total }]] = await Promise.all([
+    database
+      .select(commentColumns)
+      .from(comments)
+      .innerJoin(accounts, eq(accounts.id, comments.accountId))
+      .where(
+        and(
+          eq(comments.marketId, marketId),
+          isNull(comments.parentId),
+          before
+            ? sql`(${comments.createdAt}, ${comments.id}) < (${before.t}::timestamptz, ${before.id}::uuid)`
+            : undefined,
+        ),
+      )
+      .orderBy(desc(comments.createdAt), desc(comments.id))
+      .limit(sort === 'relevance' ? RELEVANCE_WINDOW : q.limit + 1),
+    database
+      .select({ total: sql<number>`count(*)::int` })
+      .from(comments)
+      .where(eq(comments.marketId, marketId)),
+  ]);
 
   const viewerAccountId = q.viewerAccountId ?? null;
+  let page: CommentRow[];
+  let nextCursor: string | null = null;
   if (sort === 'relevance') {
     const all = await decorate(market, rows, viewerAccountId, database);
     // Stable sort: rows are newest first, so ties stay newest first.
     all.sort((a, b) =>
       a.backing.totalMicro === b.backing.totalMicro ? 0 : a.backing.totalMicro > b.backing.totalMicro ? -1 : 1,
     );
-    return {
-      comments: all.slice(0, q.limit),
-      nextCursor: null,
-      viewer: await viewerStake(market.id, viewerAccountId, database),
-    };
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    page = all.slice(0, q.limit).map((c) => byId.get(c.id)!);
+  } else {
+    page = rows.slice(0, q.limit);
+    const last = page[page.length - 1];
+    if (rows.length > q.limit && last) nextCursor = encodeCursor({ t: last.ts, id: last.id });
   }
 
-  const page = rows.slice(0, q.limit);
-  const last = page[page.length - 1];
+  const replies = await previewTree(
+    page.map((r) => r.id),
+    LIST_DEPTH,
+    database,
+  );
+  const views = await decorate(market, [...page, ...replies], viewerAccountId, database);
   return {
-    comments: await decorate(market, page, viewerAccountId, database),
-    nextCursor: rows.length > q.limit && last ? encodeCursor({ t: last.ts, id: last.id }) : null,
+    comments: views.slice(0, page.length),
+    replies: views.slice(page.length),
+    nextCursor,
+    total,
     viewer: await viewerStake(market.id, viewerAccountId, database),
+  };
+}
+
+/**
+ * The replies under these comments that a preview shows: the first
+ * {@link REPLY_PREVIEW} replies to each, oldest first, and so on `depth`
+ * levels down. One recursive query; flat, oldest first.
+ */
+async function previewTree(parentIds: string[], depth: number, database: Database): Promise<CommentRow[]> {
+  if (parentIds.length === 0 || depth < 1) return [];
+  const ids = sql.join(
+    parentIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  // Each step takes the first few replies of every comment found so far, by
+  // comments_parent_created_idx.
+  const tree = sql`
+    with recursive tree (id, depth) as (
+      select id, 1 from (
+        select id, row_number() over (partition by parent_id order by created_at, id) as rn
+        from comments where parent_id in (${ids})
+      ) first where rn <= ${REPLY_PREVIEW}
+      union all
+      select next.id, tree.depth + 1 from tree
+      cross join lateral (
+        select id from comments where parent_id = tree.id order by created_at, id limit ${REPLY_PREVIEW}
+      ) next
+      where tree.depth < ${depth}
+    )
+    select id from tree`;
+  return database
+    .select(commentColumns)
+    .from(comments)
+    .innerJoin(accounts, eq(accounts.id, comments.accountId))
+    .where(sql`${comments.id} in (${tree})`)
+    .orderBy(asc(comments.createdAt), asc(comments.id));
+}
+
+/**
+ * A comment's direct replies, oldest first, after the reply `after` (the
+ * last one the client has), `limit` of them, and a preview of the replies
+ * under each ({@link REPLIES_DEPTH} levels). Flat: `parentId` makes the tree.
+ * Whether more remain is the comment's `replyCount` against what is loaded.
+ */
+export async function listReplies(
+  commentId: string,
+  q: { after?: string; limit: number; viewerAccountId?: string | null },
+  database: Database = getDb(),
+): Promise<{ marketId: string; replies: CommentView[] }> {
+  const [parent] = await database
+    .select({ market: markets })
+    .from(comments)
+    .innerJoin(markets, eq(markets.id, comments.marketId))
+    .where(eq(comments.id, commentId));
+  if (!parent) throw new ApiError(404, 'not_found', `no comment ${commentId}`);
+  if (q.after) {
+    const [after] = await database
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.id, q.after), eq(comments.parentId, commentId)));
+    if (!after) throw new ApiError(400, 'validation_error', '`after` is not a reply to this comment');
+  }
+
+  const page: CommentRow[] = await database
+    .select(commentColumns)
+    .from(comments)
+    .innerJoin(accounts, eq(accounts.id, comments.accountId))
+    .where(
+      and(
+        eq(comments.parentId, commentId),
+        // Compared in SQL, at the column's microseconds: a JS Date would round them away.
+        q.after
+          ? sql`(${comments.createdAt}, ${comments.id}) > (select c.created_at, c.id from comments c where c.id = ${q.after}::uuid)`
+          : undefined,
+      ),
+    )
+    .orderBy(asc(comments.createdAt), asc(comments.id))
+    .limit(q.limit);
+  const below = await previewTree(
+    page.map((r) => r.id),
+    REPLIES_DEPTH,
+    database,
+  );
+  return {
+    marketId: parent.market.id,
+    replies: await decorate(parent.market, [...page, ...below], q.viewerAccountId ?? null, database),
   };
 }
 
@@ -227,8 +378,10 @@ async function decorate(
       .filter((o) => o.sharesMicro > 0n);
     return {
       id: r.id,
+      parentId: r.parentId,
       body: r.body,
       createdAt: r.createdAt,
+      replyCount: r.replyCount,
       author: {
         isBot: r.isBot,
         isYou: viewerAccountId === r.accountId,

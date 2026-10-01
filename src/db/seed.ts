@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { asc, eq, sql } from 'drizzle-orm';
 import { createAccount, createHouse, ensureAccountForUser, startingBalanceMicro } from '@/server/accounts';
+import { backComment } from '@/server/backings';
+import { postComment } from '@/server/comments';
 import { createGroup, joinGroup } from '@/server/groups';
 import { createAuth } from '@/server/better-auth';
 import { closeMarket, createMarket, settle, trade } from '@/server/engine';
@@ -9,7 +11,7 @@ import { upsertListing } from '@/server/listings';
 import { valuations } from '@/server/valuation';
 import { costToTrade, prices as lmsrPrices } from '@/lib/lmsr';
 import { createDb, createPool, type Database } from './index';
-import { markets, orders } from './schema';
+import { comments, markets, orders } from './schema';
 
 /**
  * A venue with something to look at (`npm run db:seed`). It **wipes every
@@ -17,10 +19,13 @@ import { markets, orders } from './schema';
  *
  * - the house;
  * - a field of seed bots, each funded exactly as a signup is;
- * - a few invented papers under `ICLR 2027`, each with the default single
- *   market — the four outcomes `Oral, Spotlight, Poster, Reject`, best first
- *   (issue #11 §4) — and one with a second, binary market (a paper can have
- *   more than one);
+ * - fifty papers under `ICLR 2027`, each with the default single market —
+ *   the four outcomes `Oral, Spotlight, Poster, Reject`, best first (issue
+ *   #11 §4) — and one with a second, binary market (a paper can have more
+ *   than one); each paper is listed `COPIES` times, so the list runs to
+ *   several pages;
+ * - a few bot comments on some of them, backed by other bots holding the
+ *   same outcome (`seedComments`);
  * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is,
  *   running a group (#25) that a few of the bots have joined.
  *
@@ -38,7 +43,7 @@ import { markets, orders } from './schema';
  * the decisions and awards are invented. The platform still knows nothing about papers:
  * everything here goes in through the same engine and listing calls a client
  * would make. The one exception is `spreadOverTime`, a seed-only rewrite of
- * fill timestamps so charts have a history — see there.
+ * fill and comment timestamps so charts have a history — see there.
  */
 async function main() {
   const url = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.env.DATABASE_URL;
@@ -359,6 +364,321 @@ const ICLR_2027: Paper[] = [
   },
 ];
 
+/**
+ * More of the venue, enough to page through (50 a page): real arXiv papers
+ * with a one-sentence summary each rather than the abstract, and a target
+ * drawn from one number, `quality` (≈ P(accepted)), by {@link targetFor}.
+ */
+const MORE_PAPERS: [slug: string, title: string, arxiv: string, quality: number, summary: string][] = [
+  [
+    'resnet',
+    'Deep Residual Learning for Image Recognition',
+    '1512.03385',
+    0.9,
+    'Residual connections let networks hundreds of layers deep train as easily as shallow ones, and win ImageNet 2015.',
+  ],
+  [
+    'adam',
+    'Adam: A Method for Stochastic Optimization',
+    '1412.6980',
+    0.85,
+    'An optimizer with per-parameter step sizes from estimates of the first and second moments of the gradient.',
+  ],
+  [
+    'batch-norm',
+    'Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift',
+    '1502.03167',
+    0.8,
+    "Normalising each layer's inputs over the mini-batch allows much higher learning rates and acts as a regulariser.",
+  ],
+  [
+    'gan',
+    'Generative Adversarial Networks',
+    '1406.2661',
+    0.85,
+    'A generator and a discriminator trained against each other in a minimax game learn to produce samples from the data distribution.',
+  ],
+  [
+    'vae',
+    'Auto-Encoding Variational Bayes',
+    '1312.6114',
+    0.8,
+    'A reparameterisation of the variational lower bound makes it differentiable, so latent-variable models can be trained by stochastic gradient descent.',
+  ],
+  [
+    'bert',
+    'BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding',
+    '1810.04805',
+    0.85,
+    'A Transformer encoder pre-trained with masked language modelling and next-sentence prediction, fine-tuned with one extra layer per task.',
+  ],
+  [
+    'gpt-3',
+    'Language Models are Few-Shot Learners',
+    '2005.14165',
+    0.75,
+    'A 175B-parameter language model performs many tasks from a handful of examples in its prompt, with no gradient updates.',
+  ],
+  [
+    'vit',
+    'An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale',
+    '2010.11929',
+    0.8,
+    'A plain Transformer over sequences of image patches matches convolutional networks when pre-trained on enough data.',
+  ],
+  [
+    'clip',
+    'Learning Transferable Visual Models From Natural Language Supervision',
+    '2103.00020',
+    0.8,
+    'Contrastive pre-training on 400M image–text pairs gives zero-shot classifiers competitive with supervised baselines.',
+  ],
+  [
+    'word2vec',
+    'Efficient Estimation of Word Representations in Vector Space',
+    '1301.3781',
+    0.55,
+    'Two simple log-linear architectures learn word vectors from billions of words in hours, capturing syntactic and semantic regularities.',
+  ],
+  [
+    'seq2seq',
+    'Sequence to Sequence Learning with Neural Networks',
+    '1409.3215',
+    0.75,
+    'An LSTM encodes a sentence into a vector and another decodes it, reaching strong translation results; reversing the source helps.',
+  ],
+  [
+    'bahdanau-attention',
+    'Neural Machine Translation by Jointly Learning to Align and Translate',
+    '1409.0473',
+    0.8,
+    'Letting the decoder soft-search over source positions removes the fixed-length bottleneck of encoder–decoder translation.',
+  ],
+  [
+    'u-net',
+    'U-Net: Convolutional Networks for Biomedical Image Segmentation',
+    '1505.04597',
+    0.6,
+    'A contracting path and a symmetric expanding path with skip connections segment biomedical images from very few annotations.',
+  ],
+  [
+    'dcgan',
+    'Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks',
+    '1511.06434',
+    0.7,
+    'Architectural constraints that make convolutional GANs train stably, and evidence that their features are useful.',
+  ],
+  [
+    'wgan',
+    'Wasserstein GAN',
+    '1701.07875',
+    0.65,
+    'Training the critic to estimate the Earth-Mover distance gives GANs meaningful loss curves and more stable training.',
+  ],
+  [
+    'layer-norm',
+    'Layer Normalization',
+    '1607.06450',
+    0.45,
+    "Normalising over a layer's units instead of the batch works for recurrent networks and at batch size one.",
+  ],
+  [
+    'gcn',
+    'Semi-Supervised Classification with Graph Convolutional Networks',
+    '1609.02907',
+    0.75,
+    'A first-order approximation of spectral graph convolutions gives a simple, scalable layer for node classification.',
+  ],
+  [
+    'gat',
+    'Graph Attention Networks',
+    '1710.10903',
+    0.7,
+    "Masked self-attention over a node's neighbours weights them without costly matrix operations or knowing the graph up front.",
+  ],
+  [
+    'dqn',
+    'Playing Atari with Deep Reinforcement Learning',
+    '1312.5602',
+    0.6,
+    'A convolutional network trained with Q-learning from raw pixels learns to play seven Atari games, beating humans on three.',
+  ],
+  [
+    'ppo',
+    'Proximal Policy Optimization Algorithms',
+    '1707.06347',
+    0.4,
+    "A clipped surrogate objective gives most of TRPO's stability with first-order optimisation and minibatch updates.",
+  ],
+  [
+    'distillation',
+    'Distilling the Knowledge in a Neural Network',
+    '1503.02531',
+    0.35,
+    "A small model trained on an ensemble's softened outputs recovers much of its accuracy.",
+  ],
+  [
+    'maml',
+    'Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks',
+    '1703.03400',
+    0.7,
+    'Learning an initialisation from which a few gradient steps solve a new task, for any model trained by gradient descent.',
+  ],
+  [
+    'neural-ode',
+    'Neural Ordinary Differential Equations',
+    '1806.07366',
+    0.85,
+    'Parameterising the derivative of the hidden state with a network, and backpropagating through a black-box ODE solver.',
+  ],
+  [
+    'stylegan',
+    'A Style-Based Generator Architecture for Generative Adversarial Networks',
+    '1812.04948',
+    0.75,
+    'A generator steered by per-layer styles separates high-level attributes from stochastic detail in generated faces.',
+  ],
+  [
+    'score-sde',
+    'Score-Based Generative Modeling through Stochastic Differential Equations',
+    '2011.13456',
+    0.85,
+    'Diffusion and score matching unified as reversing an SDE, with exact likelihoods via the probability-flow ODE.',
+  ],
+  [
+    'latent-diffusion',
+    'High-Resolution Image Synthesis with Latent Diffusion Models',
+    '2112.10752',
+    0.7,
+    "Running diffusion in a pretrained autoencoder's latent space cuts compute while keeping image quality, with cross-attention conditioning.",
+  ],
+  [
+    'chain-of-thought',
+    'Chain-of-Thought Prompting Elicits Reasoning in Large Language Models',
+    '2201.11903',
+    0.65,
+    'Prompting with worked examples that show intermediate steps sharply improves large models on arithmetic and commonsense reasoning.',
+  ],
+  [
+    'instructgpt',
+    'Training language models to follow instructions with human feedback',
+    '2203.02155',
+    0.7,
+    'Fine-tuning GPT-3 on demonstrations and then with RLHF yields a 1.3B model preferred to the 175B original.',
+  ],
+  [
+    'chinchilla',
+    'Training Compute-Optimal Large Language Models',
+    '2203.15556',
+    0.75,
+    'For a fixed compute budget, parameters and training tokens should grow in equal proportion; current models are undertrained.',
+  ],
+  [
+    'flash-attention',
+    'FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness',
+    '2205.14135',
+    0.8,
+    'A tiled attention kernel that avoids materialising the attention matrix in GPU memory, giving exact attention several times faster.',
+  ],
+  [
+    'llama',
+    'LLaMA: Open and Efficient Foundation Language Models',
+    '2302.13971',
+    0.45,
+    'A family of 7B–65B models trained only on public data, the 13B model outperforming GPT-3 on most benchmarks.',
+  ],
+  [
+    'dpo',
+    'Direct Preference Optimization: Your Language Model is Secretly a Reward Model',
+    '2305.18290',
+    0.85,
+    'The RLHF objective has a closed-form optimal policy, so preferences can be fit with a classification loss and no reward model.',
+  ],
+  [
+    'simclr',
+    'A Simple Framework for Contrastive Learning of Visual Representations',
+    '2002.05709',
+    0.75,
+    'Strong augmentations, a projection head and large batches make plain contrastive learning match supervised ResNet-50.',
+  ],
+  [
+    'moco',
+    'Momentum Contrast for Unsupervised Visual Representation Learning',
+    '1911.05722',
+    0.7,
+    'A queue of negatives encoded by a slowly-moving encoder makes a large, consistent dictionary for contrastive learning.',
+  ],
+  [
+    'adversarial-examples',
+    'Explaining and Harnessing Adversarial Examples',
+    '1412.6572',
+    0.6,
+    'Adversarial examples come from linearity in high dimensions; the fast gradient sign method makes them cheaply, for training.',
+  ],
+  [
+    'ntk',
+    'Neural Tangent Kernel: Convergence and Generalization in Neural Networks',
+    '1806.07572',
+    0.8,
+    'In the infinite-width limit, gradient descent on a network is kernel regression with a fixed kernel.',
+  ],
+  [
+    'double-descent',
+    'Deep Double Descent: Where Bigger Models and More Data Hurt',
+    '1912.02292',
+    0.55,
+    'Test error first rises then falls again as model size, training time or data grows past the interpolation threshold.',
+  ],
+  [
+    'nerf',
+    'NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis',
+    '2003.08934',
+    0.9,
+    'An MLP mapping position and direction to colour and density, rendered by volume rendering, synthesises photorealistic novel views.',
+  ],
+  [
+    'rag',
+    'Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks',
+    '2005.11401',
+    0.6,
+    'A seq2seq model conditioned on passages from a dense retriever, trained end to end, sets the state of the art on open-domain QA.',
+  ],
+  [
+    'react',
+    'ReAct: Synergizing Reasoning and Acting in Language Models',
+    '2210.03629',
+    0.55,
+    'Interleaving reasoning traces with actions against a tool lets a language model plan, look things up and correct itself.',
+  ],
+];
+
+/** A target for a paper of the given quality: Reject is 1 − quality; better papers lean towards Oral. */
+function targetFor(quality: number): [number, number, number, number] {
+  const oral = quality * (0.04 + 0.25 * quality);
+  const spotlight = quality * (0.12 + 0.2 * quality);
+  return [oral, spotlight, quality - oral - spotlight, 1 - quality];
+}
+
+/** The fifty distinct papers: the ten with full abstracts, then {@link MORE_PAPERS}. */
+const DISTINCT_PAPERS: Paper[] = [
+  ...ICLR_2027,
+  ...MORE_PAPERS.map(([slug, title, arxiv, quality, summary]) => ({
+    slug,
+    title,
+    arxiv,
+    summary,
+    target: targetFor(quality),
+  })),
+];
+
+/** How many times each paper is listed, so the list runs to several pages (50 a page). */
+const COPIES = 5;
+
+/** Every paper in the venue: the originals, then copies numbered 2…{@link COPIES} in slug and title. */
+const PAPERS: Paper[] = Array.from({ length: COPIES }, (_, c) =>
+  DISTINCT_PAPERS.map((p) => (c === 0 ? p : { ...p, slug: `${p.slug}-${c + 1}`, title: `${p.title} ${c + 1}` })),
+).flat();
+
 /** A small deterministic PRNG, so a reseed looks the same. */
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -442,10 +762,11 @@ interface Board {
 
 async function seedPapers(db: Database, bots: Bot[]) {
   const boards: Board[] = [];
-  for (const [i, p] of ICLR_2027.entries()) {
+  for (const [i, p] of PAPERS.entries()) {
     boards.push(...(await seedPaper(db, p, 'ICLR 2027', 110, 1000 + i)));
   }
   await simulateCrowd(db, boards, bots, rng(42));
+  await seedComments(db, boards, bots, rng(99));
 
   for (const board of boards) {
     const settled = board.decided !== undefined;
@@ -457,7 +778,7 @@ async function seedPapers(db: Database, bots: Bot[]) {
     const end = lmsrPrices(board.q, board.b).map((x) => Math.round(x * 100));
     console.log(`  ${board.marketId}  ${end.map((x) => `${x}%`).join(' · ')}`);
   }
-  console.log(`papers: ${ICLR_2027.length}, markets: ${boards.length}`);
+  console.log(`papers: ${PAPERS.length}, markets: ${boards.length}`);
 }
 
 async function seedPaper(db: Database, p: Paper, kind: string, closesInDays: number, seed: number): Promise<Board[]> {
@@ -600,6 +921,133 @@ async function fill(db: Database, board: Board, bot: Bot, i: number, shares: num
   bot.held.set(outcomeId, Number(done.positionAfterMicro));
 }
 
+/**
+ * What a bot says for the outcome it holds most of, best first like DECISIONS.
+ * Markdown and TeX, as comments are rendered.
+ */
+const REMARKS: string[][] = [
+  [
+    'This is the paper people will still cite in five years. Oral, easily.',
+    'Reviewers will argue about the experiments and then give it an oral anyway. The idea is too clean.',
+    'If this is not an oral the committee was not reading.',
+  ],
+  [
+    'Strong paper, but orals go to whatever the AC championed. **Spotlight** is the safe bet.',
+    'The ablations are thorough. Spotlight feels right; oral would need a clearer story.',
+  ],
+  [
+    'Solid, but incremental over prior work. Poster.',
+    'Accepted, sure — but the main table is within noise of the baseline. Poster at best.',
+    'Expected improvement is about $\\Delta \\approx 0.3$ points over the baseline. That is a poster, not a spotlight.',
+  ],
+  [
+    'The main claim does not survive the second appendix. I expect a reject.',
+    'Reviewer 2 will ask for:\n\n1. a baseline that is not from 2019,\n2. error bars,\n3. any theory at all.\n\nNone of that fits in a rebuttal.',
+    'Novelty is thin and the comparison is to an untuned baseline. Reject is underpriced.',
+  ],
+];
+
+/** What a bot replies with: agreeing when it holds what the comment argues for, else not. */
+const REPLIES = {
+  agree: ['Agreed.', 'Same read here; I bought more after the reviews came out.', 'This. The appendix settles it.'],
+  disagree: [
+    'I doubt it. The reviews I have seen are lukewarm.',
+    'You are pricing the hype, not the paper.',
+    'Disagree — the baseline in Table 2 is mistuned, and reviewers will notice.',
+    'Counterpoint: $p < 0.05$ on one seed is not a result.',
+  ],
+};
+
+/** Decision markets that get a discussion. */
+const DISCUSSED = 8;
+/** Top-level comments on the first discussed market: more than a page (20), so "load more" shows. */
+const BUSY_COMMENTS = 26;
+/**
+ * Under its first comment: more direct replies than a preview shows (3), and
+ * a chain of replies to replies deeper than it shows (3 levels), so "more
+ * replies" shows at both.
+ */
+const LONG_THREAD = { direct: 6, chain: 5 };
+
+/**
+ * A discussion on the first {@link DISCUSSED} decision markets, through
+ * `server/comments.ts` and `server/backings.ts` as the API would: 2–5 bots
+ * that hold shares there each say why, about the outcome they hold most of,
+ * a few others reply, and other bots holding that outcome back some comments
+ * with part of it. The first market is busy enough to page through.
+ */
+async function seedComments(db: Database, boards: Board[], bots: Bot[], rand: () => number) {
+  // Shares each bot has put behind comments, by outcome id, so backings stay within positions.
+  const allocated = new Map<string, number>();
+  const held = (bot: Bot, outcomeId: string) =>
+    (bot.held.get(outcomeId) ?? 0) - (allocated.get(`${bot.id}:${outcomeId}`) ?? 0);
+  const favourite = (bot: Bot, board: Board) => {
+    let best = -1;
+    for (const [i, id] of board.outcomeIds.entries()) {
+      if ((bot.held.get(id) ?? 0) > 0 && (best < 0 || bot.held.get(id)! > bot.held.get(board.outcomeIds[best])!)) {
+        best = i;
+      }
+    }
+    return best;
+  };
+
+  let count = 0;
+  let backed = 0;
+  const decisions = boards.filter((b) => b.outcomeIds.length === DECISIONS.length && b.decided === undefined);
+  const pick = (lines: string[]) => lines[Math.floor(rand() * lines.length)];
+  for (const [n, board] of decisions.slice(0, DISCUSSED).entries()) {
+    const holders = shuffle(
+      bots.filter((bot) => favourite(bot, board) >= 0),
+      rand,
+    );
+    const speakers =
+      n === 0
+        ? Array.from({ length: BUSY_COMMENTS }, (_, k) => holders[k % holders.length])
+        : holders.slice(0, 2 + Math.floor(rand() * 4));
+    for (const [k, author] of speakers.entries()) {
+      const i = favourite(author, board);
+      const { id } = await postComment({ marketId: board.marketId, accountId: author.id, body: pick(REMARKS[i]) }, db);
+      count++;
+      const outcomeId = board.outcomeIds[i];
+
+      // Each reply answers the comment or an earlier reply under it; the long thread's are planned.
+      const others = shuffle(
+        holders.filter((b) => b !== author),
+        rand,
+      );
+      const long = n === 0 && k === 0;
+      const replies = long ? LONG_THREAD.direct + LONG_THREAD.chain : Math.floor(rand() * 4);
+      const thread = [{ id, outcome: i }];
+      for (let r = 0; r < replies; r++) {
+        const parent = long
+          ? r < LONG_THREAD.direct
+            ? thread[0]
+            : thread[r === LONG_THREAD.direct ? 1 : r]
+          : thread[Math.floor(rand() * thread.length)];
+        const replier = others[r % others.length];
+        const lines = favourite(replier, board) === parent.outcome ? REPLIES.agree : REPLIES.disagree;
+        const reply = await postComment(
+          { marketId: board.marketId, accountId: replier.id, parentId: parent.id, body: pick(lines) },
+          db,
+        );
+        thread.push({ id: reply.id, outcome: favourite(replier, board) });
+        count++;
+      }
+
+      for (const backer of bots) {
+        if (backer === author || rand() < 0.4) continue;
+        const shares = Math.floor(held(backer, outcomeId) * (0.2 + 0.5 * rand()));
+        if (shares < 1_000_000) continue;
+        await backComment({ commentId: id, accountId: backer.id, outcomeId, sharesMicro: BigInt(shares) }, db);
+        const key = `${backer.id}:${outcomeId}`;
+        allocated.set(key, (allocated.get(key) ?? 0) + shares);
+        backed++;
+      }
+    }
+  }
+  console.log(`comments: ${count}, backings: ${backed}`);
+}
+
 function shuffle<T>(xs: readonly T[], rand: () => number): T[] {
   const out = xs.slice();
   for (let i = out.length - 1; i > 0; i--) {
@@ -614,8 +1062,9 @@ function shuffle<T>(xs: readonly T[], rand: () => number): T[] {
  * chart with no history. This moves the market's creation back 2–4 weeks and
  * spreads its fills, in their original order, between then and now, the last
  * few inside the past day (so "moved this week" and the digest have something
- * to say). Only timestamps change; shares, costs, positions and the ledger are
- * exactly what the engine wrote. Never do this outside a seed.
+ * to say), and its comments, in order, over the second half of that. Only
+ * timestamps change; shares, costs, positions and the ledger are exactly what
+ * the engine wrote. Never do this outside a seed.
  */
 async function spreadOverTime(db: Database, marketId: string, rand: () => number, settled: boolean) {
   const now = Date.now();
@@ -637,6 +1086,18 @@ async function spreadOverTime(db: Database, marketId: string, rand: () => number
       .update(orders)
       .set({ createdAt: new Date(times[i]) })
       .where(eq(orders.id, f.id));
+  }
+  const said = await db
+    .select({ id: comments.id })
+    .from(comments)
+    .where(eq(comments.marketId, marketId))
+    .orderBy(asc(comments.createdAt), asc(comments.id));
+  for (const [i, c] of said.entries()) {
+    const at = start + (0.5 + (0.5 * (i + rand())) / said.length) * (end - start);
+    await db
+      .update(comments)
+      .set({ createdAt: new Date(at) })
+      .where(eq(comments.id, c.id));
   }
   await db
     .update(markets)

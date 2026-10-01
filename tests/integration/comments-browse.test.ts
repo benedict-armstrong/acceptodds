@@ -98,6 +98,116 @@ describe('comments', () => {
   });
 });
 
+describe('replies', () => {
+  const post = (token: string, body: string, parentId?: string, marketId = fx.marketId) =>
+    api('POST', `/markets/${marketId}/comments`, { token, body: { body, parentId } });
+  type C = { id: string; body: string; parentId: string | null; replyCount: number };
+  const bodies = (cs: C[]) => cs.map((c) => c.body);
+
+  it('nest: a reply to a reply stays under it', async () => {
+    const t = await trader('threader');
+    const root = (await post(t.token, 'root')).body;
+    expect(root).toMatchObject({ parentId: null, replyCount: 0 });
+    const reply = await post(t.token, 'reply', root.id);
+    expect(reply.status).toBe(201);
+    expect(reply.body.parentId).toBe(root.id);
+    const nested = (await post(t.token, 'reply to the reply', reply.body.id)).body;
+    expect(nested.parentId).toBe(reply.body.id);
+
+    const list = await api('GET', `/markets/${fx.marketId}/comments`);
+    expect(list.body.total).toBe(3);
+    expect(bodies(list.body.comments)).toEqual(['root']);
+    expect(list.body.comments[0].replyCount).toBe(1);
+    expect(list.body.replies.map((c: C) => [c.body, c.parentId, c.replyCount])).toEqual([
+      ['reply', root.id, 1],
+      ['reply to the reply', reply.body.id, 0],
+    ]);
+  });
+
+  it('refuse a parent on another market, or none at all', async () => {
+    const other = await createMarket({
+      slug: 'other',
+      question: 'other',
+      kind: 'binary',
+      outcomes: ['YES', 'NO'],
+      closesAt: new Date(Date.now() + 86_400_000),
+      startingBalanceMicro: STARTING_MICRO,
+      expectedTraders: 10,
+    });
+    const t = await trader('stray');
+    const elsewhere = (await post(t.token, 'elsewhere', undefined, other.marketId)).body;
+    expect((await post(t.token, 'x', elsewhere.id)).status).toBe(404);
+    expect((await post(t.token, 'x', '00000000-0000-4000-8000-000000000000')).status).toBe(404);
+    expect((await post(t.token, 'x', 'not-a-uuid')).status).toBe(400);
+  });
+
+  it('preview three per comment, three levels down', async () => {
+    const t = await trader('deep');
+    const root = (await post(t.token, 'root')).body;
+    for (let i = 0; i < 5; i += 1) await post(t.token, `a${i}`, root.id);
+    // A chain five deep under the first reply.
+    let parent = (await api('GET', `/comments/${root.id}/replies?limit=1`)).body.replies[0];
+    for (let d = 2; d <= 5; d += 1) parent = (await post(t.token, `d${d}`, parent.id)).body;
+
+    const list = await api('GET', `/markets/${fx.marketId}/comments`);
+    expect(list.body.total).toBe(10);
+    expect(list.body.comments[0].replyCount).toBe(5);
+    expect(bodies(list.body.replies)).toEqual(['a0', 'a1', 'a2', 'd2', 'd3']);
+  });
+
+  it('page the rest after the last one loaded, without repeats', async () => {
+    const t = await trader('busy');
+    const root = (await post(t.token, 'root')).body;
+    for (let i = 0; i < 8; i += 1) await post(t.token, `r${i}`, root.id);
+    await post(t.token, 'later root');
+
+    const list = await api('GET', `/markets/${fx.marketId}/comments`);
+    expect(bodies(list.body.comments)).toEqual(['later root', 'root']);
+    const seen: C[] = list.body.replies;
+    expect(bodies(seen)).toEqual(['r0', 'r1', 'r2']);
+    while (seen.length < 8) {
+      const res = await api('GET', `/comments/${root.id}/replies?limit=2&after=${seen.at(-1)!.id}`);
+      expect(res.status).toBe(200);
+      seen.push(...res.body.replies);
+    }
+    expect(bodies(seen)).toEqual(['r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7']);
+    expect((await api('GET', `/comments/${root.id}/replies?after=${seen.at(-1)!.id}`)).body.replies).toEqual([]);
+
+    expect((await api('GET', `/comments/${root.id}/replies?after=${root.id}`)).status).toBe(400);
+    expect((await api('GET', '/comments/00000000-0000-4000-8000-000000000000/replies')).status).toBe(404);
+  });
+
+  it('come with a preview of the replies under each page of them', async () => {
+    const t = await trader('fork');
+    const root = (await post(t.token, 'root')).body;
+    const a = (await post(t.token, 'a', root.id)).body;
+    const b = (await post(t.token, 'a.b', a.id)).body;
+    await post(t.token, 'a.b.c', b.id);
+    const res = await api('GET', `/comments/${root.id}/replies`);
+    expect(res.body.replies.map((c: C) => [c.body, c.parentId])).toEqual([
+      ['a', root.id],
+      ['a.b', a.id],
+      ['a.b.c', b.id],
+    ]);
+  });
+
+  it('are left out of the top level in either sort, and can be backed', async () => {
+    const author = await trader('author');
+    const backer = await trader('backer');
+    await buy(backer.token, fx.outcomeIds[0], '10000000');
+    const root = (await post(author.token, 'root')).body;
+    const reply = (await post(author.token, 'reply', root.id)).body;
+    const backed = await api('POST', `/comments/${reply.id}/backing`, {
+      token: backer.token,
+      body: { outcomeId: fx.outcomeIds[0], sharesMicro: '5000000' },
+    });
+    expect(backed.status).toBe(201);
+    const relevance = await api('GET', `/markets/${fx.marketId}/comments?sort=relevance`);
+    expect(relevance.body.comments.map((c: C) => c.id)).toEqual([root.id]);
+    expect(relevance.body.replies[0].backing.backers).toBe(1);
+  });
+});
+
 describe('browsing markets', () => {
   async function extra(slug: string, kind: string, closesInDays: number) {
     return createMarket({

@@ -4,7 +4,7 @@ import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts'
 import * as engine from '../engine';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
-import { getComment, listComments, postComment } from '../comments';
+import { getComment, listComments, listReplies, postComment } from '../comments';
 import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
 import {
   createGroup,
@@ -234,6 +234,16 @@ export const getComments = route(async (req, params) => {
   return respond(S.CommentList, presentComments(page), { principal });
 });
 
+/** A page of a comment's direct replies, each with a preview of the replies under it. */
+export const getCommentReplies = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const commentId = parseParam(params.id, S.CommentId, 'id');
+  const q = parseQuery(req, S.CommentRepliesQuery);
+  const page = await listReplies(commentId, { ...q, viewerAccountId: accountIdOf(principal) });
+  events.log('comments.read', { accountId: accountIdOf(principal), marketId: page.marketId });
+  return respond(S.CommentReplies, { replies: page.replies.map(presentComment) }, { principal });
+});
+
 // ---------------------------------------------------------------------------
 // authenticated
 // ---------------------------------------------------------------------------
@@ -287,7 +297,12 @@ export const postMarketComment = route(async (req, params) => {
   requireTradingEligibility(principal);
   const market = await resolveMarket(parseParam(params.id, S.MarketRef, 'id'));
   const body = await parseBody(req, S.CommentRequest);
-  const created = await postComment({ marketId: market.id, accountId: principal.account.id, body: body.body });
+  const created = await postComment({
+    marketId: market.id,
+    accountId: principal.account.id,
+    body: body.body,
+    parentId: body.parentId,
+  });
   events.log('comment.posted', { accountId: principal.account.id, marketId: market.id });
   const view = await getComment(created.id, principal.account.id);
   return respond(S.Comment, presentComment(view!), { status: 201, principal });
