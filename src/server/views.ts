@@ -4,11 +4,13 @@ import {
   accounts,
   groupMembers,
   listingFollows,
+  listingReferences,
   listings,
   markets,
   orders,
   outcomes,
   type Listing,
+  type ListingReference,
   type Market,
   type Outcome,
 } from '@/db/schema';
@@ -458,6 +460,69 @@ export async function listingViews(rows: Listing[], database: Database = getDb()
 export async function listingView(listing: Listing, database: Database = getDb()): Promise<ListingView> {
   const [view] = await listingViews([listing], database);
   return view;
+}
+
+// ---------------------------------------------------------------------------
+// citations (#38) — a listing's bibliography, and the listings that cite it
+// ---------------------------------------------------------------------------
+
+/** A listing that is cited or citing, with its main market (`null` when it has no visible one). */
+export interface CitedListing {
+  listing: Listing;
+  main: MarketView | null;
+}
+
+export interface ListingCitations {
+  /** The bibliography in its own order; `cited` when the slug names a listing here. */
+  references: { reference: ListingReference; cited: CitedListing | null }[];
+  /** Listings whose bibliography names this one, newest first, at most {@link CITED_BY_LIMIT}. */
+  citedBy: CitedListing[];
+  citedByTotal: number;
+}
+
+export const CITED_BY_LIMIT = 100;
+
+/**
+ * What a listing cites and what cites it. Matched by slug when read, never
+ * stored resolved, so a reference to a listing added later links up by
+ * itself. A listing citing itself is left out both ways.
+ */
+export async function listingCitations(listing: Listing, database: Database = getDb()): Promise<ListingCitations> {
+  const refs = await database
+    .select()
+    .from(listingReferences)
+    .where(eq(listingReferences.listingId, listing.id))
+    .orderBy(asc(listingReferences.position));
+  const slugs = [...new Set(refs.flatMap((r) => (r.citedSlug && r.citedSlug !== listing.slug ? [r.citedSlug] : [])))];
+  const citedRows = slugs.length > 0 ? await database.select().from(listings).where(inArray(listings.slug, slugs)) : [];
+
+  const citing = database
+    .selectDistinct({ id: listingReferences.listingId })
+    .from(listingReferences)
+    .where(and(eq(listingReferences.citedSlug, listing.slug), ne(listingReferences.listingId, listing.id)))
+    .as('citing');
+  const citingRows = await database
+    .select({ listing: listings, total: sql<number>`count(*) over ()::int` })
+    .from(listings)
+    .innerJoin(citing, eq(citing.id, listings.id))
+    .orderBy(desc(listings.createdAt), desc(listings.id))
+    .limit(CITED_BY_LIMIT);
+
+  const views = await listingViews([...citedRows, ...citingRows.map((r) => r.listing)], database);
+  const cited = (l: Listing): CitedListing => ({
+    listing: l,
+    main: views.find((v) => v.listing.id === l.id)?.markets[0] ?? null,
+  });
+  const bySlug = new Map(citedRows.map((l) => [l.slug, l]));
+  return {
+    references: refs.map((reference) => {
+      const l =
+        reference.citedSlug && reference.citedSlug !== listing.slug ? bySlug.get(reference.citedSlug) : undefined;
+      return { reference, cited: l ? cited(l) : null };
+    }),
+    citedBy: citingRows.map((r) => cited(r.listing)),
+    citedByTotal: citingRows[0]?.total ?? 0,
+  };
 }
 
 /** Listings, newest first; or, with a non-blank `q`, by search rank (`searchListings`). */

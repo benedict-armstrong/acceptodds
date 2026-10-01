@@ -36,6 +36,7 @@ import {
   accountOrders,
   leaderboard as leaderboardView,
   listListings as listListingsView,
+  listingCitations,
   listMarkets as listMarketsView,
   listingView,
   marketTape,
@@ -52,6 +53,7 @@ import {
   presentFollowed,
   presentGroup,
   presentGroupSummary,
+  presentCitations,
   presentListing,
   presentMarket,
   presentAffiliation,
@@ -157,6 +159,13 @@ export const getListing = route(async (req, params) => {
   const view = await listingView(listing);
   events.log('listing.read', { accountId: accountIdOf(principal) });
   return respond(S.Listing, presentListing(view), { principal });
+});
+
+/** A listing's bibliography and the listings citing it (#38). */
+export const getListingCitations = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  return respond(S.ListingCitations, presentCitations(await listingCitations(listing)), { principal });
 });
 
 export const getLeaderboard = route(async (req) => {
@@ -702,6 +711,13 @@ export const postListing = route(async (req) => {
     authors: body.authors ?? [],
     links: body.links ?? [],
     kind: body.kind ?? null,
+    references: (body.references ?? []).map((r) => ({
+      title: r.title,
+      authors: r.authors ?? [],
+      year: r.year ?? null,
+      url: r.url ?? null,
+      citedSlug: r.slug ?? null,
+    })),
   });
   events.log(created ? 'listing.created' : 'listing.updated', { accountId: principal.account.id });
   return respond(

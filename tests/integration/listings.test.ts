@@ -158,6 +158,91 @@ describe('GET /listings', () => {
   });
 });
 
+describe('citations (#38)', () => {
+  const post = (body: Record<string, unknown>) => api('POST', '/listings', { token: admin.token, body });
+  const citations = (ref: string) => api('GET', `/listings/${ref}/citations`);
+
+  it('keeps the bibliography in order, matching slugs to listings when read', async () => {
+    await post({ slug: 'cited', title: 'Cited paper', authors: ['A. Cited'] });
+    expect((await market('cited-accept', { listingSlug: 'cited' })).status).toBe(201);
+    const res = await post({
+      slug: 'citing',
+      title: 'Citing paper',
+      references: [
+        { title: 'Off the site', authors: ['X. Y.'], year: 1986, url: 'https://example.org/x' },
+        { title: 'Cited paper', slug: 'cited' },
+        { title: 'Not listed yet', slug: 'later' },
+      ],
+    });
+    expect(res.status).toBe(201);
+
+    const first = await citations('citing');
+    expect(first.status).toBe(200);
+    expect(first.body.references).toMatchObject([
+      {
+        title: 'Off the site',
+        authors: ['X. Y.'],
+        year: 1986,
+        url: 'https://example.org/x',
+        slug: null,
+        listing: null,
+      },
+      { title: 'Cited paper', slug: 'cited', listing: { slug: 'cited', market: { slug: 'cited-accept' } } },
+      { title: 'Not listed yet', slug: 'later', listing: null },
+    ]);
+
+    // Listed afterwards, it links up by itself, with no market yet.
+    await post({ slug: 'later', title: 'Later paper' });
+    expect((await citations('citing')).body.references[2].listing).toMatchObject({ slug: 'later', market: null });
+  });
+
+  it('lists who cites a listing once each, never itself', async () => {
+    await post({ slug: 'a', title: 'A' });
+    await post({
+      slug: 'b',
+      title: 'B',
+      references: [
+        { title: 'A', slug: 'a' },
+        { title: 'A again', slug: 'a' },
+      ],
+    });
+    await post({ slug: 'c', title: 'C', references: [{ title: 'A', slug: 'a' }] });
+    await post({ slug: 'self', title: 'Self', references: [{ title: 'Self', slug: 'self' }] });
+
+    const a = await citations('a');
+    expect(a.body.citedBy.map((l: any) => l.slug)).toEqual(['c', 'b']);
+    expect(a.body.citedByTotal).toBe(2);
+
+    const self = await citations('self');
+    expect(self.body.citedBy).toEqual([]);
+    expect(self.body.references).toMatchObject([{ slug: 'self', listing: null }]);
+  });
+
+  it('replaces the bibliography whole, and clears it when left out', async () => {
+    await post({ slug: 'a', title: 'A' });
+    await post({ slug: 'b', title: 'B', references: [{ title: 'one' }, { title: 'A', slug: 'a' }] });
+    await post({ slug: 'b', title: 'B', references: [{ title: 'two' }] });
+    expect((await citations('b')).body.references.map((r: any) => r.title)).toEqual(['two']);
+    expect((await citations('a')).body.citedBy).toEqual([]);
+
+    await post({ slug: 'b', title: 'B' });
+    expect((await citations('b')).body.references).toEqual([]);
+  });
+
+  it('refuses a bad reference, and 404s an unknown listing', async () => {
+    for (const references of [
+      [{ title: 'x', url: 'javascript:alert(1)' }],
+      [{ title: '  ' }],
+      [{ title: 'x', slug: 'Not A Slug' }],
+    ]) {
+      const res = await post({ slug: 'bad', title: 'Bad', references });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('validation_error');
+    }
+    expect((await citations('nope')).status).toBe(404);
+  });
+});
+
 describe('browsing listings', () => {
   it('shows one row per listing, read from its main market, plus unlisted markets', async () => {
     const { listing } = await upsertListing({ slug: 'p', title: 'P' });

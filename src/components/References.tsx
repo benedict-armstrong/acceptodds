@@ -21,15 +21,24 @@ export function Cite({ n }: { n: number | number[] }) {
 /**
  * A page's bibliography, under an unnumbered "References" heading as a
  * paper's back matter is. Entries are numbered in the order given, which is
- * the order `Cite` numbers them in: `#ref-1`, `#ref-2`, ….
+ * the order `Cite` numbers them in: `#ref-1`, `#ref-2`, …. Another list of
+ * the same look (a paper's "Cited by") passes its own `heading` and `idPrefix`.
  */
-export function References({ items }: { items: ReactNode[] }) {
+export function References({
+  items,
+  heading = 'References',
+  idPrefix = 'ref',
+}: {
+  items: ReactNode[];
+  heading?: ReactNode;
+  idPrefix?: string;
+}) {
   return (
     <section>
-      <h2 className={ui.backHeading}>References</h2>
+      <h2 className={ui.backHeading}>{heading}</h2>
       <ol className="space-y-1.5 text-sm leading-snug">
         {items.map((item, i) => (
-          <li key={i} id={`ref-${i + 1}`} className="grid grid-cols-[2.2em_1fr]">
+          <li key={i} id={`${idPrefix}-${i + 1}`} className="grid grid-cols-[2.2em_1fr]">
             <span>[{i + 1}]</span>
             <span>{item}</span>
           </li>

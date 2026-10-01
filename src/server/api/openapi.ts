@@ -183,6 +183,20 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'get',
+      path: '/listings/{id}/citations',
+      tags: ['listings'],
+      summary: 'What a listing cites, and what cites it',
+      description:
+        'The bibliography the creating client supplied, each entry with the listing its slug names (and that listing’s main market) when one exists here; and the listings whose bibliography names this one.',
+      request: { params: z.object({ id: S.ListingRef }) },
+      ok: { status: 200, schema: S.ListingCitations, description: 'The citations.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { Citations } from '@/components/Citations';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { TableNotes } from '@/components/TableNotes';
@@ -18,7 +19,7 @@ import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
-import { listingView, resolveListing, type MarketView } from '@/server/views';
+import { listingCitations, listingView, resolveListing, type MarketView } from '@/server/views';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
 import { SharePanel } from './SharePanel';
@@ -69,7 +70,7 @@ export default async function PaperPage({
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
-  const { markets, followers } = await listingView(listing);
+  const [{ markets, followers }, citations] = await Promise.all([listingView(listing), listingCitations(listing)]);
   const wanted = Array.isArray(sp.market) ? sp.market[0] : sp.market;
   const selected = markets.find((m) => m.market.slug === wanted) ?? markets[0];
 
@@ -174,6 +175,8 @@ export default async function PaperPage({
       {initial && (
         <MarketLive key={initial.market.id} initial={initial} embedded firstTable={markets.length > 1 ? 2 : 1} />
       )}
+
+      <Citations citations={citations} />
     </main>
   );
 }

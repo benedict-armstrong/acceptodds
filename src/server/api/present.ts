@@ -8,7 +8,7 @@ import type { FollowedListing } from '../follows';
 import type { GroupMember, GroupRole, GroupSummary } from '../groups';
 import type { PublicPositionView } from '../public-positions';
 import type { TokenRecord } from '../tokens';
-import type { ListingView, MarketView, OrderRow } from '../views';
+import type { CitedListing, ListingCitations, ListingView, MarketView, OrderRow } from '../views';
 import { toIso, toIsoOrNull } from './http';
 import type * as S from './schemas';
 
@@ -62,6 +62,32 @@ export function presentListing(v: ListingView): z.input<typeof S.Listing> {
     createdAt: toIso(l.createdAt),
     followers: v.followers,
     markets: v.markets.map(presentMarket),
+  };
+}
+
+function presentCited(c: CitedListing): z.input<typeof S.CitedListing> {
+  return {
+    id: c.listing.id,
+    slug: c.listing.slug,
+    title: c.listing.title,
+    authors: c.listing.authors,
+    kind: c.listing.kind,
+    market: c.main ? presentMarket(c.main) : null,
+  };
+}
+
+export function presentCitations(c: ListingCitations): z.input<typeof S.ListingCitations> {
+  return {
+    references: c.references.map(({ reference: r, cited }) => ({
+      title: r.title,
+      authors: r.authors,
+      year: r.year,
+      url: r.url,
+      slug: r.citedSlug,
+      listing: cited ? presentCited(cited) : null,
+    })),
+    citedBy: c.citedBy.map(presentCited),
+    citedByTotal: c.citedByTotal,
   };
 }
 

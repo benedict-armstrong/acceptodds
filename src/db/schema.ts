@@ -143,6 +143,43 @@ export interface ListingLink {
 }
 
 /**
+ * A listing's bibliography (#38): what the paper cites, in its own order,
+ * supplied whole by `../research` with the listing (`POST /listings`
+ * replaces the list) and written only by `server/listings.ts`, in the
+ * upsert's transaction. The venue extracts nothing and checks nothing.
+ *
+ * `cited_slug` says the cited work is (or may one day be) a listing here. It
+ * is matched against `listings.slug` when read, never by a foreign key, so a
+ * reference to a paper listed later links up by itself, and "cited by" is the
+ * reverse lookup on its index.
+ */
+export const listingReferences = pgTable(
+  'listing_references',
+  {
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    /** 0-based order in the bibliography. */
+    position: integer('position').notNull(),
+    title: text('title').notNull(),
+    authors: text('authors')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    year: integer('year'),
+    /** http(s) only (checked at the API). */
+    url: text('url'),
+    citedSlug: text('cited_slug'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.listingId, t.position] }),
+    index('listing_references_cited_idx')
+      .on(t.citedSlug)
+      .where(sql`${t.citedSlug} is not null`),
+  ],
+);
+
+/**
  * A market is a question, a set of outcomes, an id and a resolution rule.
  *
  * It is not a paper. There is no arXiv id, no venue client and no corpus
@@ -728,6 +765,7 @@ export const fieldSnapshots = pgTable('field_snapshots', {
 
 export type Account = typeof accounts.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
+export type ListingReference = typeof listingReferences.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;
 export type Order = typeof orders.$inferSelect;

@@ -736,6 +736,24 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   exit quote while trading and the payout once settled, never the mark
   (§1.1); P&L is sales + payout + exit − buys.
 
+### Citations (#38)
+
+- **A listing's bibliography is supplied, never extracted.** `../research`
+  sends `references: [{ title, authors?, year?, url?, slug? }]` with
+  `POST /listings`, replaced whole like every other field (left out, it is
+  cleared). Stored in `listing_references`, written only by
+  `server/listings.ts` in the upsert's transaction.
+- **`slug` is matched when read, never by a foreign key**, so a reference
+  to a paper listed later links up by itself. "Cited by" is the reverse
+  lookup on `cited_slug`'s index. A listing citing itself is left out
+  both ways.
+- `GET /listings/{id}/citations` gives both, each listed entry with its
+  main market; the paper page sets them as back matter (`References`,
+  then "Cited by", `components/Citations`), a listed entry linking to its
+  page with its odds in its likelihood colour. Prices, never values.
+- The feed (papers sharing citations with what a trader follows or holds)
+  is not built yet.
+
 ### Following and the morning digest (#9)
 
 - **Only listings can be followed** (`listing_follows`, pk account + listing,

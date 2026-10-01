@@ -187,6 +187,45 @@ export const Listing = z
       'An opaque subject that markets are grouped under, supplied whole by the creating client. The venue never fetches or interprets any of it.',
   });
 
+/** A listing as cited or citing (#38): enough to name it, and its main market for the odds. */
+export const CitedListing = z
+  .object({
+    id: Id,
+    slug: z.string(),
+    title: z.string(),
+    authors: z.array(z.string()),
+    kind: z.string().nullable(),
+    market: Market.nullable().meta({ description: 'Its main market; `null` when it has no visible one.' }),
+  })
+  .meta({ id: 'CitedListing' });
+
+export const ListingReferenceEntry = z
+  .object({
+    title: z.string(),
+    authors: z.array(z.string()),
+    year: z.number().int().nullable(),
+    url: z.string().nullable(),
+    slug: z.string().nullable().meta({ description: 'The cited work’s listing slug, as the creating client gave it.' }),
+    listing: CitedListing.nullable().meta({
+      description: 'The listing that `slug` names, when there is one here now. Matched on every read.',
+    }),
+  })
+  .meta({ id: 'ListingReference' });
+
+export const ListingCitations = z
+  .object({
+    references: z.array(ListingReferenceEntry).meta({ description: 'The listing’s bibliography, in its own order.' }),
+    citedBy: z.array(CitedListing).meta({
+      description: 'Listings whose bibliography names this one, newest first, at most 100.',
+    }),
+    citedByTotal: z.number().int().min(0),
+  })
+  .meta({
+    id: 'ListingCitations',
+    description:
+      'Supplied by the creating client with the listing; the venue extracts nothing. A listing citing itself is left out.',
+  });
+
 export const ListingListQuery = PaginationQuery.extend({
   kind: z.string().max(100).optional().meta({ description: 'Filter by the opaque `kind` string.' }),
   q: SearchQuery,
@@ -769,6 +808,22 @@ export const CreateMarketRequest = z
   })
   .meta({ id: 'CreateMarketRequest' });
 
+export const ReferenceRequest = z
+  .object({
+    title: z.string().trim().min(1).max(1000),
+    authors: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+    year: z.number().int().min(1000).max(3000).nullish(),
+    url: z
+      .url({ protocol: /^https?$/ })
+      .max(2000)
+      .nullish(),
+    slug: Slug.nullish().meta({
+      description:
+        'The cited work’s listing slug, if it has one here or may get one. Matched when read, so it need not exist yet.',
+    }),
+  })
+  .meta({ id: 'ReferenceRequest' });
+
 export const UpsertListingRequest = z
   .object({
     slug: Slug,
@@ -777,6 +832,9 @@ export const UpsertListingRequest = z
     authors: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
     links: z.array(ListingLink).max(20).optional(),
     kind: z.string().min(1).max(100).nullish().meta({ description: 'Opaque.' }),
+    references: z.array(ReferenceRequest).max(1000).optional().meta({
+      description: 'The bibliography, in order. Replaced whole; left out, it is cleared.',
+    }),
   })
   .meta({
     id: 'UpsertListingRequest',

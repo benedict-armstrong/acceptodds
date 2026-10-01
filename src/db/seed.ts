@@ -7,7 +7,7 @@ import { postComment } from '@/server/comments';
 import { createGroup, joinGroup } from '@/server/groups';
 import { createAuth } from '@/server/better-auth';
 import { closeMarket, createMarket, settle, trade } from '@/server/engine';
-import { upsertListing } from '@/server/listings';
+import { upsertListing, type ReferenceInput } from '@/server/listings';
 import { valuations } from '@/server/valuation';
 import { costToTrade, prices as lmsrPrices } from '@/lib/lmsr';
 import { createDb, createPool, type Database } from './index';
@@ -679,6 +679,43 @@ const PAPERS: Paper[] = Array.from({ length: COPIES }, (_, c) =>
   DISTINCT_PAPERS.map((p) => (c === 0 ? p : { ...p, slug: `${p.slug}-${c + 1}`, title: `${p.title} ${c + 1}` })),
 ).flat();
 
+/** Works every seed paper cites that are not listed here, so a bibliography has both kinds (#38). */
+const CLASSICS: ReferenceInput[] = [
+  {
+    title: 'Learning representations by back-propagating errors',
+    authors: ['D. E. Rumelhart', 'G. E. Hinton', 'R. J. Williams'],
+    year: 1986,
+    url: 'https://doi.org/10.1038/323533a0',
+  },
+  {
+    title: 'Adam: A Method for Stochastic Optimization',
+    authors: ['D. P. Kingma', 'J. Ba'],
+    year: 2014,
+    url: 'https://arxiv.org/abs/1412.6980',
+  },
+];
+
+/**
+ * A seed paper's bibliography: up to five earlier seed papers (by arXiv id,
+ * chosen deterministically, always the originals' slugs) and the classics.
+ * The first paper in arXiv order cites only the classics.
+ */
+function referencesOf(p: Paper, seed: number): ReferenceInput[] {
+  const rand = rng(seed);
+  const earlier = DISTINCT_PAPERS.filter((q) => q.arxiv < p.arxiv);
+  const picked = earlier.filter(() => rand() < 5 / Math.max(5, earlier.length));
+  return [
+    ...CLASSICS,
+    ...picked.map((q) => ({
+      title: q.title,
+      authors: q.authors ?? [],
+      year: 2000 + Number(q.arxiv.slice(0, 2)),
+      url: `https://arxiv.org/abs/${q.arxiv}`,
+      citedSlug: q.slug,
+    })),
+  ];
+}
+
 /** A small deterministic PRNG, so a reseed looks the same. */
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -793,6 +830,7 @@ async function seedPaper(db: Database, p: Paper, kind: string, closesInDays: num
         { label: 'PDF', url: `https://arxiv.org/pdf/${p.arxiv}` },
       ],
       kind,
+      references: referencesOf(p, seed),
     },
     db,
   );
