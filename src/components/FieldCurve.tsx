@@ -46,8 +46,8 @@ export function FieldCurve({
         other={other && { value: toUnits(other.worth), label: other.label }}
       />
       <p className={ui.caption}>
-        <b>Figure 1.</b> Net worth of {of ?? `all ${worths.length.toLocaleString('en')} traders`}, if each sold
-        everything now{of ? '.' : `, as of ${ago(field.computedAt)} ago.`}
+        <b>Figure 1.</b> Net worth of {of ?? 'all traders'}, if each sold everything now
+        {of ? '.' : `, as of ${ago(field.computedAt)} ago.`}
         {you !== null && ' The shaded part is everyone below you.'}
         {other && ` The dashed line is @${other.handle}.`}
       </p>

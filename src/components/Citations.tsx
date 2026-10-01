@@ -41,17 +41,17 @@ export function Citations({ citations }: { citations: ListingCitations }) {
   );
   return (
     <>
-      {references.length > 0 && (
-        <Bibliography
-          items={references.map(({ key, ...e }) => (
-            <Entry key={key} {...e} />
-          ))}
-        />
-      )}
       {citing.length > 0 && (
         <Bibliography
           heading={citedByTotal > citedBy.length ? `Cited by (${citedBy.length} of ${citedByTotal} shown)` : 'Cited by'}
           items={citing.map(({ key, ...e }) => (
+            <Entry key={key} {...e} />
+          ))}
+        />
+      )}
+      {references.length > 0 && (
+        <Bibliography
+          items={references.map(({ key, ...e }) => (
             <Entry key={key} {...e} />
           ))}
         />

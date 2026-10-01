@@ -174,7 +174,7 @@ export default async function Home({
   const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
   // Shown on the ⋯ trigger when not the defaults.
-  const activeFilters = [status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ');
+  const activeFilters = [status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(', ');
   // With one venue, "all venues" is the same list again.
   const allVenues = kinds.length > 1;
 
@@ -299,11 +299,11 @@ export default async function Home({
             <>
               {' '}
               in {kindFilter ?? 'all venues'}
-              {statusFilter !== 'all' && `, ${statusFilter}`} ·{' '}
+              {statusFilter !== 'all' && `, ${statusFilter}`}.{' '}
               <Link href={href({ kind: 'all', status: 'all' })}>search everything</Link>
             </>
           )}{' '}
-          · <Link href={href({ q: '' })}>clear</Link>
+          <Link href={href({ q: '' })}>clear</Link>
         </div>
       )}
 
@@ -554,7 +554,7 @@ function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
       </span>
       <span
         className={`text-right font-mono text-sm ${look.text}`}
-        title={r.listing ? `${r.market.question} · chance of acceptance` : undefined}
+        title={r.listing ? `${r.market.question}: chance of acceptance` : undefined}
       >
         {headline(r)}
       </span>

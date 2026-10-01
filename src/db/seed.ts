@@ -829,7 +829,7 @@ async function seedPapers(db: Database, bots: Bot[]) {
     }
     await spreadOverTime(db, board.marketId, board.rand, settled);
     const end = lmsrPrices(board.q, board.b).map((x) => Math.round(x * 100));
-    console.log(`  ${board.marketId}  ${end.map((x) => `${x}%`).join(' · ')}`);
+    console.log(`  ${board.marketId}  ${end.map((x) => `${x}%`).join(', ')}`);
   }
   console.log(`papers: ${PAPERS.length}, markets: ${boards.length}`);
 }

@@ -32,7 +32,7 @@ describe('profileShareText', () => {
     expect(profileShareText({ ...base, standing: { rank: 12, fieldSize: 1340, percentAhead: 99 } })).toBe(
       [
         'Ada Lovelace (@ada) on acceptodds',
-        '#12 of 1,340 traders, ahead of 99%',
+        'Top 1% of traders',
         `[${'#'.repeat(19)}|-]`,
         'https://x.test/people/ada',
       ].join('\n'),
@@ -41,7 +41,7 @@ describe('profileShareText', () => {
 
   it('has no bar in a field of one, and no rank off the board', () => {
     expect(profileShareText({ ...base, standing: { rank: 1, fieldSize: 1, percentAhead: null } })).toBe(
-      'Ada Lovelace (@ada) on acceptodds\n#1 of 1 traders\nhttps://x.test/people/ada',
+      'Ada Lovelace (@ada) on acceptodds\nhttps://x.test/people/ada',
     );
     expect(profileShareText({ ...base, standing: null })).toBe(
       'Ada Lovelace (@ada) on acceptodds\nhttps://x.test/people/ada',

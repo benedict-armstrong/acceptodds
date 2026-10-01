@@ -101,7 +101,7 @@ export function NewGroupButton({ className = ui.linkBtn }: { className?: string 
   const [open, setOpen] = useState(false);
   return (
     <Modal open={open} onOpenChange={setOpen}>
-      <ModalTrigger className={className}>+ New group</ModalTrigger>
+      <ModalTrigger className={className}>+ Create a group</ModalTrigger>
       <ModalContent title="New group">
         <p className="mb-3 text-muted">
           A leaderboard of its own: you and whoever joins with its invite link, ranked among yourselves. You can rename

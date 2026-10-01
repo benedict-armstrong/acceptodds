@@ -18,8 +18,7 @@ function units(x: number): string {
  * The field and where the viewer sits in it (the leaderboard's net-worth
  * tab): the kernel density of every trader's net worth at liquidation value
  * from the shared snapshot (`server/field-snapshot.ts`, computed once for
- * everyone), a rug of one tick per trader so a small field's curve can't
- * pretend to more than it has, and — for a signed-in viewer — the part below
+ * everyone) and — for a signed-in viewer — the part below
  * them shaded (its share is the percentile) and a maroon line at them. A
  * second trader (the leaderboard's `?around=`) gets a dashed ink line, no
  * shading, labelled a row above the viewer's so the two never collide. Hover
@@ -38,11 +37,11 @@ export function StandingChart({
   curve: number[];
   /** In units. */
   domain: [number, number];
-  /** Every trader's net worth in units, sorted ascending, for the rug and the hover counts. Display only. */
+  /** Every trader's net worth in units, sorted ascending, for the hover counts. Display only. */
   values: number[];
   /** The viewer's, in the same units; `null` for no marker (signed out, or not on the board). */
   you: number | null;
-  /** Beside the viewer's line, e.g. "you · ahead of 96%". */
+  /** Beside the viewer's line, e.g. "you, Top 4%". */
   label: string | null;
   /** Another trader to mark, in the same units, e.g. the one the leaderboard is focused on. */
   other?: { value: number; label: string } | null;
@@ -95,7 +94,7 @@ export function StandingChart({
         width={width}
         height={height}
         role="img"
-        aria-label={`Net worth of ${values.length} traders${label ? `; ${label}` : ''}${other ? `; ${other.label}` : ''}`}
+        aria-label={`Net worth of the field${label ? `; ${label}` : ''}${other ? `; ${other.label}` : ''}`}
         tabIndex={0}
         className="block overflow-visible focus:outline-none"
         onPointerMove={(e) => {
@@ -123,18 +122,6 @@ export function StandingChart({
           </>
         )}
         <path d={line} fill="none" strokeWidth={2} strokeLinejoin="round" className="stroke-subtle" />
-        {/* One tick per trader: the data under the curve. */}
-        {values.map((v, i) => (
-          <line
-            key={i}
-            x1={sx(v)}
-            x2={sx(v)}
-            y1={base}
-            y2={base - 6}
-            strokeWidth={1}
-            className="stroke-faint opacity-60"
-          />
-        ))}
         <line x1={PAD.left} x2={width - PAD.right} y1={base} y2={base} strokeWidth={1} className="stroke-rule-strong" />
         {ticks.map((t) => (
           <text key={t} x={sx(t)} y={base + 17} textAnchor="middle" className="fill-muted font-mono text-[11px]">
@@ -205,10 +192,7 @@ export function StandingChart({
           <span className="font-mono">
             {units(hover)} {REP}
           </span>
-          <span className="text-muted">
-            {' '}
-            · {hoverBelow} of {values.length} {values.length === 1 ? 'trader has' : 'traders have'} less
-          </span>
+          <span className="text-muted"> {Math.floor((100 * hoverBelow) / values.length)}% of traders have less</span>
         </div>
       )}
     </div>

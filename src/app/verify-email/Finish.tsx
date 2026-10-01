@@ -3,12 +3,11 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
-import { MathText } from '@/components/MathText';
+import { BetSummary } from '@/components/BetSummary';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { useOrder } from '@/components/orders';
 import { sharesForStake } from '@/components/quote';
 import { ui } from '@/components/ui';
-import { rep, REP } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 import { publicJson } from '../markets/[slug]/MarketLive';
 
@@ -31,10 +30,11 @@ export interface PendingBet {
 }
 
 /**
- * What a signed-in account still owes after confirming its address, all on
- * one page: a name, a password, and the bet chosen before signing up.
- * Whichever is missing is asked for, then the bet is placed and the person
- * goes on to the bet's paper (or `next`, with no bet).
+ * What a signed-in account still owes after confirming its address, on
+ * one page, a view at a time: a name (saved as soon as it is entered), then a
+ * password, and the bet chosen
+ * before signing up. Whichever is missing is asked for, then the bet is
+ * placed and the person goes on to the bet's paper (or `next`, with no bet).
  *
  * The bet is placed through the API like any order, at the price now. The
  * stake is kept, not the share count: it is sized on the fresh board,
@@ -166,59 +166,115 @@ export function Finish({
     router.refresh();
   }
 
-  async function submit(e: React.FormEvent) {
+  /** Place the bet if one is waiting, then go on. On a failure the person stays, with the error. */
+  async function finish() {
+    if (bet && !placed && (await place()) !== 'placed') return setBusy(false);
+    await leave(bet?.href ?? next);
+  }
+
+  /** The name is saved as soon as it is entered; the password, if still owed, is the next view. */
+  async function submitName(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    if ((await saveName()) && (await savePassword()) && (await place()) === 'placed') return leave(bet?.href ?? next);
+    if (!(await saveName())) return setBusy(false);
+    if (passwordSet) return finish();
     setBusy(false);
+  }
+
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    if (!(await savePassword())) return setBusy(false);
+    await finish();
+  }
+
+  async function submitBet(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    await finish();
   }
 
   if (bet && auto === 'auto') {
     return (
       <OnboardingCard title="Placing your bet">
-        <BetSummary bet={bet} label={label} />
+        <BetSummary
+          title={bet.title}
+          market={bet.market}
+          outcomeId={bet.outcomeId}
+          stakeMicro={BigInt(bet.stakeMicro)}
+        />
         <div className="text-muted">…</div>
       </OnboardingCard>
     );
   }
 
+  const view = !nameSet ? 'name' : !passwordSet ? 'password' : 'bet';
+  const title = { name: 'Finish signing up', password: 'Choose a password', bet: 'Place your bet' }[view];
+
   return (
-    <OnboardingCard title={bet && !placed ? 'Place your bet' : needsName ? 'Finish signing up' : 'Choose a password'}>
-      <form onSubmit={submit}>
+    <OnboardingCard title={title}>
+      <form onSubmit={view === 'name' ? submitName : view === 'password' ? submitPassword : submitBet}>
+        {/* The account's username, for password managers. Without it Safari
+            takes the text field before a new password (the name) for the
+            username and offers an email address there. */}
+        <input type="email" value={email} readOnly hidden autoComplete="username" />
         <p className="mb-3 text-muted">
           Signed in as <b className="text-ink">{email}</b>.
         </p>
-        {bet && <BetSummary bet={bet} label={label} />}
-        {placed && <div className={`${ui.note(true)} mb-4`}>Placed: {placed}</div>}
-        {!nameSet && (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            maxLength={100}
-            autoComplete="name"
-            placeholder="Name"
-            aria-label="Name"
-            className={ui.input}
+        {bet && (
+          <BetSummary
+            title={bet.title}
+            market={bet.market}
+            outcomeId={bet.outcomeId}
+            stakeMicro={BigInt(bet.stakeMicro)}
           />
         )}
-        {!passwordSet && (
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={12}
-            autoComplete="new-password"
-            placeholder="Choose a password (12+ characters)"
-            aria-label="Password"
-            className={ui.input}
-          />
+        {placed && <div className={`${ui.note(true)} mb-4`}>Bet placed.</div>}
+        {view === 'name' && (
+          <>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              maxLength={100}
+              name="name"
+              autoComplete="name"
+              autoCapitalize="words"
+              placeholder="Name"
+              aria-label="Name"
+              className={ui.input}
+            />
+            <button className={ui.btn()} disabled={busy || !name.trim()}>
+              {busy ? '…' : passwordSet ? 'Finish' : 'Continue'}
+            </button>
+          </>
         )}
-        <button className={ui.btn()} disabled={busy}>
-          {busy ? '…' : bet && !placed ? 'Place bet' : 'Continue'}
-        </button>
+        {view === 'password' && (
+          <>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={12}
+              autoComplete="new-password"
+              placeholder="Choose a password (12+ characters)"
+              aria-label="Password"
+              className={ui.input}
+            />
+            <button className={ui.btn()} disabled={busy || !password}>
+              {busy ? '…' : 'Finish'}
+            </button>
+          </>
+        )}
+        {view === 'bet' && (
+          <button className={ui.btn()} disabled={busy}>
+            {busy ? '…' : bet && !placed ? 'Place bet' : 'Continue'}
+          </button>
+        )}
         {bet && !placed && (
           <div className={ui.fine}>
             {!bet.choseHere
@@ -241,22 +297,5 @@ export function Finish({
         )}
       </form>
     </OnboardingCard>
-  );
-}
-
-/** The bet as chosen: the paper, the stake and outcome. */
-function BetSummary({ bet, label }: { bet: PendingBet; label: string }) {
-  return (
-    <div className="mb-4">
-      <div className="text-muted">
-        <MathText text={bet.title} />
-      </div>
-      <div className="mt-1 text-lg">
-        <b className="font-mono">
-          {rep(BigInt(bet.stakeMicro))} {REP}
-        </b>{' '}
-        on <b>{label}</b>
-      </div>
-    </div>
   );
 }

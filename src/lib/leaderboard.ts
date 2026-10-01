@@ -61,3 +61,12 @@ export function percentAhead(below: number, fieldSize: number, digits = 0): numb
   const scale = 10 ** digits;
   return Math.floor((100 * scale * below) / (fieldSize - 1)) / scale;
 }
+
+/**
+ * `percentAhead` as a band: "Top 4%" from the half-way line up, "Bottom 4%"
+ * below it. Never 0%: the extremes read "Top 1%" / "Bottom 1%".
+ */
+export function standingBand(percentAhead: number): string {
+  const top = percentAhead >= 50;
+  return `${top ? 'Top' : 'Bottom'} ${Math.max(1, Math.ceil(top ? 100 - percentAhead : percentAhead))}%`;
+}

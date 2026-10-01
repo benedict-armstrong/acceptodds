@@ -4,6 +4,8 @@
  * the standing drawn as a plain-ASCII bar so it survives any chat app. Pure.
  */
 
+import { standingBand } from './leaderboard';
+
 /** Cells in the standing bar, not counting the marker. */
 export const STANDING_BAR_WIDTH = 20;
 
@@ -36,7 +38,7 @@ export interface ProfileShareInput {
  * E.g.
  *
  *     Ada Lovelace (@ada) on acceptodds
- *     #12 of 340 traders, ahead of 96%
+ *     Top 4% of traders
  *     [###################|-]
  *     https://acceptodds.com/people/ada
  *
@@ -46,9 +48,10 @@ export function profileShareText(s: ProfileShareInput): string {
   const lines = [`${s.displayName} (@${s.handle}) on ${s.site}`];
   const st = s.standing;
   if (st) {
-    const ahead = st.percentAhead === null ? '' : `, ahead of ${st.percentAhead}%`;
-    lines.push(`#${st.rank.toLocaleString('en')} of ${st.fieldSize.toLocaleString('en')} traders${ahead}`);
-    if (st.percentAhead !== null) lines.push(standingBar(st.percentAhead));
+    if (st.percentAhead !== null) {
+      lines.push(`${standingBand(st.percentAhead)} of traders`);
+      lines.push(standingBar(st.percentAhead));
+    }
   }
   lines.push(s.url);
   return lines.join('\n');

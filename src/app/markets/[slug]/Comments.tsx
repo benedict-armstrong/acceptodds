@@ -126,8 +126,7 @@ export function Comments({
         <h3 className={ui.section}>Discussion{first ? ` (${first.total})` : ''}</h3>
         <span className="font-sans text-xs text-muted">
           {(['relevance', 'newest'] as const).map((s, i) => (
-            <span key={s}>
-              {i > 0 && ' · '}
+            <span key={s} className={i > 0 ? 'ml-2' : ''}>
               <button
                 type="button"
                 className={`cursor-pointer ${sort === s ? ui.on : 'hover:underline'}`}
@@ -412,7 +411,7 @@ function CommentItem({
             </>
           )}
         </span>
-        <span suppressHydrationWarning>· {ago(c.createdAt)} ago</span>
+        <span suppressHydrationWarning>{ago(c.createdAt)} ago</span>
       </div>
       <Markdown className="mt-1">{c.body}</Markdown>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 font-sans text-xs text-muted">
@@ -423,7 +422,7 @@ function CommentItem({
               .map((o) => `${shares(o.sharesMicro)} ${o.outcomeLabel}`)
               .join(', ')}. A relevance weight, not a sale price.`}
           >
-            ▲ {rep(c.backing.totalMicro)} {REP} backing · {c.backing.backers}{' '}
+            ▲ {rep(c.backing.totalMicro)} {REP} backing, {c.backing.backers}{' '}
             {c.backing.backers === 1 ? 'backer' : 'backers'}
           </span>
         )}
@@ -435,8 +434,7 @@ function CommentItem({
                 (y) =>
                   `${shares(y.sharesMicro)} ${c.backing.byOutcome.find((o) => o.outcomeId === y.outcomeId)?.outcomeLabel ?? ''}`,
               )
-              .join(', ')}
-            {' · '}
+              .join(', ')}{' '}
             <button
               type="button"
               className="cursor-pointer underline disabled:opacity-50"

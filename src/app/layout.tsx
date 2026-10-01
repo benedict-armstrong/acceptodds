@@ -7,7 +7,6 @@ import { ConfirmBanner } from '@/components/ConfirmBanner';
 import { LogoMark } from '@/components/Logo';
 import { NavWorth, type NavStanding } from '@/components/NavWorth';
 import { rep, REP } from '@/lib/format';
-import { placeIn } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import { viewerFromHeaders } from '@/server/auth';
 import { siteUrl } from '@/server/share';
@@ -45,14 +44,11 @@ function analytics(): { src: string; websiteId: string; domain: string } | null 
  */
 function navStanding(field: FieldSnapshot, mine: bigint): NavStanding | null {
   if (field.worthsMicro.length === 0) return null;
-  const { rank, fieldSize, percentAhead } = placeIn(field.worthsMicro, mine, 1);
   const [lo, hi] = field.domain;
   const you = microToFloat(mine) / 1_000_000;
   return {
     curve: field.curve.filter((_, i) => i % 3 === 0).map((y) => Number(y.toFixed(3))),
     at: hi > lo ? Math.min(1, Math.max(0, (you - lo) / (hi - lo))) : 0.5,
-    rank: `about #${rank} of ${fieldSize}`,
-    ahead: percentAhead === null ? null : `ahead of ${percentAhead.toFixed(1)}% of traders`,
   };
 }
 
@@ -84,6 +80,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <NavWorth
                   worth={`${rep(worth?.netWorthMicro ?? viewer.account.balanceMicro)} ${REP}`}
                   cash={`${rep(worth?.cashMicro ?? viewer.account.balanceMicro)} ${REP}`}
+                  pnlMicro={((worth?.unrealizedPnlMicro ?? 0n) + (worth?.realizedPnlMicro ?? 0n)).toString()}
                   standing={standing}
                 />
                 <Link href="/profile" className="narrow:hidden">

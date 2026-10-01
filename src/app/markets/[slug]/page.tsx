@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!subject || subject.listing) return {};
   const description = 'See the odds, and trade on them.';
   return {
-    title: `${subject.title} · ${siteName()}`,
+    title: `${subject.title} | ${siteName()}`,
     description,
     alternates: { canonical: subject.path },
     openGraph: { title: subject.title, description, url: subject.path, siteName: siteName() },

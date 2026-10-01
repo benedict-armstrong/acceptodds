@@ -29,6 +29,12 @@ function formatChange(h: Holding, absolute: boolean): string {
   return basis > 0n ? `${sign}${((Number(size) / Number(basis)) * 100).toFixed(1)}%` : '—';
 }
 
+/** What the payout is as a multiple of the stake, `(7.9×)`; nothing without a cost basis. */
+function multiple(h: Holding): string | null {
+  const basis = Number(h.costBasisMicro);
+  return basis > 0 ? `(${(Number(h.sharesMicro) / basis).toFixed(1)}×)` : null;
+}
+
 /**
  * The viewer's open positions, one row per outcome held: the average price
  * paid (`Bought @`), the payout if that outcome wins (one unit per share),
@@ -69,23 +75,25 @@ export function PositionsTable({
           {caption && <caption className={ui.tableCaption}>{caption}</caption>}
           <thead>
             <tr>
-              {showMarket && <th className={ui.th()}>Paper</th>}
-              <th className={ui.th()}>Outcome</th>
-              <th className={`${ui.th(true)} whitespace-nowrap`}>
-                Bought @<sup className={ui.mark}>a</sup>
+              <th className={ui.th()}>{showMarket ? 'Position' : 'Outcome'}</th>
+              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
+                Staked ({REP})<sup className={ui.mark}>a</sup>
               </th>
-              <th className={`${ui.th(true)} whitespace-nowrap`}>
-                Payout<sup className={ui.mark}>b</sup>
+              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
+                Bought @<sup className={ui.mark}>b</sup>
               </th>
-              <th className={`${ui.th(true)} whitespace-nowrap`}>
+              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
+                Payout ({REP})<sup className={ui.mark}>c</sup>
+              </th>
+              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
                 <button
                   className="cursor-pointer font-semibold hover:text-accent"
                   title={`Show in ${absolute ? 'percent' : REP}`}
                   onClick={() => setAbsolute((a) => !a)}
                 >
-                  Current value ({absolute ? REP : '%'})
+                  Value ({absolute ? REP : '%'})
                 </button>
-                <sup className={ui.mark}>c</sup>
+                <sup className={ui.mark}>d</sup>
               </th>
               <th className={ui.th()} />
             </tr>
@@ -107,10 +115,11 @@ export function PositionsTable({
       </div>
       <TableNotes
         notes={[
-          ['a', 'The average price you paid per share.'],
-          ['b', <>What the holding pays if the outcome wins: 1 {REP} per share.</>],
+          ['a', <>What the position cost you, in {REP}: the size of your bet.</>],
+          ['b', 'The average price you paid per share.'],
+          ['c', <>What the holding pays if the outcome wins: 1 {REP} per share.</>],
           [
-            'c',
+            'd',
             <>
               What selling it all now would pay, against what it cost. It starts a little negative, because each share
               you sell moves the price against you. Click the heading to switch between % and {REP}.
@@ -142,28 +151,33 @@ function Row({
   const { send, busy } = useOrder(h.marketId, onFilled);
   return (
     <tr>
-      {showMarket && (
-        <td className={ui.td}>
+      {/* With the paper shown, its title has a line of its own and the outcome sits under it; `w-full max-w-0`
+          gives the title the width the other columns leave, cut to it, so the table only scrolls (`PaperName`'s
+          minimum) when the screen is too narrow for even that. */}
+      <td className={`${ui.td} ${showMarket ? 'w-full max-w-0' : 'whitespace-nowrap'}`}>
+        {showMarket && (
           <PaperName m={h}>
             {h.marketStatus !== 'open' && <span className={`${ui.badge} shrink-0`}>{h.marketStatus}</span>}
           </PaperName>
-        </td>
-      )}
-      <td className={`${ui.td} whitespace-nowrap`}>
-        <OutcomeSwatch ordinal={h.outcomeOrdinal} outcomes={h.outcomeCount} />
-        {h.outcomeLabel}
+        )}
+        <span className={showMarket ? 'block whitespace-nowrap text-muted' : undefined}>
+          <OutcomeSwatch ordinal={h.outcomeOrdinal} outcomes={h.outcomeCount} />
+          {h.outcomeLabel}
+        </span>
       </td>
-      <td className={`${ui.td} ${ui.num}`}>{pct(Number(h.costBasisMicro) / Number(h.sharesMicro), true)}</td>
-      <td className={`${ui.td} ${ui.num} whitespace-nowrap`}>
-        {rep(h.sharesMicro)} {REP}
+      <td className={`${ui.td} ${ui.num} pl-6 whitespace-nowrap`}>{rep(h.costBasisMicro)}</td>
+      <td className={`${ui.td} ${ui.num} pl-6`}>{pct(Number(h.costBasisMicro) / Number(h.sharesMicro), true)}</td>
+      <td className={`${ui.td} ${ui.num} pl-6 whitespace-nowrap`}>
+        {rep(h.sharesMicro)}
+        {multiple(h) && <span className="ml-1 font-sans text-[11px] text-muted">{multiple(h)}</span>}
       </td>
       <td
-        className={`${ui.td} ${ui.num} whitespace-nowrap ${ui.pnl(change(h))}`}
+        className={`${ui.td} ${ui.num} pl-6 whitespace-nowrap ${ui.pnl(change(h))}`}
         title={`Selling it all now pays ${rep(h.quotedExitMicro)} ${REP}`}
       >
         {formatChange(h, absolute)}
       </td>
-      <td className={`${ui.td} text-right whitespace-nowrap`}>
+      <td className={`${ui.td} pl-4 text-right whitespace-nowrap`}>
         {sellable && (
           <SellModal
             marketId={h.marketId}

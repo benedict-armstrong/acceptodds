@@ -12,6 +12,7 @@ import { TraderHeader } from '@/components/TraderHeader';
 import { ui } from '@/components/ui';
 import { WORTH_NOTES } from '@/components/WorthTable';
 import { signedRep } from '@/lib/format';
+import { standingBand } from '@/lib/leaderboard';
 import { publicPositionPath } from '@/lib/links';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
@@ -33,12 +34,13 @@ export async function generateMetadata({ params }: { params: Promise<{ handle: s
   const { account, standing } = await loadPerson((await params).handle);
   const title = `${account.displayName} (@${account.handle})`;
   const description = standing
-    ? `#${standing.rank} of ${standing.fieldSize.toLocaleString('en')} traders by net worth` +
-      (standing.percentAhead === null ? '.' : `, ahead of ${standing.percentAhead}%.`)
+    ? standing.percentAhead === null
+      ? `On the net-worth board of ${siteName()}.`
+      : `${standingBand(standing.percentAhead)} of traders by net worth.`
     : `A trader on ${siteName()}.`;
   const path = personPath(account.handle);
   return {
-    title: `${title} · ${siteName()}`,
+    title: `${title} | ${siteName()}`,
     description,
     alternates: { canonical: path },
     openGraph: { title, description, url: path, type: 'profile', siteName: siteName() },
@@ -67,7 +69,7 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
   const isViewer = viewer?.account.id === a.id;
   const board = `/leaderboard?around=${encodeURIComponent(a.handle)}#focus`;
   const ahead = (id: string) => standingOf(field, id, 'net_worth')?.percentAhead ?? null;
-  const labelled = (who: string, id: string) => (ahead(id) === null ? who : `${who} · ahead of ${ahead(id)}%`);
+  const labelled = (who: string, id: string) => (ahead(id) === null ? who : `${who}, ${standingBand(ahead(id)!)}`);
   // As the leaderboard's `?around=`: this trader dashed, the viewer (if another trader) shaded.
   const mine = viewer && !isViewer ? (field.find((r) => r.accountId === viewer.account.id) ?? null) : null;
 
@@ -97,15 +99,8 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
         caption={<>Standing of @{a.handle}.</>}
         rows={[
           [
-            'Rank by net worth',
-            row && standing ? (
-              <>
-                #{row.rank} of {standing.fieldSize.toLocaleString('en')}
-                {standing.percentAhead !== null && <> · ahead of {standing.percentAhead}%</>}
-              </>
-            ) : (
-              '—'
-            ),
+            'Standing by net worth',
+            row && standing?.percentAhead != null ? <>{standingBand(standing.percentAhead)}</> : '—',
           ],
           ['Net worth', row ? <Amount key="nw" micro={row.netWorthMicro} /> : '—', 'a'],
           ['Unrealized P&L', row ? <Amount key="u" micro={row.unrealizedPnlMicro} signed /> : '—', 'b'],

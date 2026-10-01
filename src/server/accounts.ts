@@ -298,6 +298,9 @@ export interface ClosedPosition {
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
   outcomeLabel: string;
+  /** The outcome's place among the market's, for its colour (`OutcomeSwatch`). */
+  outcomeOrdinal: number;
+  outcomeCount: number;
   /** Σ shares bought, over every fill. */
   boughtMicro: bigint;
   /** Σ cost of the buys. */
@@ -334,6 +337,8 @@ export async function closedPositions(
     status: ClosedPosition['marketStatus'];
     outcome_id: string;
     label: string;
+    ordinal: number;
+    outcome_count: number;
     resolved_outcome_id: string | null;
     bought: string;
     paid: string;
@@ -343,7 +348,9 @@ export async function closedPositions(
     total: number;
   }>(sql`
     select m.slug as market_slug, l.slug as listing_slug, l.title as listing_title, m.question, m.status,
-           oc.id as outcome_id, oc.label, m.resolved_outcome_id,
+           oc.id as outcome_id, oc.label, oc.ordinal,
+           (select count(*)::int from outcomes x where x.market_id = m.id) as outcome_count,
+           m.resolved_outcome_id,
            coalesce(sum(o.shares_micro) filter (where o.shares_micro > 0), 0)::text as bought,
            coalesce(sum(o.cost_micro) filter (where o.shares_micro > 0), 0)::text as paid,
            coalesce(-sum(o.cost_micro) filter (where o.shares_micro < 0), 0)::text as sold,
@@ -377,6 +384,8 @@ export async function closedPositions(
       marketStatus: r.status,
       outcomeId: r.outcome_id,
       outcomeLabel: r.label,
+      outcomeOrdinal: r.ordinal,
+      outcomeCount: r.outcome_count,
       boughtMicro: BigInt(r.bought),
       paidMicro,
       soldMicro,

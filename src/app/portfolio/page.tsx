@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { PaperName } from '@/components/PaperName';
 import { PositionsTable } from '@/components/PositionsTable';
@@ -17,7 +18,7 @@ import { tradingMarketIds } from '@/server/views';
 export const dynamic = 'force-dynamic';
 
 const CLOSED_PAGE = 50;
-const CLOSED_BY = { sold: 'sold', won: 'settled · won', lost: 'settled · lost' } as const;
+const CLOSED_BY = { sold: 'sold', won: 'settled, won', lost: 'settled, lost' } as const;
 
 /**
  * Cash, net worth at liquidation value, and P&L, then the open positions in
@@ -89,34 +90,35 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               </caption>
               <thead>
                 <tr>
-                  <th className={ui.th()}>Paper</th>
-                  <th className={ui.th()}>Bought</th>
-                  <th className={`${ui.th(true)}`}>Paid</th>
-                  <th className={`${ui.th(true)}`}>
-                    Got back<sup className={ui.mark}>a</sup>
+                  <th className={ui.th()}>Position</th>
+                  <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>Paid ({REP})</th>
+                  <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
+                    Return ({REP})<sup className={ui.mark}>a</sup>
                   </th>
-                  <th className={ui.th(true)}>P&L</th>
-                  <th className={ui.th()}>Closed</th>
+                  <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>P&L ({REP})</th>
+                  <th className={`${ui.th()} pl-6`}>Closed</th>
                 </tr>
               </thead>
               <tbody>
                 {closed.rows.map((c) => (
                   <tr key={c.outcomeId}>
-                    <td className={ui.td}>
+                    {/* The title has a line of its own and the shares bought sit under it; as the open positions' table. */}
+                    <td className={`${ui.td} w-full max-w-0`}>
                       <PaperName m={c} />
+                      <span className="block font-mono text-[13px] whitespace-nowrap text-muted">
+                        <OutcomeSwatch ordinal={c.outcomeOrdinal} outcomes={c.outcomeCount} />
+                        {shares(c.boughtMicro, 2)} {c.outcomeLabel}
+                      </span>
                     </td>
-                    <td className={`${ui.td} font-mono text-[13px]`}>
-                      {shares(c.boughtMicro)} {c.outcomeLabel}
-                    </td>
-                    <td className={`${ui.td} ${ui.num}`}>{rep(c.paidMicro)}</td>
+                    <td className={`${ui.td} ${ui.num} pl-6`}>{rep(c.paidMicro)}</td>
                     <td
-                      className={`${ui.td} ${ui.num}`}
+                      className={`${ui.td} ${ui.num} pl-6`}
                       title={`sold for ${rep(c.soldMicro)}${c.closedBy === 'sold' ? '' : `, settlement paid ${rep(c.payoutMicro)}`}`}
                     >
                       {rep(c.soldMicro + c.payoutMicro)}
                     </td>
-                    <td className={`${ui.td} ${ui.num} ${ui.pnl(c.pnlMicro)}`}>{signedRep(c.pnlMicro)}</td>
-                    <td className={`${ui.td} text-[13px] whitespace-nowrap`}>
+                    <td className={`${ui.td} ${ui.num} pl-6 ${ui.pnl(c.pnlMicro)}`}>{signedRep(c.pnlMicro)}</td>
+                    <td className={`${ui.td} pl-6 text-[13px] whitespace-nowrap`}>
                       {day(c.closedAt)} <span className="text-muted">{CLOSED_BY[c.closedBy]}</span>
                     </td>
                   </tr>

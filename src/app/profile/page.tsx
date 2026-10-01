@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { FieldCurve } from '@/components/FieldCurve';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { ShareProfile } from '@/components/ShareProfile';
@@ -9,14 +8,11 @@ import { SignOut } from '@/components/SignOut';
 import { TraderHeader } from '@/components/TraderHeader';
 import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
-import { WorthTable } from '@/components/WorthTable';
 import { minMovePp, movePp } from '@/lib/digest';
 import { pct } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
-import { fieldSnapshot } from '@/server/field-snapshot';
 import { followedListings } from '@/server/follows';
-import { valuation } from '@/server/valuation';
 import { leaderboardStandings, standingOf } from '@/server/views';
 import { presentAffiliation } from '@/server/api/present';
 import { listAffiliations } from '@/server/affiliations';
@@ -30,33 +26,19 @@ export default async function ProfilePage() {
   const viewer = await viewerFromHeaders(await headers());
   if (!viewer) redirect('/signin?next=/profile');
   const a = viewer.account;
-  const v = await valuation(a.id);
   const follows = await followedListings(a.id);
-  // Placed on the field by the board's own figure, as the leaderboard places them.
   const field = await leaderboardStandings({ basis: 'net_worth' });
-  const row = field.find((r) => r.accountId === a.id) ?? null;
-  const standing = row ? standingOf(field, a.id, 'net_worth') : null;
-  const ahead = standing?.percentAhead ?? null;
-  const snapshot = await fieldSnapshot();
+  const standing = field.some((r) => r.accountId === a.id) ? standingOf(field, a.id, 'net_worth') : null;
   const affiliations = (await listAffiliations(a.id)).map(presentAffiliation);
-  // Tables are numbered by hand in page order: worth, then affiliations (not for bots), then follows.
-  const followsTable = 1 + (v ? 1 : 0) + (a.isBot ? 0 : 1);
+  // Tables are numbered by hand in page order: affiliations (not for bots), then follows.
+  const followsTable = 1 + (a.isBot ? 0 : 1);
   events.log('me.read', { accountId: a.id });
 
   return (
     <main className={`${ui.page} max-w-[560px]`}>
       <TraderHeader account={a} email={viewer.email} admin={viewer.isAdmin} />
 
-      <FieldCurve
-        field={snapshot}
-        you={row?.netWorthMicro ?? null}
-        label={row ? (ahead === null ? 'you' : `you · ahead of ${ahead}%`) : null}
-      />
-
-      {v && <WorthTable n={1} caption="Your reputation." worth={v} />}
-      <div className="mt-3 flex items-center gap-4.5 font-sans text-sm">
-        <Link href="/portfolio">portfolio →</Link>
-        <Link href="/leaderboard">leaderboard →</Link>
+      <div className="mt-3 flex items-center justify-center gap-4.5 font-sans text-sm">
         <ShareProfile account={a} standing={standing} />
       </div>
 
@@ -67,7 +49,7 @@ export default async function ProfilePage() {
             The institutional email addresses that verify you. A confirmed address lets you trade, and its institution
             appears next to your name.
           </p>
-          <Affiliations initial={affiliations} n={v ? 2 : 1} />
+          <Affiliations initial={affiliations} n={1} />
         </section>
       )}
 

@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
+import { BetSummary } from '@/components/BetSummary';
 import { MathText } from '@/components/MathText';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { MESSAGES } from '@/components/orders';
 import { ui } from '@/components/ui';
-import { pct, rep, REP } from '@/lib/format';
+import { pct } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
@@ -184,9 +185,10 @@ export function Welcome({
 
     case 'email':
       return card(
-        'Where should we send your link?',
+        'Confirm your email to place your bet',
         <EmailStep
           market={pick!.market}
+          title={pick!.title}
           choice={choice!}
           onSent={(address) => {
             // On to the page every mail's link and code lead to.
@@ -287,11 +289,20 @@ function BetStep({
 }
 
 /** Institutional email: `POST /onboarding` stores the bet and mails a link and a code. */
-function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice; onSent: (email: string) => void }) {
+function EmailStep({
+  market,
+  title,
+  choice,
+  onSent,
+}: {
+  market: Market;
+  title: string;
+  choice: Choice;
+  onSent: (email: string) => void;
+}) {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const label = market.outcomes.find((o) => o.id === choice.outcomeId)?.label;
 
   return (
     <form
@@ -325,9 +336,7 @@ function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice;
         );
       }}
     >
-      <p className="mb-3 text-muted">
-        {rep(choice.stakeMicro)} {REP} on {label}, placed when you confirm.
-      </p>
+      <BetSummary title={title} market={market} outcomeId={choice.outcomeId} stakeMicro={choice.stakeMicro} />
       <input
         type="email"
         value={email}
@@ -338,7 +347,7 @@ function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice;
         aria-label="Institutional email"
         className={ui.input}
       />
-      <button className={ui.btn()} disabled={busy}>
+      <button className={ui.btn()} disabled={busy || !email.trim()}>
         Send link
       </button>
       {error && <div className={ui.note(false)}>{error}</div>}

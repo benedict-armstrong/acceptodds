@@ -10,11 +10,13 @@ import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
+import { VenueStanding } from '@/components/VenueStanding';
 import { usePassed } from '@/components/usePassed';
-import { day, pct, rep, REP } from '@/lib/format';
+import { day, pct } from '@/lib/format';
 import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { welcomeBetHref } from '@/lib/onboarding';
+import type { VenueField } from '@/server/venue-field';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
 import { TAPE_LIMIT } from './tape';
@@ -33,6 +35,8 @@ export interface Initial {
   tape: Tape;
   comments: CommentList;
   portfolio: Portfolio | null;
+  /** The venue's headlines, for a main market that is still trading; else `null`. */
+  venue: VenueField | null;
   viewer: { signedIn: boolean; canTrade: boolean };
   /** What a new account starts with: a visitor's balance in the trade box. */
   startingBalanceMicro: string;
@@ -124,7 +128,7 @@ export function MarketLive({
   return (
     <>
       <div className="mt-6 text-center font-mono text-[13px] text-muted">
-        {sentence ? statusLine(market) : `${market.kind} · ${statusLine(market)}`}
+        {sentence ? statusLine(market) : `${market.kind}, ${statusLine(market)}`}
       </div>
       {sentence ? (
         <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
@@ -175,11 +179,15 @@ export function MarketLive({
 
       {!untraded && (
         <div className="py-4">
-          <PriceChart points={points} labels={labels} />
-          <div className={ui.caption}>
-            <b>Figure 1.</b> {market.outcomes.length === 2 ? `${labels[0]} price` : 'Prices'} since opening ·{' '}
-            {market.orderCount} trades · {rep(market.volumeMicro, 0)} {REP}.
-          </div>
+          <PriceChart
+            points={points}
+            labels={labels}
+            caption={
+              <>
+                <b>Figure 1.</b> {market.outcomes.length === 2 ? `${labels[0]} price` : 'Prices'} since opening.
+              </>
+            }
+          />
         </div>
       )}
 
@@ -237,7 +245,7 @@ export function MarketLive({
                   {market.resolutionEvidenceUrl && (
                     <>
                       {' '}
-                      · <a href={market.resolutionEvidenceUrl}>evidence</a>
+                      <a href={market.resolutionEvidenceUrl}>evidence</a>
                     </>
                   )}
                 </div>
@@ -257,6 +265,11 @@ export function MarketLive({
           <summary className={`${ui.section} cursor-pointer`}>Contract</summary>
           <Markdown className="mt-2 text-sm">{market.contract}</Markdown>
         </details>
+      )}
+
+      {/* Only once it has traded: before that, its price is the opening one, not a belief. */}
+      {initial.venue && headline !== null && !untraded && market.status !== 'settled' && (
+        <VenueStanding field={initial.venue} headline={headline} />
       )}
 
       <Comments

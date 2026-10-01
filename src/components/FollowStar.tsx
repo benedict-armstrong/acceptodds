@@ -65,7 +65,7 @@ export function FollowStar({
       {showCount && (
         <span className="ml-1 text-[13px] text-muted">
           {following ? 'following' : 'follow'}
-          {followers > 0 ? ` · ${followers}` : ''}
+          {followers > 0 ? ` ${followers}` : ''}
         </span>
       )}
     </button>

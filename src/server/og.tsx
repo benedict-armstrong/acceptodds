@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { ImageResponse } from 'next/og';
 import { pct } from '@/lib/format';
 import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, placeLabels, shareTitleParts, TIER_HEX } from '@/lib/headline';
+import { standingBand } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import type { FieldSnapshot } from './field-snapshot';
 import type { ShareSubject } from './share';
@@ -306,13 +307,10 @@ export async function profileImage(p: ProfilePreview): Promise<ImageResponse> {
         {p.displayName}
       </div>
       <div style={{ display: 'flex', marginTop: 12, fontSize: 30, color: MUTED }}>{byline}</div>
-      {st && (
+      {st && st.percentAhead !== null && (
         <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 22, fontSize: 40 }}>
-          <div style={{ display: 'flex', color: ACCENT }}>#{st.rank.toLocaleString('en')}</div>
-          <div style={{ display: 'flex', marginLeft: 12, color: INK }}>
-            {`of ${st.fieldSize.toLocaleString('en')} traders`}
-            {st.percentAhead === null ? '' : `, ahead of ${st.percentAhead}%`}
-          </div>
+          <div style={{ display: 'flex', color: ACCENT }}>{standingBand(st.percentAhead)}</div>
+          <div style={{ display: 'flex', marginLeft: 12, color: INK }}>of traders</div>
         </div>
       )}
 

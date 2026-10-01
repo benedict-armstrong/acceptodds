@@ -10,7 +10,7 @@ import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { rep, signedRep } from '@/lib/format';
-import { leaderboardSegments } from '@/lib/leaderboard';
+import { leaderboardSegments, standingBand } from '@/lib/leaderboard';
 import { groupPath, institutionPath } from '@/lib/links';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
@@ -236,14 +236,10 @@ export default async function LeaderboardPage({
         <div className="flex min-w-0 flex-col gap-0.5 text-muted">
           {mine >= 0 ? (
             <span>
-              You: <span className="font-semibold text-ink">#{field[mine].rank}</span> of{' '}
-              {field.length.toLocaleString('en')}
-              {where}
-              {standing(mine) !== null && <> · ahead of {standing(mine)}% of traders</>}
               {mine !== focus && (
                 <>
                   {' '}
-                  · <Link href={`${href({ around: null, q: null, page: null })}#focus`}>show me</Link>
+                  <Link href={`${href({ around: null, q: null, page: null })}#focus`}>show me</Link>
                 </>
               )}
             </span>
@@ -262,10 +258,9 @@ export default async function LeaderboardPage({
             (focus >= 0 ? (
               focus !== mine && (
                 <span>
-                  @{around}: <span className="font-semibold text-ink">#{field[focus].rank}</span> of{' '}
-                  {field.length.toLocaleString('en')}
+                  @{around}
                   {where}
-                  {standing(focus) !== null && <> · ahead of {standing(focus)}% of traders</>}
+                  {standing(focus) !== null && <>: {standingBand(standing(focus)!)} of traders</>}
                 </span>
               )
             ) : (
@@ -275,7 +270,7 @@ export default async function LeaderboardPage({
             ))}
           {q && (
             <span>
-              {matches.length.toLocaleString('en')} {matches.length === 1 ? 'trader' : 'traders'} match “{q}” ·{' '}
+              {matches.length.toLocaleString('en')} {matches.length === 1 ? 'trader' : 'traders'} match “{q}”.{' '}
               <Link href={href({ q: null, page: null })}>clear</Link>
             </span>
           )}
@@ -294,13 +289,13 @@ export default async function LeaderboardPage({
                 : undefined
           }
           you={mine >= 0 ? field[mine].netWorthMicro : null}
-          label={mine >= 0 ? (standing(mine) === null ? 'you' : `you · ahead of ${standing(mine)}%`) : null}
+          label={mine >= 0 ? (standing(mine) === null ? 'you' : `you, ${standingBand(standing(mine)!)}`) : null}
           other={
             focus >= 0 && focus !== mine
               ? {
                   handle: field[focus].handle,
                   worth: field[focus].netWorthMicro,
-                  label: `@${field[focus].handle}${standing(focus) === null ? '' : ` · ahead of ${standing(focus)}%`}`,
+                  label: `@${field[focus].handle}${standing(focus) === null ? '' : `, ${standingBand(standing(focus)!)}`}`,
                 }
               : null
           }

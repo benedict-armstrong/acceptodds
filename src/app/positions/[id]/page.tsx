@@ -19,11 +19,11 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const p = await loadPublicPosition((await params).id);
-  const title = `${positionLine(p)} · ${(p.market.listingTitle ?? p.market.question).replace(/\$/g, '')}`;
+  const title = `${positionLine(p)}, ${(p.market.listingTitle ?? p.market.question).replace(/\$/g, '')}`;
   const description =
     'A position its holder made public, kept up to date as they trade. See the odds, and trade on them.';
   return {
-    title: `${title} · ${siteName()}`,
+    title: `${title} | ${siteName()}`,
     description,
     alternates: { canonical: publicPositionPath(p.id) },
     openGraph: { title, description, url: publicPositionPath(p.id), type: 'article', siteName: siteName() },

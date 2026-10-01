@@ -576,19 +576,17 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **The navbar shows where the viewer stands** (#17, `components/NavWorth`):
   a tiny bell curve of the net-worth field with a line at the viewer
   (`MiniCurve`). Hovering it (tapping, on touch) opens a `Popover` below
-  with net worth at liquidation value, cash, and the rank and percentile
-  to one decimal, rounded down like the board's, never a bare "ahead of
-  0%". No field yet: the net worth figure instead. The curve is the shared
+  with net worth at liquidation value, cash and lifetime P&L (unrealized
+  plus realized), nothing more. No field
+  yet: the net worth figure instead. The curve is the shared
   field snapshot (#10 section), never a per-viewer valuation of the field;
-  the viewer is placed on it by their own live net worth (`placeIn`),
-  hence "about #N". Beside it, a `profile` link — on a phone, at the foot
+  the viewer is placed on it by their own live net worth. Beside it, a `profile` link — on a phone, at the foot
   of that panel instead, and the logo drops its wordmark for a signed-in
   viewer, so the header stays one row. A click pins the panel open; hover only peeks.
   `/profile` opens with `components/TraderHeader`, a paper's title block
   (name as title, `@handle, Institution` as the author line, the email,
-  then a one-paragraph abstract of the account), then Figure 1, the leaderboard's field curve
-  (`components/FieldCurve`) with the viewer placed on it by the board's
-  own figure, then Table 1: cash, net worth, unrealized and realized P&L. Sign-out is at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
+  then a one-paragraph abstract of the account), then the share button; the standing, the
+  field curve and the P&L live on the leaderboard and portfolio, and it carries none of them. Sign-out is at the bottom. P&L is coloured `text-up`/`text-down` via `ui.pnl`.
 - **`/people/<handle>` is a trader's public page**: what
   `GET /accounts/{handle}` and the net-worth leaderboard already publish
   (details, rank, net worth at liquidation value, unrealized and settled
@@ -753,8 +751,8 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   lookup on `cited_slug`'s index. A listing citing itself is left out
   both ways.
 - `GET /listings/{id}/citations` gives both, each listed entry with its
-  main market; the paper page sets them as back matter, References then
-  "Cited by" (`components/Citations`), **as ICLR sets a bibliography**
+  main market; the paper page sets them as back matter, "Cited by" then
+  References (`components/Citations`), **as ICLR sets a bibliography**
   (`lib/bibliography.ts`, `Bibliography`): unnumbered, author–year, every
   author ("A, B, and C"), alphabetical by first surname then year, venue
   in italics, hanging indent. A listed entry links to its page with its
@@ -927,8 +925,10 @@ unpaginated, and 5 s for that search.
   `?around=<handle>`, where people results link) with 2 either side, and a
   pager into the whole board (`?page=`, 50 a page). `lib/leaderboard.ts`
   merges windows that touch and never hides a single row behind "…". The
-  viewer's row is highlighted, with "ahead of N% of traders" — the share of
-  the _others_ scoring strictly lower, rounded down, so ties never flatter.
+  viewer's row is highlighted, with "Top N% of traders" from the half-way
+  line up and "Bottom N%" below it (`standingBand`, never 0%) — from the
+  share of the _others_ scoring strictly lower, rounded down, so ties never
+  flatter. The people page, its share text and OG image say the same, with no field size.
 - **People search is `views.searchPeople`**: substring (ILIKE, LIKE
   characters escaped) or `pg_trgm` word similarity (`<%`), over
   `handle || ' ' || display_name` — written exactly that way, since the
@@ -959,9 +959,8 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
 - **The net-worth leaderboard shows the field's shape** above the table
   (Figure 1, unfiltered `net_worth` only): `components/StandingChart`,
   maths in `lib/distribution.ts` — a Gaussian kernel density of every
-  trader's liquidation net worth (never a mark), a rug of one tick per
-  trader, and for a signed-in viewer the part below them shaded and a line
-  at their exact figure from the board; the `?around=` trader, when not
+  trader's liquidation net worth (never a mark), and for a signed-in
+  viewer the part below them shaded and a line at their exact figure from the board; the `?around=` trader, when not
   the viewer, a dashed line, unshaded. Floats there are for plotting only.
 - **The ranked field is cached in process** (`views.rankedField`, per
   basis, frozen rows — never mutate them): the leaderboard and its API need
