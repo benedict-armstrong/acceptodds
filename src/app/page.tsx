@@ -167,8 +167,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
   // Shown on the ⋯ trigger when not the defaults.
   const activeFilters = [status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(' · ');
-  // With one venue, "all venues" is the same list: nothing to choose.
-  const pickVenue = kinds.length > 1;
+  // With one venue, "all venues" is the same list again.
+  const allVenues = kinds.length > 1;
 
   return (
     <main className={ui.page}>
@@ -212,25 +212,25 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             {activeFilters && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent" />}
           </PopoverTrigger>
           <PopoverContent align="end" className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto text-[13px]">
-            {pickVenue && (
-              <div>
-                <h3 className={ui.boxHeading}>Venue</h3>
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
-                  {kinds.map((k) => (
-                    <PopoverClose key={k.kind} asChild>
-                      <Link href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
-                        {k.kind}
-                      </Link>
-                    </PopoverClose>
-                  ))}
+            <div>
+              <h3 className={ui.boxHeading}>Venue</h3>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {kinds.map((k) => (
+                  <PopoverClose key={k.kind} asChild>
+                    <Link href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
+                      {k.kind}
+                    </Link>
+                  </PopoverClose>
+                ))}
+                {allVenues && (
                   <PopoverClose asChild>
                     <Link href={href({ kind: 'all' })} className={kind === null ? ON : ''}>
                       all venues
                     </Link>
                   </PopoverClose>
-                </div>
+                )}
               </div>
-            )}
+            </div>
             <div>
               <h3 className={ui.boxHeading}>Sort</h3>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -313,18 +313,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       )}
 
       <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted narrow:hidden">
-        {pickVenue && (
-          <span className="flex flex-wrap gap-x-3 gap-y-1">
-            {kinds.map((k) => (
-              <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
-                {k.kind}
-              </Link>
-            ))}
+        <span className="flex flex-wrap gap-x-3 gap-y-1">
+          {kinds.map((k) => (
+            <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
+              {k.kind}
+            </Link>
+          ))}
+          {allVenues && (
             <Link href={href({ kind: 'all' })} className={kind === null ? ON : ''}>
               all venues
             </Link>
-          </span>
-        )}
+          )}
+        </span>
         <span className="flex-1" />
         <span className="flex flex-wrap gap-x-3 gap-y-1">
           sort:
