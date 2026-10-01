@@ -50,16 +50,16 @@ export function References({
 
 /**
  * A bibliography as ICLR sets one (`lib/bibliography.ts`): unnumbered,
- * author–year, each entry with a hanging indent. The entries come already
- * in order.
+ * author–year, justified at the body's size, a line between entries, each
+ * with a hanging indent. The entries come already in order.
  */
 export function Bibliography({ items, heading = 'References' }: { items: ReactNode[]; heading?: ReactNode }) {
   return (
     <section>
       <h2 className={ui.backHeading}>{heading}</h2>
-      <ul className="space-y-1.5 text-sm leading-snug">
+      <ul className="space-y-3 text-justify hyphens-auto">
         {items.map((item, i) => (
-          <li key={i} className="pl-[1.5em] -indent-[1.5em]">
+          <li key={i} className="pl-[1em] -indent-[1em]">
             {item}
           </li>
         ))}
