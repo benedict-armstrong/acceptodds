@@ -1319,6 +1319,21 @@ export async function tradingMarketIds(ids: string[], database: Database = getDb
   return rows.map((r) => r.id);
 }
 
+/**
+ * Whether `orderId` is the earliest order its account ever placed: the first
+ * trade, which the UI marks with a prompt to bring a friend. Read from
+ * `orders`, so a retry of that first order (same fill, replayed) still is.
+ */
+export async function isFirstOrder(accountId: string, orderId: string, database: Database = getDb()): Promise<boolean> {
+  const [row] = await database
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.accountId, accountId))
+    .orderBy(asc(orders.createdAt), asc(orders.id))
+    .limit(1);
+  return row?.id === orderId;
+}
+
 export async function traderCount(marketId: string, database: Database = getDb()): Promise<number> {
   const [row] = await database
     .select({ n: sql<number>`count(distinct ${orders.accountId})::int` })

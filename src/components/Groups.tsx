@@ -95,7 +95,14 @@ function GroupForm({
 }
 
 /** "New group": makes one with the viewer as admin, then opens its board. */
-export function NewGroupButton({ className = ui.linkBtn }: { className?: string }) {
+export function NewGroupButton({
+  className = ui.linkBtn,
+  onCreated,
+}: {
+  className?: string;
+  /** After the group is made, before its board opens. */
+  onCreated?: () => void;
+}) {
   const router = useRouter();
   // Controlled: the new board is the same page with another `?group=`, so nothing unmounts the modal for us.
   const [open, setOpen] = useState(false);
@@ -113,6 +120,7 @@ export function NewGroupButton({ className = ui.linkBtn }: { className?: string 
           onSubmit={async (v) => {
             const group = await call('POST', '/groups', v);
             setOpen(false);
+            onCreated?.();
             router.push(groupPath(group!.id!));
           }}
         />

@@ -140,7 +140,11 @@ export function Comments({
       </div>
 
       {viewer.canTrade ? (
-        <CommentForm marketId={marketId} placeholder="Add a comment" onPosted={() => void mutate()} />
+        <CommentForm
+          marketId={marketId}
+          placeholder="Why is this price justified? Why not?"
+          onPosted={() => void mutate()}
+        />
       ) : (
         <div className={ui.fine}>
           {viewer.signedIn ? (

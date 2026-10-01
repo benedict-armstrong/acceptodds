@@ -32,6 +32,7 @@ import {
 } from '../onboarding';
 import {
   accountOrders,
+  isFirstOrder,
   leaderboard as leaderboardView,
   listListings as listListingsView,
   listingCitations,
@@ -301,7 +302,7 @@ export const postOrder = route(async (req, params) => {
     });
   }
 
-  return respond(S.Fill, presentFill(fill), {
+  return respond(S.Fill, presentFill(fill, await isFirstOrder(principal.account.id, fill.orderId)), {
     status: 201,
     principal,
     headers: fill.replayed ? { 'Idempotent-Replayed': 'true' } : {},

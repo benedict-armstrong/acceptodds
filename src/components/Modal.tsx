@@ -17,19 +17,22 @@ export const ModalClose = D.Close;
 
 export function ModalContent({
   title,
+  wide = false,
   className = '',
   children,
   ...props
 }: ComponentProps<typeof D.Content> & {
   /** Required: it is the dialog's accessible name, and shown as its heading. */
   title: ReactNode;
+  /** For content with long lines (a code block): 640px rather than 380px. */
+  wide?: boolean;
 }) {
   return (
     <D.Portal>
       <D.Overlay className="fixed inset-0 z-50 bg-black/30" />
       <D.Content
         aria-describedby={undefined}
-        className={`fixed top-1/2 left-1/2 z-50 w-[min(380px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 border border-frame bg-card p-4 font-sans text-sm text-left shadow-sm outline-none ${className}`}
+        className={`fixed top-1/2 left-1/2 z-50 ${wide ? 'w-[min(640px,calc(100vw-32px))]' : 'w-[min(380px,calc(100vw-32px))]'} -translate-x-1/2 -translate-y-1/2 border border-frame bg-card p-4 font-sans text-sm text-left shadow-sm outline-none ${className}`}
         {...props}
       >
         <div className="mb-3 flex items-baseline justify-between gap-3">

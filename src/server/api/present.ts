@@ -142,7 +142,7 @@ export function presentQuote(q: QuoteModel): z.input<typeof S.Quote> {
   };
 }
 
-export function presentFill(f: FillModel): z.input<typeof S.Fill> {
+export function presentFill(f: FillModel, firstTrade: boolean): z.input<typeof S.Fill> {
   return {
     orderId: f.orderId,
     marketId: f.marketId,
@@ -155,6 +155,7 @@ export function presentFill(f: FillModel): z.input<typeof S.Fill> {
     positionAfterMicro: f.positionAfterMicro.toString(),
     createdAt: toIso(f.createdAt),
     replayed: f.replayed,
+    firstTrade,
   };
 }
 

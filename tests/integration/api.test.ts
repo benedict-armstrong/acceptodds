@@ -485,6 +485,9 @@ describe('Idempotency-Key over HTTP', () => {
     expect(second.status).toBe(201);
     expect(first.body.replayed).toBe(false);
     expect(second.body.replayed).toBe(true);
+    // The retried first order is still the first trade.
+    expect(first.body.firstTrade).toBe(true);
+    expect(second.body.firstTrade).toBe(true);
     expect(second.headers.get('idempotent-replayed')).toBe('true');
     expect(second.body.orderId).toBe(first.body.orderId);
     expect(second.body.costMicro).toBe(first.body.costMicro);

@@ -16,6 +16,9 @@ export const MESSAGES: Record<string, string> = {
   rate_limited: 'Too many requests. Wait a moment.',
 };
 
+/** Fired on `window` after an account's first order fills; `InvitePrompt` (mounted in the layout) listens. */
+export const FIRST_TRADE_EVENT = 'acceptodds:first-trade';
+
 export type OrderResult = { ok: boolean; text: string };
 
 /**
@@ -61,6 +64,7 @@ export function useOrder(marketId: string, onFilled: () => void) {
             : `staked ${rep(c)} ${REP} on ${label}: pays ${rep(BigInt(sharesMicro))} ${REP} if it wins.`,
         };
         idempotencyKey.current = null;
+        if (body.firstTrade) window.dispatchEvent(new Event(FIRST_TRADE_EVENT));
         onFilled();
         router.refresh(); // the balance in the header
       } else {

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { EditName } from '@/components/EditName';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { ShareProfile } from '@/components/ShareProfile';
@@ -40,6 +41,7 @@ export default async function ProfilePage() {
 
       <div className="mt-3 flex items-center justify-center gap-4.5 font-sans text-sm">
         <ShareProfile account={a} standing={standing} />
+        <EditName displayName={a.displayName} handle={a.handle} />
       </div>
 
       {!a.isBot && (

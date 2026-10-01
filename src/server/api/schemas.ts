@@ -375,6 +375,7 @@ export const Fill = z
     replayed: z.boolean().meta({
       description: 'True when this is the original fill returned for a retried `Idempotency-Key`.',
     }),
+    firstTrade: z.boolean().meta({ description: 'True when this is the first order the account ever placed.' }),
   })
   .meta({ id: 'Fill' });
 

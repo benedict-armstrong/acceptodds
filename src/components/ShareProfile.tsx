@@ -34,7 +34,7 @@ export function ShareProfile({
         </span>
       }
       copied="copied"
-      className={ui.linkBtn}
+      className={`${ui.linkBtn} inline-flex items-center`}
       title="Copy where this trader stands, with the link"
     />
   );
