@@ -67,11 +67,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="en">
       <body>
-        {/* Wraps on a phone: the nav drops to its own row under the logo. */}
+        {/* One row on a phone too: signed in, the wordmark gives way to the mark and `profile` moves into NavWorth's panel. */}
         <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 px-6 pt-4 pb-2.5 narrow:px-4">
-          <Link href="/" className="text-[22px]">
+          <Link href="/" aria-label="acceptodds" className="text-[22px]">
             <LogoMark />
-            <span>
+            <span className={viewer ? 'narrow:hidden' : ''}>
               accept<i className="text-accent not-italic">odds</i>
             </span>
           </Link>
@@ -86,7 +86,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   cash={`${rep(worth?.cashMicro ?? viewer.account.balanceMicro)} ${REP}`}
                   standing={standing}
                 />
-                <Link href="/profile">profile</Link>
+                <Link href="/profile" className="narrow:hidden">
+                  profile
+                </Link>
               </>
             ) : (
               <AuthNavLink />

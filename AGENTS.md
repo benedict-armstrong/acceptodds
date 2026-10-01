@@ -578,7 +578,9 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   0%". No field yet: the net worth figure instead. The curve is the shared
   field snapshot (#10 section), never a per-viewer valuation of the field;
   the viewer is placed on it by their own live net worth (`placeIn`),
-  hence "about #N". Beside it, a `profile` link.
+  hence "about #N". Beside it, a `profile` link — on a phone, at the foot
+  of that panel instead, and the logo drops its wordmark for a signed-in
+  viewer, so the header stays one row. A click pins the panel open; hover only peeks.
   `/profile` opens with `components/TraderHeader`, a paper's title block
   (name as title, `@handle, Institution` as the author line, the email,
   then a one-paragraph abstract of the account), then Figure 1, the leaderboard's field curve
