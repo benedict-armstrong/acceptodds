@@ -7,12 +7,9 @@ import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 import { setPasswordPath } from '@/lib/links';
 
-type Proof = { token: string } | { code: string };
-
 /**
- * Set the password of `target` — the account the link's token or the mail's
- * code belongs to — then sign in as it. Each works once, for an hour; a dead
- * one offers a fresh mail to the same address, which Better Auth sends only
+ * Set the password of `target` — the account the link's token belongs to —
+ * then sign in as it. It works once, for an hour; a dead one offers a fresh mail to the same address, which Better Auth sends only
  * if it has an account.
  */
 export function SetPasswordForm({
@@ -20,7 +17,7 @@ export function SetPasswordForm({
   resendTo,
   signedInAs,
 }: {
-  target: { email: string; proof: Proof } | null;
+  target: { email: string; token: string } | null;
   resendTo: string | null;
   /** Set when the viewer is signed in as a different account than `target`. */
   signedInAs: string | null;
@@ -36,14 +33,11 @@ export function SetPasswordForm({
     if (!target) return;
     setBusy(true);
     setNote(null);
-    const { email, proof } = target;
-    const reset =
-      'token' in proof
-        ? await authClient.resetPassword({ newPassword: password, token: proof.token })
-        : await authClient.emailOtp.resetPassword({ email, otp: proof.code, password });
+    const { email, token } = target;
+    const reset = await authClient.resetPassword({ newPassword: password, token });
     if (reset.error) {
       setBusy(false);
-      if (['INVALID_TOKEN', 'INVALID_OTP', 'OTP_EXPIRED', 'TOO_MANY_ATTEMPTS'].includes(reset.error.code ?? '')) {
+      if (reset.error.code === 'INVALID_TOKEN') {
         return setDead(true);
       }
       return setNote({ ok: false, text: reset.error.message ?? 'Could not set the password.' });
@@ -70,7 +64,7 @@ export function SetPasswordForm({
   if (dead || !target) {
     return (
       <>
-        <p className="mb-3">This link or code has expired or was already used.</p>
+        <p className="mb-3">This link has expired or was already used.</p>
         {resendTo ? (
           <button type="button" className={ui.btn()} disabled={busy} onClick={resend}>
             Send a new link to {resendTo}

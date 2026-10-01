@@ -69,7 +69,6 @@ export type EventKind =
   | 'position.unpublished'
   | 'badge.read'
   | 'onboarding.started'
-  | 'signup.started'
   | 'password.set';
 
 export function log(kind: EventKind, ids: { accountId?: string | null; marketId?: string | null } = {}): void {

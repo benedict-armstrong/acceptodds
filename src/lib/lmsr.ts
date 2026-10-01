@@ -146,6 +146,36 @@ export function maxSubsidy(b: number, outcomes: number): number {
 }
 
 /**
+ * The share vector that opens a market at the given prior: `q0_i = b·ln(p_i /
+ * p_min)`. Every element is ≥ 0 (the least likely outcome starts at 0), so
+ * the engine's "no short positions, every `q_i ≥ 0`" holds from the first
+ * trade, and `prices(q0, b)` is exactly the prior. LMSR prices are
+ * shift-invariant, so this is the same market as `b·ln(p_i)` shifted up by the
+ * constant that makes it non-negative.
+ *
+ * What it costs the house is `cost(q0, b) = b·ln(1/p_min)`, which is
+ * `b·ln(n)` for a uniform prior and more for a lopsided one: the maker has to
+ * be able to pay out the least likely outcome winning. See `createMarket`.
+ *
+ * `prior` is normalised, so any positive weights will do.
+ */
+export function openingShares(prior: number[], b: number): number[] {
+  if (!(b > 0) || !Number.isFinite(b)) {
+    throw new RangeError(`lmsr: b must be finite and > 0, got ${b}`);
+  }
+  if (prior.length < 2) {
+    throw new RangeError('lmsr: a prior needs at least two outcomes');
+  }
+  for (const p of prior) {
+    if (!(p > 0) || !Number.isFinite(p)) {
+      throw new RangeError(`lmsr: every prior probability must be finite and > 0, got ${p}`);
+    }
+  }
+  const min = Math.min(...prior);
+  return prior.map((p) => b * Math.log(p / min));
+}
+
+/**
  * Fraction of the field's total capital the house is willing to put at risk as
  * subsidy. `b` is then chosen so that `b * ln(n)` equals exactly this fraction
  * of `balance * traders`.

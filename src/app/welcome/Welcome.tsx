@@ -12,23 +12,23 @@ import { ui } from '@/components/ui';
 import { pct, rep, REP } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
 import { marketHref } from '@/lib/links';
-import { WELCOME_FINISH, WELCOMED_COOKIE } from '@/lib/onboarding';
-import { authHref } from '@/lib/return-to';
+import { WELCOMED_COOKIE } from '@/lib/onboarding';
+import { rememberPending } from '@/lib/pending-confirmation';
+import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import type * as S from '@/server/api/schemas';
-import { ConfirmForm } from '../confirm/ConfirmForm';
 import { publicJson } from '../markets/[slug]/MarketLive';
 import { TradeBox, type Choice } from '../markets/[slug]/TradeBox';
 
 type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
 
-export type Step = 'intro' | 'search' | 'bet' | 'email' | 'confirm';
+export type Step = 'intro' | 'search' | 'bet' | 'email';
 
 /** A visitor's steps; a signed-in viewer's end with the bet, placed, at the paper. */
-const ANON: Step[] = ['intro', 'search', 'bet', 'email', 'confirm'];
+const ANON: Step[] = ['intro', 'search', 'bet', 'email'];
 const SIGNED_IN: Step[] = ['search', 'bet'];
 /** A visitor who chose the paper and the bet on the market's own page. */
-const CHOSEN: Step[] = ['email', 'confirm'];
+const CHOSEN: Step[] = ['email'];
 
 /** The market bet on, and the paper it is read under. */
 interface Pick {
@@ -48,7 +48,6 @@ export interface Chosen {
 const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
   bet: 'pick',
   email: 'choice',
-  confirm: 'choice',
 };
 
 const POLL_MS = 3000;
@@ -66,7 +65,7 @@ function tradable(l: Listing): Market | null {
  * the search.
  *
  * Nothing is placed for a visitor: the bet goes to `POST /onboarding` with
- * their email, and is placed after they confirm (`Finish`). A signed-in
+ * their email, and is placed once they have confirmed (`/verify-email`). A signed-in
  * viewer's bet goes straight to the API.
  *
  * A visitor who chose a bet on a market's page (`chosen`) skips the paper
@@ -81,7 +80,7 @@ export function Welcome({
   viewer,
 }: {
   kind: string;
-  /** Where the intro's sign-in and sign-up links return to. */
+  /** Where the intro's sign-in link returns to. */
   next: string;
   suggestions: Listing[];
   chosen: Chosen | null;
@@ -92,8 +91,6 @@ export function Welcome({
   const steps = viewer.signedIn ? SIGNED_IN : chosen ? CHOSEN : ANON;
   const [pick, setPick] = useState<Pick | null>(chosen?.pick ?? null);
   const [choice, setChoice] = useState<Choice | null>(chosen?.choice ?? null);
-  const [email, setEmail] = useState('');
-
   function reachable(s: Step | null): Step {
     if (!s || !steps.includes(s)) return steps[0];
     const need = NEEDS[s];
@@ -125,7 +122,7 @@ export function Welcome({
       <OnboardingCard
         title={title}
         // The first of `CHOSEN` goes back to the market's page it came from.
-        onBack={(at > 0 || chosen) && step !== 'confirm' ? () => window.history.back() : undefined}
+        onBack={at > 0 || chosen ? () => window.history.back() : undefined}
       >
         {body}
       </OnboardingCard>
@@ -144,8 +141,7 @@ export function Welcome({
             Start
           </button>
           <p className={`${ui.fine} mt-3 text-center`}>
-            Know how it works? <Link href={authHref('/signup', next)}>Sign up</Link> ·{' '}
-            <Link href={authHref('/signin', next)}>Sign in</Link>
+            Already have an account? <Link href={authHref('/signin', next)}>Sign in</Link>
           </p>
         </>,
       );
@@ -193,14 +189,12 @@ export function Welcome({
           market={pick!.market}
           choice={choice!}
           onSent={(address) => {
-            setEmail(address);
-            go('confirm');
+            // On to the page every mail's link and code lead to.
+            rememberPending({ email: address, next: '/' });
+            router.push(authHref(VERIFY_EMAIL, '/', { email: address }));
           }}
         />,
       );
-
-    case 'confirm':
-      return card('Check your inbox', <ConfirmForm initialEmail={email} next={WELCOME_FINISH} resent={false} />);
   }
 }
 
@@ -292,9 +286,8 @@ function BetStep({
   );
 }
 
-/** Name and institutional email: `POST /onboarding` stores the bet and mails a link and a code. */
+/** Institutional email: `POST /onboarding` stores the bet and mails a link and a code. */
 function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice; onSent: (email: string) => void }) {
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -315,7 +308,6 @@ function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice;
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             email: address,
-            name,
             marketId: market.id,
             outcomeId: choice.outcomeId,
             stakeMicro: choice.stakeMicro.toString(),
@@ -336,15 +328,6 @@ function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice;
       <p className="mb-3 text-muted">
         {rep(choice.stakeMicro)} {REP} on {label}, placed when you confirm.
       </p>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        required
-        autoComplete="name"
-        placeholder="Name"
-        aria-label="Name"
-        className={ui.input}
-      />
       <input
         type="email"
         value={email}

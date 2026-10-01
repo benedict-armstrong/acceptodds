@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { cost, costToTrade, liquidityFor, maxSubsidy, prices, sharesForCost, SUBSIDY_FRACTION } from '@/lib/lmsr';
+import {
+  cost,
+  costToTrade,
+  liquidityFor,
+  maxSubsidy,
+  openingShares,
+  prices,
+  sharesForCost,
+  SUBSIDY_FRACTION,
+} from '@/lib/lmsr';
 import { costToMicro } from '@/lib/money';
 
 /**
@@ -268,5 +277,57 @@ describe('liquidityFor', () => {
 
   it('refuses a one-outcome market', () => {
     expect(() => liquidityFor(1000, 10, 1)).toThrow();
+  });
+});
+
+describe('openingShares — a market opened at a prior', () => {
+  const priorArb = fc.array(fc.double({ min: 0.001, max: 1, noNaN: true }), { minLength: 2, maxLength: 8 }).map((w) => {
+    const total = w.reduce((a, x) => a + x, 0);
+    return w.map((x) => x / total);
+  });
+
+  it('prices at exactly the prior, with no negative share and the rarest outcome at 0', () => {
+    fc.assert(
+      fc.property(priorArb, fc.double({ min: 1, max: 1e9, noNaN: true }), (prior, b) => {
+        const q0 = openingShares(prior, b);
+        expect(Math.min(...q0)).toBe(0);
+        prices(q0, b).forEach((p, i) => expect(p).toBeCloseTo(prior[i], 9));
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  it('costs the house b * ln(1 / p_min) to open, and that is enough to pay any winner', () => {
+    fc.assert(
+      fc.property(
+        priorArb,
+        fc.double({ min: 1, max: 1e6, noNaN: true }),
+        fc.array(fc.double({ min: 0, max: 1e7, noNaN: true }), { minLength: 8, maxLength: 8 }),
+        (prior, b, generated) => {
+          const traded = generated.slice(0, prior.length);
+          const q0 = openingShares(prior, b);
+          const subsidy = cost(q0, b);
+          expect(subsidy).toBeCloseTo(b * Math.log(1 / Math.min(...prior)), 6);
+
+          // Traders only ever hold what they bought: q = q0 + traded, traded >= 0.
+          const q = q0.map((x, i) => x + traded[i]);
+          const maker = subsidy + (cost(q, b) - cost(q0, b));
+          // The maker's balance is C(q); it covers 1 per share of any winner.
+          expect(maker).toBeGreaterThanOrEqual(Math.max(...traded) - 1e-9 * (1 + maker));
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  it('is b * ln(n) for a uniform prior, and nothing for none', () => {
+    expect(openingShares([0.25, 0.25, 0.25, 0.25], 100)).toEqual([0, 0, 0, 0]);
+    expect(cost(openingShares([0.5, 0.5], 100), 100)).toBeCloseTo(maxSubsidy(100, 2), 9);
+  });
+
+  it('refuses a prior that is not a distribution over at least two outcomes', () => {
+    expect(() => openingShares([1], 1)).toThrow();
+    expect(() => openingShares([0.5, 0], 1)).toThrow();
+    expect(() => openingShares([0.5, 0.5], 0)).toThrow();
   });
 });

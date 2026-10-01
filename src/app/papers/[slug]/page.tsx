@@ -177,8 +177,27 @@ export default async function PaperPage({
       )}
 
       <Citations citations={citations} />
+
+      <footer className="mt-12 border-t border-rule pt-3 text-center font-sans text-[13px] text-muted">
+        <a
+          href={reportHref(listing.title, `${siteUrl()}/papers/${encodeURIComponent(listing.slug)}`)}
+          className="text-muted underline"
+        >
+          Report a problem with this paper or page
+        </a>
+      </footer>
     </main>
   );
+}
+
+/** Where problem reports go. */
+const REPORT_EMAIL = 'office@acceptodds.com';
+
+/** A mailto: link: "[Issue] <title, cut>" as the subject, the paper's link in the body. */
+function reportHref(title: string, url: string): string {
+  const short = title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title;
+  const body = `${title}\n${url}\n\nWhat's the problem?\n`;
+  return `mailto:${REPORT_EMAIL}?subject=${encodeURIComponent(`[Issue] ${short}`)}&body=${encodeURIComponent(body)}`;
 }
 
 /** The headline (`lib/headline.ts`). Settled: the winner. Void: a dash. */

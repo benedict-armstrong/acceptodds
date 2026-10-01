@@ -141,6 +141,20 @@
       "when": 1790854313675,
       "tag": "0019_reference_venue",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790873320435,
+      "tag": "0020_opening_shares",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790877820820,
+      "tag": "0021_market_contract",
+      "breakpoints": true
     }
   ]
 }

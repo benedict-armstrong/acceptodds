@@ -3,7 +3,8 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { account as authAccount, user } from '@/db/auth-schema';
 import { accounts, pendingBets } from '@/db/schema';
-import { WELCOME_FINISH } from '@/lib/onboarding';
+import { VERIFY_EMAIL } from '@/lib/return-to';
+import { getAuth } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor } from '@/server/onboarding';
 import { api, authCall, cookieFrom, signUp } from './api-client';
@@ -32,7 +33,6 @@ function start(email: string, extra: Record<string, unknown> = {}) {
   return api('POST', '/onboarding', {
     body: {
       email,
-      name: 'Ada Lovelace',
       marketId: fx.marketId,
       outcomeId: fx.outcomeIds[0],
       stakeMicro: STAKE.toString(),
@@ -57,7 +57,7 @@ async function userRow(email: string) {
 }
 
 describe('onboarding', () => {
-  it('stores the bet, creates no account, and mails a link back to /welcome', async () => {
+  it('stores the bet, creates no account, and mails a link to /verify-email', async () => {
     const res = await start('ada@example.org');
     expect(res.status).toBe(200);
 
@@ -74,7 +74,7 @@ describe('onboarding', () => {
     });
 
     const mail = devOutbox().find((m) => m.to === 'ada@example.org')!;
-    expect(mail.text).toContain(encodeURIComponent(WELCOME_FINISH));
+    expect(mail.text).toContain(encodeURIComponent(VERIFY_EMAIL));
   });
 
   it('refuses an address outside the allowlist before creating anything', async () => {
@@ -94,7 +94,7 @@ describe('onboarding', () => {
     await start('ada@example.org');
     const { cookie, location } = await clickLink('ada@example.org');
     expect(cookie).toContain('session_token');
-    expect(location).toBe(WELCOME_FINISH);
+    expect(location).toBe(VERIFY_EMAIL);
 
     const me = await api('GET', '/me', { cookie });
     expect(me.body).toMatchObject({ canTrade: true, balanceMicro: STARTING_MICRO.toString() });
@@ -118,29 +118,35 @@ describe('onboarding', () => {
     expect(await db.select().from(pendingBets).where(eq(pendingBets.userId, u.id))).toEqual([]);
   });
 
-  it('answers the same for a confirmed address, mails "sign in", and stores no bet', async () => {
+  it('answers the same for a confirmed address, mails a sign-in link, and stores the bet for it', async () => {
     await signUp('ada@example.org', 'Ada');
     clearDevOutbox();
 
     const res = await start('ada@example.org');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ email: 'ada@example.org' });
-    expect(await db.select().from(pendingBets)).toEqual([]);
-    expect(devOutbox()).toEqual([
-      expect.objectContaining({ to: 'ada@example.org', subject: expect.stringContaining('already have') }),
-    ]);
+    const u = await userRow('ada@example.org');
+    expect((await pendingBetFor(u.id))?.stakeMicro).toBe(STAKE);
+    const [mail] = devOutbox();
+    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('sign-in link') });
+
+    // Opening it signs in, and lands where the bet is placed.
+    const { location, cookie } = await clickLink('ada@example.org');
+    expect(cookie).toContain('session');
+    expect(location).toContain(VERIFY_EMAIL);
   });
 
-  it('a confirmed address with no password yet is mailed a link that sets one, then signs in', async () => {
+  it('a password-reset mail to an account with no password yet sets its first one, then signs in', async () => {
     await start('ada@example.org');
     await clickLink('ada@example.org'); // confirmed, but never chose a password
     clearDevOutbox();
 
-    expect((await start('ada@example.org')).status).toBe(200);
+    await getAuth().api.requestPasswordReset({
+      body: { email: 'ada@example.org', redirectTo: '/set-password?email=ada%40example.org' },
+    });
     const [mail] = devOutbox();
-    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('sign-in code') });
+    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('Choose your') });
     expect(mail.text).toContain('no password yet');
-    expect(mail.text).not.toContain('/signin');
 
     // The link redirects to /set-password with the address and a token.
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
@@ -160,55 +166,6 @@ describe('onboarding', () => {
     expect(
       (await authCall('POST', '/reset-password', { body: { newPassword: 'another horse battery', token } })).status,
     ).toBe(400);
-
-    // With a password, the same mail says "sign in".
-    clearDevOutbox();
-    await start('ada@example.org');
-    expect(devOutbox()).toEqual([
-      expect.objectContaining({
-        subject: expect.stringContaining('already have'),
-        text: expect.stringContaining('/signin'),
-      }),
-    ]);
-  });
-
-  it('the same mail carries a code, which is no confirmation code but sets the password, once', async () => {
-    await start('ada@example.org');
-    await clickLink('ada@example.org');
-    clearDevOutbox();
-    await start('ada@example.org');
-    const [mail] = devOutbox();
-    const otp = /code (\d{6})/.exec(mail.text)![1];
-    expect(mail.subject).toContain(otp);
-
-    // What ConfirmForm does: not a confirmation code, but a password one.
-    const asConfirm = await authCall('POST', '/email-otp/verify-email', { body: { email: 'ada@example.org', otp } });
-    expect(asConfirm.status).toBe(400);
-    const check = await authCall('POST', '/email-otp/check-verification-otp', {
-      body: { email: 'ada@example.org', type: 'forget-password', otp },
-    });
-    expect(check.status).toBe(200);
-    expect(
-      (
-        await authCall('POST', '/email-otp/check-verification-otp', {
-          body: { email: 'ada@example.org', type: 'forget-password', otp: otp === '000000' ? '111111' : '000000' },
-        })
-      ).status,
-    ).toBe(400);
-
-    // What /set-password does with it.
-    const set = await authCall('POST', '/email-otp/reset-password', {
-      body: { email: 'ada@example.org', otp, password: 'correct horse battery' },
-    });
-    expect(set.status).toBe(200);
-    const signIn = await authCall('POST', '/sign-in/email', {
-      body: { email: 'ada@example.org', password: 'correct horse battery' },
-    });
-    expect(signIn.status).toBe(200);
-    const again = await authCall('POST', '/email-otp/reset-password', {
-      body: { email: 'ada@example.org', otp, password: 'another horse battery' },
-    });
-    expect(again.status).toBe(400);
   });
 
   it("names the browser the bet was chosen in, and a replaced bet is no longer that browser's", async () => {
@@ -231,7 +188,7 @@ describe('onboarding', () => {
     expect(choseHere(bet, theirNonce)).toBe(true); // theirs, but they never get the owner's session
   });
 
-  it('sends a broken or reused link back where /welcome sends it on to /signin with the reason', async () => {
+  it('sends a broken or reused link back to /verify-email, which sends it on to /signin with the reason', async () => {
     await start('ada@example.org');
     const mail = devOutbox().findLast((m) => m.to === 'ada@example.org')!;
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
@@ -242,7 +199,7 @@ describe('onboarding', () => {
     bad.set('token', `${bad.get('token')}x`);
     const broken = await authCall('GET', `${path}?${bad}`);
     const brokenAt = new URL(broken.headers.get('location')!, 'http://test.local');
-    expect(`${brokenAt.pathname}?step=${brokenAt.searchParams.get('step')}`).toBe(WELCOME_FINISH);
+    expect(brokenAt.pathname).toBe(VERIFY_EMAIL);
     expect(brokenAt.searchParams.get('error')).toBe('INVALID_TOKEN');
     expect(cookieFrom(broken)).not.toContain('session_token');
 

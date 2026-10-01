@@ -5,8 +5,8 @@ import { isUniqueViolation } from '@/db/errors';
 import * as schema from '@/db/schema';
 import { accounts, commentBackings, ledgerEntries, markets, orders, outcomes, positions } from '@/db/schema';
 import { lifoTrim } from '@/lib/backing';
-import { cost, costToTrade, liquidityFor, maxSubsidy, prices } from '@/lib/lmsr';
-import { headlinePrice, openingHeadline } from '@/lib/headline';
+import { cost, costToTrade, liquidityFor, openingShares, prices } from '@/lib/lmsr';
+import { headlinePrice } from '@/lib/headline';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { EngineError } from './errors';
 import * as events from './events';
@@ -120,6 +120,7 @@ export interface CreateMarketInput {
   slug: string;
   question: string;
   description?: string | null;
+  contract?: string | null;
   kind?: string;
   outcomes: string[];
   closesAt: Date;
@@ -136,6 +137,13 @@ export interface CreateMarketInput {
   listingId?: string | null;
   /** Order within the listing; 0 is its main market. */
   listingRank?: number;
+  /**
+   * The prices the market opens at, one per outcome, positive, summing to 1
+   * (within rounding). Left out, every outcome opens at 1/n. A prior is a
+   * stake in what the answer probably is, and the house pays for it: see the
+   * subsidy below.
+   */
+  openingPrices?: number[];
 }
 
 export async function createMarket(
@@ -195,9 +203,36 @@ export async function createMarket(
      */
     const b = liquidityFor(microToFloat(input.startingBalanceMicro), input.expectedTraders, input.outcomes.length);
 
+    /**
+     * The opening share vector. Uniform: all zeros. With a prior, the vector
+     * that prices at it, `openingShares`: non-negative, the least likely
+     * outcome at 0, rounded to micro-shares once so the stored integers are
+     * what everything after prices from. Stored on the outcomes as both the
+     * live `shares_micro` and the `opening_shares_micro` every replay starts
+     * from. Traders hold none of it: positions, and so settlement, only ever
+     * see what was traded.
+     */
+    const prior = input.openingPrices;
+    if (prior) {
+      const total = prior.reduce((a, p) => a + p, 0);
+      if (
+        prior.length !== input.outcomes.length ||
+        prior.some((p) => !(p > 0) || !Number.isFinite(p)) ||
+        Math.abs(total - 1) > 1e-6
+      ) {
+        throw new EngineError('invalid_market', 'openingPrices must be one positive price per outcome, summing to 1');
+      }
+    }
+    const openingMicro = prior
+      ? openingShares(prior, b).map((q) => BigInt(Math.round(q)))
+      : input.outcomes.map(() => 0n);
+    const opening = openingMicro.map(microToFloat);
+
     // The house's worst case, and exactly the seed the maker needs: the maker
-    // starts holding C(0) = b·ln(n).
-    const subsidyMicro = costToMicro(maxSubsidy(b, input.outcomes.length));
+    // starts holding C(q0), which is b·ln(n) for a uniform market and
+    // b·ln(1/p_min) for one opened at a prior. That is what keeps
+    // C(q) ≥ q_winner for every q ≥ q0, so the maker can still pay any winner.
+    const subsidyMicro = costToMicro(cost(opening, b));
     if (treasury.balanceMicro < subsidyMicro) {
       throw new EngineError('house_underfunded', 'the house cannot cover this market subsidy', {
         requiredMicro: subsidyMicro.toString(),
@@ -221,6 +256,7 @@ export async function createMarket(
         slug: input.slug,
         question: input.question,
         description: input.description ?? null,
+        contract: input.contract ?? null,
         kind: input.kind ?? 'binary',
         status,
         b,
@@ -232,7 +268,7 @@ export async function createMarket(
         listingId,
         listingRank,
         isMain,
-        headline: openingHeadline(input.outcomes.length),
+        headline: headlinePrice(prices(opening, b)),
         // Taken after the listing lock above, not at transaction start, so a
         // market created later is never older than the main market it
         // ranks level with: `is_main` and "ties by age" stay the same order.
@@ -247,6 +283,8 @@ export async function createMarket(
           marketId: market.id,
           label,
           ordinal,
+          sharesMicro: openingMicro[ordinal],
+          openingSharesMicro: openingMicro[ordinal],
         })),
       )
       .returning();

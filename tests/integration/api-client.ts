@@ -45,7 +45,6 @@ import * as affiliationVerifyRoute from '@/app/api/v1/me/affiliations/[id]/verif
 import * as myPasswordRoute from '@/app/api/v1/me/password/route';
 import * as myPendingBetRoute from '@/app/api/v1/me/pending-bet/route';
 import * as onboardingRoute from '@/app/api/v1/onboarding/route';
-import * as signupRoute from '@/app/api/v1/signup/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
 import * as fallbackRoute from '@/app/api/v1/[...rest]/route';
 import { STARTING_MICRO } from './helpers';
@@ -98,7 +97,6 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/password', myPasswordRoute],
   ['/me/pending-bet', myPendingBetRoute],
   ['/onboarding', onboardingRoute],
-  ['/signup', signupRoute],
 ];
 
 export const ROUTE_PATTERNS = ROUTES.map(([p]) => p);
@@ -193,21 +191,24 @@ export function cookieFrom(res: Response): string {
 }
 
 /**
- * Sign up (`POST /signup`: name and email), click the verification link
- * from the dev outbox, then choose the password (`POST /me/password`), and
- * return the session cookie — the whole human path, through the real
+ * Sign up the way a person without a bet does: a sign-in link to a new
+ * address, opened from the dev outbox (it makes the confirmed user and the
+ * session), then a name (`PATCH /me`) and a password (`POST /me/password`).
+ * Returns the session cookie — the whole human path, through the real
  * endpoints.
  */
 export async function signUp(email: string, name = 'Test Person', password = 'correct horse battery'): Promise<string> {
   clearDevOutbox();
-  const res = await api('POST', '/signup', { body: { email, name } });
-  if (res.status !== 200) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`);
+  const res = await authCall('POST', '/sign-in/magic-link', { body: { email, callbackURL: '/verify-email' } });
+  if (res.status !== 200) throw new Error(`sign-up failed: ${res.status} ${await res.text()}`);
   const mail = devOutbox().find((m) => m.to === email);
-  if (!mail) throw new Error('no verification mail');
+  if (!mail) throw new Error('no sign-in mail');
   const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-  const verified = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
-  const cookie = cookieFrom(verified);
-  if (!cookie.includes('session_token')) throw new Error(`verification gave no session: ${verified.status}`);
+  const opened = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+  const cookie = cookieFrom(opened);
+  if (!cookie.includes('session_token')) throw new Error(`the link gave no session: ${opened.status}`);
+  const named = await api('PATCH', '/me', { cookie, body: { displayName: name } });
+  if (named.status !== 200) throw new Error(`setting the name failed: ${named.status}`);
   const set = await api('POST', '/me/password', { cookie, body: { password } });
   if (set.status !== 200) throw new Error(`setting the password failed: ${set.status}`);
   return cookie;

@@ -105,6 +105,10 @@ export const Market = z
     slug: z.string(),
     question: z.string(),
     description: z.string().nullable(),
+    contract: z
+      .string()
+      .nullable()
+      .meta({ description: 'How the market resolves, in detail. Markdown, supplied by the creating client.' }),
     kind: z.string().meta({ description: 'Opaque to the venue; whatever the creating client groups by.' }),
     status: MarketStatus,
     b: z.number().positive().meta({
@@ -788,6 +792,9 @@ export const CreateMarketRequest = z
     slug: Slug,
     question: z.string().min(1).max(500),
     description: z.string().max(10_000).nullish(),
+    contract: z.string().max(50_000).nullish().meta({
+      description: 'The resolution contract: how the market settles, edge cases included. Markdown, shown to traders.',
+    }),
     kind: z.string().min(1).max(100).optional().meta({ description: 'Opaque. Defaults to "binary".' }),
     outcomes: z
       .array(z.string().min(1).max(200))
@@ -799,6 +806,10 @@ export const CreateMarketRequest = z
     expectedTraders: z.number().int().min(1).max(1_000_000).meta({
       description:
         'The expected field size. With STARTING_BALANCE_MICRO it sizes `b`, once; `b` is then frozen for the life of the market.',
+    }),
+    openingPrices: z.array(z.number().gt(0).lt(1)).min(2).max(20).optional().meta({
+      description:
+        'The prices the market opens at, one per outcome in order, summing to 1; left out, every outcome opens at 1/n. The house pays for a prior: the subsidy is `b·ln(1/min price)` instead of `b·ln(n)`.',
     }),
     listingSlug: Slug.optional().meta({
       description: 'Attach the market to this listing, which must already exist (`POST /listings`).',
@@ -992,7 +1003,6 @@ export const CommentId = Id.meta({ description: 'A comment id.' });
 export const OnboardingRequest = z
   .object({
     email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
-    name: z.string().trim().min(1).max(100),
     marketId: Id,
     outcomeId: Id,
     stakeMicro: MicroInput.meta({ description: 'What to spend, at most the starting balance. Not a share count.' }),
@@ -1003,18 +1013,6 @@ export const OnboardingRequest = z
   })
   .strict()
   .meta({ id: 'OnboardingRequest' });
-
-export const SignUpRequest = z
-  .object({
-    email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
-    name: z.string().trim().min(1).max(100),
-    next: z.string().max(2000).optional().meta({
-      description:
-        'A path on this site to return to after confirming and choosing a password. Anything else means `/`.',
-    }),
-  })
-  .strict()
-  .meta({ id: 'SignUpRequest' });
 
 export const SignUpStarted = z
   .object({ email: z.string().meta({ description: 'Where the confirmation mail went.' }) })

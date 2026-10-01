@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
+import { Markdown } from '@/components/Markdown';
 import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
@@ -18,6 +19,7 @@ import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
 import { TAPE_LIMIT } from './tape';
 import { TapeTable } from './TapeTable';
+import { FirstTrade } from './FirstTrade';
 import { TradeBox } from './TradeBox';
 
 type Market = z.output<typeof S.Market>;
@@ -96,6 +98,8 @@ export function MarketLive({
   const holdings = (portfolio?.holdings ?? []).filter((h) => h.marketId === id);
   const closed = usePassed(new Date(market.closesAt).getTime());
   const tradable = market.status === 'open' && !closed;
+  // Nothing to chart or list before the first fill: the trade box stands alone, centred.
+  const untraded = market.orderCount === 0;
   const sorted =
     market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
   const lead = likelihoodClass(marketLikelihood(market)).text;
@@ -124,7 +128,7 @@ export function MarketLive({
       </div>
       {sentence ? (
         <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
-          <b className={lead}>{pct(headline)}</b> chance this paper gets accepted at {market.kind}.
+          est. <b className={lead}>{pct(headline)}</b> chance this paper gets accepted at {market.kind}.
         </h2>
       ) : embedded ? (
         <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
@@ -169,19 +173,15 @@ export function MarketLive({
         </div>
       )}
 
-      <div className="py-4">
-        {points.length > 1 ? (
-          <>
-            <PriceChart points={points} labels={labels} />
-            <div className={ui.caption}>
-              <b>Figure 1.</b> {market.outcomes.length === 2 ? `${labels[0]} price` : 'Prices'} since opening ·{' '}
-              {market.orderCount} trades · {rep(market.volumeMicro, 0)} {REP}.
-            </div>
-          </>
-        ) : (
-          <div className={`${ui.caption} py-4.5 text-center`}>No trades yet.</div>
-        )}
-      </div>
+      {!untraded && (
+        <div className="py-4">
+          <PriceChart points={points} labels={labels} />
+          <div className={ui.caption}>
+            <b>Figure 1.</b> {market.outcomes.length === 2 ? `${labels[0]} price` : 'Prices'} since opening ·{' '}
+            {market.orderCount} trades · {rep(market.volumeMicro, 0)} {REP}.
+          </div>
+        </div>
+      )}
 
       {holdings.length > 0 && (
         <div className="mt-10">
@@ -199,17 +199,19 @@ export function MarketLive({
         </div>
       )}
 
-      <div className="mt-10 grid grid-cols-2 gap-10 narrow:grid-cols-1">
-        <div>
-          <h3 className={`${ui.section} mb-3`}>Recent trades</h3>
-          <div className="overflow-x-auto">
-            <TapeTable market={market} tape={tape} n={firstTable + (holdings.length > 0 ? 1 : 0)} />
+      <div className={untraded ? 'mx-auto mt-10 max-w-[480px]' : 'mt-10 grid grid-cols-2 gap-10 narrow:grid-cols-1'}>
+        {!untraded && (
+          <div>
+            <h3 className={`${ui.section} mb-3`}>Recent trades</h3>
+            <div className="overflow-x-auto">
+              <TapeTable market={market} tape={tape} n={firstTable + (holdings.length > 0 ? 1 : 0)} />
+            </div>
           </div>
-        </div>
+        )}
         {/* On a narrow screen the trade box comes before the tape. */}
         <div className="narrow:order-first">
           {tradable ? (
-            <TradeBox
+            <Trading
               market={market}
               cashMicro={
                 initial.viewer.signedIn
@@ -224,6 +226,7 @@ export function MarketLive({
               onChoose={
                 initial.viewer.signedIn ? undefined : (c) => router.push(welcomeBetHref({ marketId: id, ...c }))
               }
+              paper={embedded}
             />
           ) : (
             <div className={ui.box}>
@@ -249,6 +252,13 @@ export function MarketLive({
         </div>
       </div>
 
+      {market.contract && (
+        <details className="my-6 border-t border-rule pt-2.5">
+          <summary className={`${ui.section} cursor-pointer`}>Contract</summary>
+          <Markdown className="mt-2 text-sm">{market.contract}</Markdown>
+        </details>
+      )}
+
       <Comments
         marketId={id}
         outcomeIds={market.outcomes.map((o) => o.id)}
@@ -260,6 +270,12 @@ export function MarketLive({
       />
     </>
   );
+}
+
+/** The first bet on a market is its own flow (`FirstTrade`); after that, the plain trade box. */
+function Trading(props: ComponentProps<typeof TradeBox> & { paper: boolean }) {
+  const { paper, ...box } = props;
+  return box.market.orderCount === 0 ? <FirstTrade {...box} paper={paper} /> : <TradeBox {...box} />;
 }
 
 function statusLine(m: Market): string {

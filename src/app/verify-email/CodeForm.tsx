@@ -6,9 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { CodeInput } from '@/components/CodeInput';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
-import { setPasswordPath, signInContinueHref } from '@/lib/links';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
-import { authHref } from '@/lib/return-to';
+import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
+import { welcomeHref } from '@/lib/onboarding';
 
 const field =
   'w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base';
@@ -16,13 +16,11 @@ const field =
 /**
  * The code from the confirmation mail, typed where the person already is.
  * Confirming creates the trader and signs in (Better Auth's
- * `autoSignInAfterVerification`), then returns to `next`. The link in the
- * same mail does the same from any browser.
- *
- * A code from the "choose a password" mail (an account confirmed before, with
- * no password yet) works here too: it goes on to `/set-password` with it.
+ * `autoSignInAfterVerification`); the page then re-renders signed in and
+ * asks for whatever the account still lacks (`Finish`). The link in the same
+ * mail does the same from any browser.
  */
-export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: string; next: string; resent: boolean }) {
+export function CodeForm({ initialEmail, next, resent }: { initialEmail: string; next: string; resent: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState('');
@@ -41,23 +39,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
     if (busy || code.length !== 6 || !email.trim()) return;
     setBusy(true);
     setNote(null);
-    const address = email.trim();
-    const { error } = await authClient.emailOtp.verifyEmail({ email: address, otp: code });
-    // Not a confirmation code: an account that is already confirmed but has
-    // no password is mailed a code to choose one (`sendResetPassword`). The
-    // page it was typed on cannot tell, so try that too.
-    if (error?.code === 'INVALID_OTP') {
-      const { error: notPassword } = await authClient.emailOtp.checkVerificationOtp({
-        email: address,
-        type: 'forget-password',
-        otp: code,
-      });
-      if (!notPassword) {
-        clearPending();
-        router.push(setPasswordPath(address, code));
-        return;
-      }
-    }
+    const { error } = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp: code });
     if (error) {
       setBusy(false);
       setCode(''); // ready for the next attempt, typed or pasted
@@ -73,9 +55,6 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
       return;
     }
     clearPending();
-    // Not straight to `next`: the new account may still need a password (and
-    // an onboarding bet its last step), which that page asks for first.
-    router.push(signInContinueHref(next));
     router.refresh();
   }
 
@@ -85,7 +64,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
     setNote(null);
     const { error } = await authClient.sendVerificationEmail({
       email: email.trim(),
-      callbackURL: signInContinueHref(next),
+      callbackURL: authHref(VERIFY_EMAIL, next),
     });
     setBusy(false);
     if (error) {
@@ -146,7 +125,7 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
         >
           send a new code
         </button>
-        . Wrong address? <Link href={authHref('/signup', next)}>Sign up again</Link>.
+        . Wrong address? <Link href={welcomeHref(next)}>Start again</Link>.
       </p>
       <p className={`${ui.fine} mb-3`}>
         <Link href={next}>Keep browsing</Link> while you wait; you can come back here from the banner at the top.

@@ -29,9 +29,6 @@ import {
   setFirstPassword,
   startOnboarding,
 } from '../onboarding';
-import { claimSignUp, sendConfirmation } from '../signup';
-import { signInContinueHref } from '@/lib/links';
-import { safeReturnTo } from '@/lib/return-to';
 import {
   accountOrders,
   leaderboard as leaderboardView,
@@ -616,20 +613,6 @@ export const postOnboarding = route(async (req) => {
   return respond(S.SignUpStarted, { email: body.email }, { principal, headers: { 'Set-Cookie': cookie } });
 });
 
-/**
- * Sign up (`server/signup.ts`): a name and an email, no password; the
- * password is chosen after confirming, at `/signin/continue`. Answers the
- * same whether or not the address is taken.
- */
-export const postSignUp = route(async (req) => {
-  const principal = await authenticate(req);
-  const body = await parseBody(req, S.SignUpRequest);
-  const claimed = await claimSignUp(body.email, body.name);
-  if (claimed) await sendConfirmation(claimed.email, signInContinueHref(safeReturnTo(body.next)));
-  events.log('signup.started', { accountId: null });
-  return respond(S.SignUpStarted, { email: body.email }, { principal });
-});
-
 /** The first password of an account made by onboarding. Session only. */
 export const postMyPassword = route(async (req) => {
   const principal = await requireSession(req);
@@ -669,6 +652,7 @@ export const postMarket = route(async (req) => {
       slug: body.slug,
       question: body.question,
       description: body.description ?? null,
+      contract: body.contract ?? null,
       kind: body.kind,
       outcomes: body.outcomes,
       closesAt,
@@ -680,6 +664,7 @@ export const postMarket = route(async (req) => {
       status: 'open',
       listingId: listing?.id ?? null,
       listingRank: body.listingRank ?? 0,
+      openingPrices: body.openingPrices,
     });
   } catch (err) {
     // The market's slug, or its maker's `market:<slug>` handle, already exists.

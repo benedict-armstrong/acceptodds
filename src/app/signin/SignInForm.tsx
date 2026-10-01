@@ -4,17 +4,16 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
-import { signInContinueHref } from '@/lib/links';
 import { rememberPending } from '@/lib/pending-confirmation';
-import { authHref } from '@/lib/return-to';
+import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 
 /**
  * Email and password, back to `next` afterwards. An unconfirmed address with
  * the right password is not a dead end: Better Auth sends a fresh code and
- * link (`sendOnSignIn`), and this goes on to `/confirm` for it (issue #15).
+ * link (`sendOnSignIn`), and this goes on to `/verify-email` for it (issue #15).
  *
  * Under it, a sign-in link to the address typed, for anyone without a
- * password or without an account: the link lands on `/signin/continue`,
+ * password or without an account: the link lands on `/verify-email`,
  * which asks a new account for a name and a password and a passwordless one
  * for a password. The answer is the same whether or not the address has an
  * account.
@@ -35,7 +34,7 @@ export function SignInForm({ next }: { next: string }) {
     setBusy(true);
     setError(null);
     setLinkSent(null);
-    const continueTo = signInContinueHref(next);
+    const continueTo = authHref(VERIFY_EMAIL, next);
     const { error } = await authClient.signIn.magicLink({
       email: address,
       callbackURL: continueTo,
@@ -67,13 +66,13 @@ export function SignInForm({ next }: { next: string }) {
         const { error } = await authClient.signIn.email({
           email: address,
           password,
-          callbackURL: signInContinueHref(next),
+          callbackURL: authHref(VERIFY_EMAIL, next),
         });
         if (error) {
           setBusy(false);
           if (error.code === 'EMAIL_NOT_VERIFIED') {
             rememberPending({ email: address, next });
-            router.push(authHref('/confirm', next, { email: address, resent: '1' }));
+            router.push(authHref(VERIFY_EMAIL, next, { email: address, resent: '1' }));
             return;
           }
           setError(error.message ?? 'Could not sign in.');

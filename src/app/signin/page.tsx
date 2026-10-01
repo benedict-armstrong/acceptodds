@@ -1,4 +1,4 @@
-import { AuthTabs } from '@/components/AuthLinks';
+import Link from 'next/link';
 import { ui } from '@/components/ui';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -27,7 +27,10 @@ export default async function SignIn({
   if (!linkError && !(await cookies()).has(WELCOMED_COOKIE)) redirect(welcomeHref(next));
   return (
     <main className="mx-auto my-10 max-w-[360px]">
-      <AuthTabs current="/signin" next={next} />
+      <h1 className="my-4.5 border-b border-rule pb-1 text-[26px] font-normal">Sign in</h1>
+      <p className={`${ui.fine} mb-3`}>
+        New here? <Link href={welcomeHref(next)}>Start with a bet</Link>.
+      </p>
       {linkError && <div className={`${ui.note(false)} mb-3`}>{linkError}</div>}
       <SignInForm next={next} />
     </main>

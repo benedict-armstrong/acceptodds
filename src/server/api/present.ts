@@ -25,6 +25,7 @@ export function presentMarket(v: MarketView): z.input<typeof S.Market> {
     slug: m.slug,
     question: m.question,
     description: m.description,
+    contract: m.contract,
     kind: m.kind,
     status: m.status,
     b: m.b,

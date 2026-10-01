@@ -7,30 +7,25 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Where a password-reset link lands (Better Auth redirects here with
- * `?token=`, or `?error=INVALID_TOKEN`), or the code from the same mail,
- * typed into `ConfirmForm` (`?code=`): choose a password, and be signed in.
- * For an account made by onboarding it is the first password; the "you
- * already have an account" mail sends one of these links to such an account
- * instead of a link to `/signin` (`server/better-auth.ts`).
+ * `?token=`, or `?error=INVALID_TOKEN`): choose a password, and be signed
+ * in. For an account made by onboarding that has none it is the first
+ * password.
  *
  * The page names the account whose password it sets, and that is the
- * token's account (`resetTokenEmail`) — `?email=` is only a hint, used for
- * a code (which works only with the address it was sent to) and to resend
- * a dead link. Someone signed in as another account is warned: setting the
- * password signs them in as the link's account instead.
+ * token's account (`resetTokenEmail`) — `?email=` is only a hint, used to
+ * resend a dead link. Someone signed in as another account is warned:
+ * setting the password signs them in as the link's account instead.
  */
 export default async function SetPassword({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string; code?: string; error?: string; email?: string }>;
+  searchParams: Promise<{ token?: string; error?: string; email?: string }>;
 }) {
-  const { token, code, error, email } = await searchParams;
-  let target: { email: string; proof: { token: string } | { code: string } } | null = null;
+  const { token, error, email } = await searchParams;
+  let target: { email: string; token: string } | null = null;
   if (!error && token) {
     const owner = await resetTokenEmail(token);
-    if (owner) target = { email: owner, proof: { token } };
-  } else if (!error && code && email) {
-    target = { email, proof: { code } };
+    if (owner) target = { email: owner, token };
   }
   const viewer = await viewerFromHeaders(await headers());
   const signedInAs =

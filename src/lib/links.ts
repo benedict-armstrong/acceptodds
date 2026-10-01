@@ -11,22 +11,10 @@ export function marketHref(m: { marketSlug: string; listingSlug: string | null }
 
 /**
  * Where a password-reset link lands (`app/set-password`): the address rides
- * along so the page can sign in once the password is set. With `code`, the
- * page sets it with that code from the mail instead of the link's token.
+ * along so the page can name the account and offer a new link.
  */
-export function setPasswordPath(email: string, code?: string): string {
-  const q = new URLSearchParams({ email });
-  if (code) q.set('code', code);
-  return `/set-password?${q}`;
-}
-
-/**
- * Where every sign-in link lands (`app/signin/continue`), new account or
- * not, and where a dead one reports its error: that page asks for whatever
- * is missing (a name, a password), then goes on to `next`.
- */
-export function signInContinueHref(next: string): string {
-  return next === '/' ? '/signin/continue' : `/signin/continue?next=${encodeURIComponent(next)}`;
+export function setPasswordPath(email: string): string {
+  return `/set-password?${new URLSearchParams({ email })}`;
 }
 
 /** A public position's page (#36): the link its holder shares. */

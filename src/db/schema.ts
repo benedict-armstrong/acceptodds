@@ -195,6 +195,12 @@ export const markets = pgTable(
     slug: text('slug').notNull(),
     question: text('question').notNull(),
     description: text('description'),
+    /**
+     * The market's contract: how it resolves, in detail (edge cases included).
+     * Opaque text supplied by the creating client, shown to traders as
+     * Markdown and never interpreted here. `description` is for anything else.
+     */
+    contract: text('contract'),
     /** Opaque to the platform. Whatever the creating client wants to group by. */
     kind: text('kind').notNull().default('binary'),
     status: marketStatus('status').notNull().default('draft'),
@@ -289,6 +295,15 @@ export const outcomes = pgTable(
     /** Position in the share vector. Stable; the cost function is indexed by it. */
     ordinal: integer('ordinal').notNull(),
     sharesMicro: money('shares_micro')
+      .notNull()
+      .default(sql`0`),
+    /**
+     * What `shares_micro` was when the market opened: all zeros for a uniform
+     * market, `lmsr.openingShares(prior, b)` for one opened at a prior. The
+     * share vector is this plus the sum of the order shares, so every replay
+     * from the fills starts here. Written once, by `createMarket`.
+     */
+    openingSharesMicro: money('opening_shares_micro')
       .notNull()
       .default(sql`0`),
   },

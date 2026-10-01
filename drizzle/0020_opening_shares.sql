@@ -1,0 +1,1 @@
+ALTER TABLE "outcomes" ADD COLUMN "opening_shares_micro" bigint DEFAULT 0 NOT NULL;

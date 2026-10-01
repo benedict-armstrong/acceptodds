@@ -53,8 +53,9 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
  * The price then is **replayed exactly**, as `views.priceHistory` does: LMSR
  * prices are a function of the share vector, and the share vector at a time
  * is the sum of order shares up to it. One aggregate query for all markets.
- * A market created inside the window starts from its opening vector (all
- * zeros), which is what the replay gives.
+ * A market created inside the window starts from its opening vector
+ * (`outcomes.opening_shares_micro`: zeros, or its prior), which is what the
+ * replay gives.
  */
 export async function moves(
   views: MarketView[],
@@ -87,7 +88,7 @@ export async function moves(
   for (const v of views) {
     const sharesThen = v.outcomes.map((o) => {
       const row = then.find((r) => r.marketId === v.market.id && r.outcomeId === o.id);
-      return microToFloat(row ? BigInt(row.total) : 0n);
+      return microToFloat(o.openingSharesMicro + (row ? BigInt(row.total) : 0n));
     });
     out.set(
       v.market.id,

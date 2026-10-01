@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { clearPending, parsePending, readPendingRaw, subscribePending } from '@/lib/pending-confirmation';
-import { authHref } from '@/lib/return-to';
+import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 
-const AUTH_PAGES = ['/signin', '/signup', '/confirm'];
+const AUTH_PAGES = ['/signin', VERIFY_EMAIL];
 
 /**
  * "Confirm your email" across the site while a sign-up waits for its code
@@ -29,7 +29,7 @@ export function ConfirmBanner({ signedIn }: { signedIn: boolean }) {
       <span>
         Confirm <b>{pending.email}</b> to start trading: enter the code we emailed you.
       </span>
-      <Link href={authHref('/confirm', pathname, { email: pending.email })} className="font-semibold">
+      <Link href={authHref(VERIFY_EMAIL, pathname, { email: pending.email })} className="font-semibold">
         enter code
       </Link>
       <span className="flex-1" />

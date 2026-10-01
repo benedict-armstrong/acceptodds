@@ -46,6 +46,7 @@ export function TradeBox({
   viewer,
   onFilled,
   onChoose,
+  lockedIndex,
 }: {
   market: Market;
   /** The viewer's cash, from their polled portfolio; `null` when signed out. */
@@ -55,8 +56,10 @@ export function TradeBox({
   onFilled: (choice: Choice) => void;
   /** Instead of placing the order: the outcome and the stake. */
   onChoose?: (choice: Choice) => void;
+  /** The outcome already picked (`FirstTrade`): fixed, with no selector. */
+  lockedIndex?: number;
 }) {
-  const [idx, setIdx] = useState(0);
+  const [idx, setIdx] = useState(lockedIndex ?? 0);
   const [stake, setStake] = useState('100');
   const outcome = market.outcomes[idx];
   const budget = parseUnits(stake);
@@ -77,13 +80,15 @@ export function TradeBox({
   return (
     <div className={ui.box}>
       {/* Four outcomes don't fit in one row on a phone: two by two there. */}
-      <div className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}>
-        {market.outcomes.map((o, i) => (
-          <button key={o.id} className={segment(i === idx)} onClick={() => setIdx(i)}>
-            {o.label} {pct(o.price)}
-          </button>
-        ))}
-      </div>
+      {lockedIndex === undefined && (
+        <div className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}>
+          {market.outcomes.map((o, i) => (
+            <button key={o.id} className={segment(i === idx)} onClick={() => setIdx(i)}>
+              {o.label} {pct(o.price)}
+            </button>
+          ))}
+        </div>
+      )}
       {/* A sentence, "Stake 10 $rep", whose number is an input sized to what
           is typed, marked only by a dashed underline (solid while hovered or
           focused). The whole line is the label, so a click anywhere on it
@@ -150,11 +155,6 @@ export function TradeBox({
           >
             Stake {budget ? rep(budget) : ''} {REP} on {outcome.label}
           </button>
-          {!viewer.signedIn && (
-            <div className={`${ui.fine} text-center`}>
-              Have an account? <SignInLink>Sign in</SignInLink>
-            </div>
-          )}
         </>
       ) : !viewer.signedIn ? (
         <SignInLink className={ui.btn()}>Sign in to trade</SignInLink>

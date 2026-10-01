@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { authorList, bibOrder } from '@/lib/bibliography';
+import { bibOrder } from '@/lib/bibliography';
 import { pct } from '@/lib/format';
 import { headlineLabel, marketHeadline } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type { CitedListing, ListingCitations } from '@/server/views';
+import { AuthorList } from './AuthorList';
 import { MathText } from './MathText';
 import { Bibliography } from './References';
 
@@ -59,7 +60,7 @@ export function Citations({ citations }: { citations: ListingCitations }) {
   );
 }
 
-/** "Authors. Title. <i>Venue</i>, year." — "Title, year." with no venue, as natbib sets a bare entry. */
+/** "Title. Authors. <i>Venue</i>, year." — "Title. Authors. year." with no venue. */
 function Entry({
   authors,
   title,
@@ -78,7 +79,6 @@ function Entry({
   const name = <MathText text={title} />;
   return (
     <>
-      {authors.length > 0 && <>{authorList(authors)}. </>}
       {cited ? (
         <Link href={`/papers/${encodeURIComponent(cited.listing.slug)}`}>{name}</Link>
       ) : url ? (
@@ -88,14 +88,24 @@ function Entry({
       ) : (
         name
       )}
-      {venue ? (
-        <>
-          . <i>{venue}</i>
-          {year !== null && `, ${year}`}.
-        </>
-      ) : (
-        <>{year !== null ? `, ${year}.` : '.'}</>
-      )}
+      .
+      <span className="text-muted">
+        {authors.length > 0 && (
+          <>
+            {' '}
+            <AuthorList names={authors} />.
+          </>
+        )}
+        {venue ? (
+          <>
+            {' '}
+            <i>{venue}</i>
+            {year !== null && `, ${year}`}.
+          </>
+        ) : (
+          year !== null && <> {year}.</>
+        )}
+      </span>
       {cited && url && (
         <>
           {' '}

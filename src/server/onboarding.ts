@@ -1,41 +1,54 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { APIError } from 'better-auth/api';
 import { and, eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
+import { user } from '@/db/auth-schema';
+import { isUniqueViolation } from '@/db/errors';
 import { markets, outcomes, pendingBets, type PendingBet } from '@/db/schema';
-import { WELCOME_FINISH } from '@/lib/onboarding';
+import { VERIFY_EMAIL } from '@/lib/return-to';
+import { normalizeEmail } from './affiliations';
 import { ApiError } from './api/errors';
 import { startingBalanceMicro } from './accounts';
 import { getAuth } from './better-auth';
-import { claimSignUp, sendConfirmation } from './signup';
+import { institutionForEmail } from './institution-domains';
+import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 
 /**
- * Onboarding (`/welcome`): someone with no account picks a paper and a bet,
- * then gives an email and a name — no password. That makes
- * a Better Auth user **without a credential**, stores the bet in
- * `pending_bets`, and sends the usual confirmation mail (link and code).
+ * Onboarding (`/welcome`), the one way to sign up: someone with no account
+ * picks a paper and a bet, then gives an email — no name, no password. That
+ * makes a Better Auth user **without a credential or a name**, stores the
+ * bet in `pending_bets`, and mails a confirmation link and code.
  *
- * Confirming creates the account and the starting balance exactly as a
- * normal sign-up does (`ensureAccountForUser`), and signs in. The person
- * lands back on `/welcome`, chooses a password there (`setPassword`), and
- * places the pending bet through the API like any other order, at the price
- * then. Until they confirm there is still no account and no reputation.
+ * Confirming creates the account and the starting balance (`ensureAccountForUser`)
+ * and signs in. The person lands on `/verify-email`, which asks for the name
+ * and password they lack, and places the pending bet through the API like
+ * any other order, at the price then. Until they confirm there is still no
+ * account and no reputation. A password is never taken before the address is
+ * proven, so nobody can attach one to an address they do not own (Better
+ * Auth's own `/sign-up/email` is off).
  *
  * Answers the same whether or not the address is taken: a confirmed one gets
- * a "sign in instead" mail and its bet is dropped, never added to that
- * account; an unconfirmed one gets a fresh mail and its bet replaced. That
- * is harmless only because a replaced bet is never placed unseen: it is
- * placed without asking only in the browser that chose it (`choseHere`).
- * The sign-up itself is `server/signup.ts`, shared with `POST /signup`.
+ * a sign-in link and the bet is stored for it, to be placed when the link is
+ * opened; an unconfirmed one gets a fresh confirmation mail and its bet
+ * replaced. Either way that is harmless only because a stored bet is never
+ * placed unseen: it is placed without asking only in the browser that chose
+ * it (`choseHere`), and anywhere else shown first, to place or skip.
  */
 
 export interface StartOnboarding {
   email: string;
-  name: string;
   marketId: string;
   outcomeId: string;
   stakeMicro: bigint;
   seenOrderCount: number;
 }
+
+/**
+ * Sign-up mails per address: 5, refilling over a day. The route is anonymous
+ * and sends mail; the edge limits by IP, this limits what any number of IPs
+ * can send to one inbox.
+ */
+const MAIL_BUDGET: RateLimitConfig = { burst: 5, perSecond: 5 / 86_400 };
 
 export async function startOnboarding(
   input: StartOnboarding,
@@ -55,8 +68,22 @@ export async function startOnboarding(
   if (target.status !== 'open') throw new ApiError(409, 'market_not_open', 'this market is not open');
   if (target.closesAt.getTime() <= Date.now()) throw new ApiError(409, 'market_closed', 'this market has closed');
 
-  const claimed = await claimSignUp(input.email, input.name, database);
-  if (!claimed) return; // already confirmed: mailed instead, and the bet is dropped
+  const email = normalizeEmail(input.email);
+  if (!institutionForEmail(email)) {
+    throw new ApiError(422, 'email_domain_not_allowed', 'sign-up is open to approved institutional email domains only');
+  }
+  const budget = await consume(`signup-mail:${email}`, MAIL_BUDGET);
+  if (!budget.allowed) {
+    throw new ApiError(
+      429,
+      'rate_limited',
+      'too many sign-up emails to this address; try again later',
+      { retryAfterSeconds: budget.retryAfterSeconds },
+      rateLimitHeaders(budget),
+    );
+  }
+
+  const person = await userForEmail(email, database);
   const bet = {
     marketId: input.marketId,
     outcomeId: input.outcomeId,
@@ -66,9 +93,53 @@ export async function startOnboarding(
   };
   await database
     .insert(pendingBets)
-    .values({ userId: claimed.userId, ...bet })
+    .values({ userId: person.id, ...bet })
     .onConflictDoUpdate({ target: pendingBets.userId, set: { ...bet, createdAt: new Date() } });
-  await sendConfirmation(claimed.email, WELCOME_FINISH);
+  // Either way the mail lands on `/verify-email`, which places the bet.
+  if (person.emailVerified) await sendSignInLink(email);
+  else await getAuth().api.sendVerificationEmail({ body: { email, callbackURL: VERIFY_EMAIL } });
+}
+
+/**
+ * The user for `email`, made if there is none: no name, no credential,
+ * unconfirmed. Two sign-ups at once for one address: the other one won.
+ */
+async function userForEmail(email: string, database: Database): Promise<{ id: string; emailVerified: boolean }> {
+  const find = async () => {
+    const [row] = await database
+      .select({ id: user.id, emailVerified: user.emailVerified })
+      .from(user)
+      .where(eq(user.email, email));
+    return row ?? null;
+  };
+  const existing = await find();
+  if (existing) return existing;
+  try {
+    const ctx = await getAuth().$context;
+    await ctx.internalAdapter.createUser({ email, name: '', emailVerified: false }, { method: 'signup' });
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+  }
+  const made = await find();
+  if (!made) throw new Error(`user ${email} vanished after creation`);
+  return made;
+}
+
+/**
+ * A sign-in link for an existing account, landing on `/verify-email`, which
+ * places the bet. Over its mail budget nothing is sent and the answer is
+ * unchanged: a 429 would tell anyone which addresses have accounts.
+ */
+async function sendSignInLink(email: string): Promise<void> {
+  try {
+    await getAuth().api.signInMagicLink({
+      body: { email, callbackURL: VERIFY_EMAIL, errorCallbackURL: VERIFY_EMAIL },
+      headers: new Headers(),
+    });
+  } catch (err) {
+    if (err instanceof APIError && err.statusCode === 429) return;
+    throw err;
+  }
 }
 
 /**

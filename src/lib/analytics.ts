@@ -1,7 +1,7 @@
 /**
  * What page analytics may learn about a URL. Umami records the full page URL
  * and referrer of every hit, and some of ours carry things that are not ours
- * to hand on: `/confirm?email=…` names the person, and `?next=` is a whole
+ * to hand on: `/verify-email?email=…` names the person, and `?next=` is a whole
  * other URL. So a same-site URL keeps its path and only the query parameters
  * listed here, which are the browsing state (search, filters, sorts, pages),
  * and never a hash; any other site's URL keeps only its origin and path.

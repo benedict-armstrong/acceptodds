@@ -5,9 +5,9 @@ import { ANALYTICS_PARAMS, analyticsUrl } from '@/lib/analytics';
 const ORIGIN = 'https://acceptodds.com';
 
 describe('analyticsUrl', () => {
-  it('drops the email on /confirm and the return path', () => {
-    expect(analyticsUrl(`${ORIGIN}/confirm?email=a%40mit.edu&next=%2Fportfolio&resent=1`, ORIGIN)).toBe(
-      `${ORIGIN}/confirm?resent=1`,
+  it('drops the email on /verify-email and the return path', () => {
+    expect(analyticsUrl(`${ORIGIN}/verify-email?email=a%40mit.edu&next=%2Fportfolio&resent=1`, ORIGIN)).toBe(
+      `${ORIGIN}/verify-email?resent=1`,
     );
   });
 
@@ -33,7 +33,7 @@ describe('analyticsUrl', () => {
     const key = fc.stringMatching(/^[a-z_]{1,12}$/).filter((k) => !ANALYTICS_PARAMS.has(k));
     fc.assert(
       fc.property(key, fc.string(), (k, v) => {
-        const url = new URL(`${ORIGIN}/confirm`);
+        const url = new URL(`${ORIGIN}/verify-email`);
         url.searchParams.set(k, v);
         url.searchParams.set('page', '2');
         const out = new URL(analyticsUrl(url.toString(), ORIGIN));

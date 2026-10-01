@@ -1,20 +1,14 @@
-import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import type { z } from 'zod';
 import { marketHref } from '@/lib/links';
-import { LINK_USED } from '@/lib/link-errors';
 import { parseChosenBet } from '@/lib/onboarding';
-import { authHref } from '@/lib/return-to';
 import { safeReturnTo } from '@/lib/return-to';
 import { defaultMarketKind } from '@/lib/venue';
 import { startingBalanceMicro } from '@/server/accounts';
 import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
-import { hasPassword } from '@/server/better-auth';
-import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor } from '@/server/onboarding';
 import { browseListings, listingViews, marketView, resolveListing, resolveMarket } from '@/server/views';
-import { Finish } from './Finish';
 import { Welcome, type Chosen, type Step } from './Welcome';
 
 export const dynamic = 'force-dynamic';
@@ -27,10 +21,8 @@ const SUGGESTIONS = 5;
 
 /**
  * Onboarding: one question at a time, from "which paper?" to a placed bet
- * (`Welcome`). A visitor without an account ends by giving an email; a
- * signed-in one trades for real at each step. Back from the confirmation
- * mail, signed in with a pending bet (`server/onboarding.ts`), the last step
- * is `Finish`: a password and the bet.
+ * (`Welcome`). A visitor without an account ends by giving an email, which
+ * goes on to `/verify-email`; a signed-in one trades for real at each step.
  */
 export default async function WelcomePage({
   searchParams,
@@ -38,7 +30,6 @@ export default async function WelcomePage({
   searchParams: Promise<{
     step?: string;
     next?: string;
-    error?: string;
     market?: string;
     outcome?: string;
     stake?: string;
@@ -46,38 +37,7 @@ export default async function WelcomePage({
   }>;
 }) {
   const params = await searchParams;
-  // The confirmation mail's link returns here. A dead one (`?error=`), or one
-  // opened again (no session: Better Auth confirms once, then only
-  // redirects), goes to sign-in to say so, never back to the start.
-  if (params.error) redirect(authHref('/signin', '/', { error: params.error }));
   const viewer = await viewerFromHeaders(await headers());
-  if (!viewer && params.step === 'finish') redirect(authHref('/signin', '/', { error: LINK_USED }));
-  const userId = viewer?.account.userId ?? null;
-
-  if (userId) {
-    const [bet, needsPassword] = await Promise.all([pendingBetFor(userId), hasPassword(userId)]);
-    if (bet) {
-      const market = await resolveMarket(bet.marketId);
-      const listing = market.listingId ? await resolveListing(market.listingId) : null;
-      const board = presentMarket(await marketView(market)) as z.output<typeof S.Market>;
-      return (
-        <Finish
-          bet={{
-            market: board,
-            outcomeId: bet.outcomeId,
-            stakeMicro: bet.stakeMicro.toString(),
-            seenOrderCount: bet.seenOrderCount,
-            choseHere: choseHere(bet, (await cookies()).get(ONBOARDING_BROWSER_COOKIE)?.value),
-            title: listing?.title ?? market.question,
-            href: marketHref({ marketSlug: market.slug, listingSlug: listing?.slug ?? null }),
-          }}
-          needsPassword={needsPassword}
-        />
-      );
-    }
-    if (needsPassword) return <Finish bet={null} needsPassword />;
-    if (params.step === 'finish') redirect('/');
-  }
 
   // A visitor who chose a bet on a market's page starts after it.
   const chosen = viewer ? null : await chosenBet(params);

@@ -31,24 +31,39 @@ export interface PendingBet {
 }
 
 /**
- * Back from the confirmation mail, signed in: place the bet chosen before
- * signing up — through the API like any order, at the price now — and
- * choose a password. The stake is kept, not the share count: it is sized on
- * the fresh board, quoted, and sent with that quote as its bound. Then the
- * pending bet is dropped. "Skip" drops it unplaced.
+ * What a signed-in account still owes after confirming its address, all on
+ * one page: a name, a password, and the bet chosen before signing up.
+ * Whichever is missing is asked for, then the bet is placed and the person
+ * goes on to the bet's paper (or `next`, with no bet).
+ *
+ * The bet is placed through the API like any order, at the price now. The
+ * stake is kept, not the share count: it is sized on the fresh board,
+ * quoted, and sent with that quote as its bound. Then the pending bet is
+ * dropped. "Skip" drops it unplaced.
  *
  * If this is the browser the bet was chosen in, and no fill has moved the
  * market since (its `orderCount` is the one seen then), the board is the one
  * the person saw, so the same stake buys the same shares at the same cost:
- * the bet is placed at once, without asking, and only the password is left.
- * Otherwise it is shown at the price now, to place or skip — in another
- * browser because it may not be the person's own bet at all.
- *
- * With no bet (placed, or the address was already registered) it only asks
- * for the password.
+ * the bet is placed at once, without asking, and only the name and password
+ * are left. Otherwise it is shown at the price now, to place or skip — in
+ * another browser because it may not be the person's own bet at all.
  */
-export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPassword: boolean }) {
+export function Finish({
+  bet,
+  email,
+  needsName,
+  needsPassword,
+  next,
+}: {
+  bet: PendingBet | null;
+  email: string;
+  needsName: boolean;
+  needsPassword: boolean;
+  next: string;
+}) {
   const router = useRouter();
+  const [name, setName] = useState('');
+  const [nameSet, setNameSet] = useState(!needsName);
   const [password, setPassword] = useState('');
   const [passwordSet, setPasswordSet] = useState(!needsPassword);
   const [busy, setBusy] = useState(false);
@@ -71,12 +86,27 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
       setAuto(null);
       if (result === 'placed') {
         await fetch('/api/v1/me/pending-bet', { method: 'DELETE' }).catch(() => null);
-        if (passwordSet) return leave(bet.href);
+        if (passwordSet && nameSet) return leave(bet.href);
       }
     })();
     // Once, on arrival: the bet is placed at most once by itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function saveName(): Promise<boolean> {
+    if (nameSet) return true;
+    const res = await fetch('/api/v1/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName: name }),
+    }).catch(() => null);
+    if (res?.ok) {
+      setNameSet(true);
+      return true;
+    }
+    setError('Could not save your name.');
+    return false;
+  }
 
   async function savePassword(): Promise<boolean> {
     if (passwordSet) return true;
@@ -140,7 +170,7 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
     e.preventDefault();
     setBusy(true);
     setError(null);
-    if ((await savePassword()) && (await place()) === 'placed') return leave(bet?.href ?? '/');
+    if ((await saveName()) && (await savePassword()) && (await place()) === 'placed') return leave(bet?.href ?? next);
     setBusy(false);
   }
 
@@ -154,10 +184,25 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
   }
 
   return (
-    <OnboardingCard title={bet && !placed ? 'Place your bet' : 'Choose a password'}>
+    <OnboardingCard title={bet && !placed ? 'Place your bet' : needsName ? 'Finish signing up' : 'Choose a password'}>
       <form onSubmit={submit}>
+        <p className="mb-3 text-muted">
+          Signed in as <b className="text-ink">{email}</b>.
+        </p>
         {bet && <BetSummary bet={bet} label={label} />}
         {placed && <div className={`${ui.note(true)} mb-4`}>Placed: {placed}</div>}
+        {!nameSet && (
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            maxLength={100}
+            autoComplete="name"
+            placeholder="Name"
+            aria-label="Name"
+            className={ui.input}
+          />
+        )}
         {!passwordSet && (
           <input
             type="password"
@@ -172,7 +217,7 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
           />
         )}
         <button className={ui.btn()} disabled={busy}>
-          {busy ? '…' : bet && !placed ? 'Place bet' : 'Save'}
+          {busy ? '…' : bet && !placed ? 'Place bet' : 'Continue'}
         </button>
         {bet && !placed && (
           <div className={ui.fine}>

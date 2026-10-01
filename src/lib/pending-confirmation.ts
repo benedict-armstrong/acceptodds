@@ -62,7 +62,7 @@ export function rememberPending(p: PendingConfirmation): void {
     window.localStorage.setItem(KEY, JSON.stringify({ ...p, at: Date.now() }));
     notify();
   } catch {
-    // No banner, then; the /confirm page still works.
+    // No banner, then; the /verify-email page still works.
   }
 }
 

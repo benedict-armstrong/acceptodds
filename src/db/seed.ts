@@ -35,6 +35,11 @@ import { comments, markets, orders } from './schema';
  * around the starting balance, and prices drift towards each paper's target
  * as far as the field can afford to push them.
  *
+ * `--empty` stops after the house and the admin: no bots, papers or group, for
+ * a venue loaded from outside (`../scraping`). `--treasury=<REP>` sizes the
+ * house, which pays every market's `b·ln(n)` and so bounds how many it can
+ * open (about 1,200 REP each at the defaults).
+ *
  * Only a local database is wiped unless `--allow-remote` is passed; a remote
  * seed also needs `SEED_ADMIN_PASSWORD` (a local one defaults to
  * `ADMIN_PASSWORD`).
@@ -61,11 +66,13 @@ async function main() {
   const db = createDb(pool);
 
   await wipeData(db);
-  await createHouse(startingBalanceMicro() * 1000n, db);
-  const bots = await seedBots(db);
-  await seedPapers(db, bots);
+  const treasuryRep = process.argv.find((a) => a.startsWith('--treasury='))?.slice('--treasury='.length);
+  await createHouse(treasuryRep ? BigInt(treasuryRep) * 1_000_000n : startingBalanceMicro() * 1000n, db);
+  const empty = process.argv.includes('--empty');
+  const bots = empty ? [] : await seedBots(db);
+  if (!empty) await seedPapers(db, bots);
   const admin = await seedAdmin(db, adminPassword);
-  if (admin) await seedGroup(db, admin.id, bots);
+  if (admin && !empty) await seedGroup(db, admin.id, bots);
   await report(db);
   await pool.end();
 }
@@ -148,12 +155,18 @@ async function report(db: Database) {
 
 /** The four outcomes of a paper's market, best first; the headline is 1 − P(Reject). */
 const DECISIONS = ['Oral', 'Spotlight', 'Poster', 'Reject'];
+
 /**
- * The decision market's resolution rule, shown under the question. Reject is
+ * The decision market's contract, shown to traders on its page. Reject is
  * every way a paper can fail to appear (#19): the client that settles the
  * market settles a withdrawal as Reject.
  */
-const DECISION_RULE = 'Reject also covers a paper that is withdrawn or desk-rejected before the decision.';
+const DECISION_CONTRACT = [
+  "This market settles on the venue's final decision for the paper.",
+  '',
+  '- **Oral, Spotlight, Poster**: the paper is accepted in that form.',
+  '- **Reject**: the paper is rejected. This also covers a paper that is withdrawn or desk-rejected before the decision.',
+].join('\n');
 const DAY = 24 * 60 * 60 * 1000;
 
 interface Paper {
@@ -851,7 +864,7 @@ async function seedPaper(db: Database, p: Paper, kind: string, closesInDays: num
       ...common,
       slug: `${p.slug}-decision`,
       question: `How will ${kind} decide this paper?`,
-      description: DECISION_RULE,
+      contract: DECISION_CONTRACT,
       outcomes: DECISIONS,
       listingRank: 0,
     },

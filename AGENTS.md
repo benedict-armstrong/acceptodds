@@ -182,6 +182,17 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   owes 1 unit per share at settlement, which is exactly how an account reaches
   a negative balance and how the maker ends up unable to pay. Keeping every
   `q_i ≥ 0` is also what keeps the maker's balance `C(q) ≥ b·ln(n) > 0`.
+- **A market may open at a prior** (`openingPrices` on `POST /markets`,
+  `createMarket`). The share vector then starts at `lmsr.openingShares`
+  (`q0_i = b·ln(p_i/p_min)`: non-negative, the rarest outcome at 0), stored
+  both as `outcomes.shares_micro` and, unchanging, as
+  `outcomes.opening_shares_micro`. The maker therefore still holds `C(q)`
+  and every `q_i ≥ 0`; it starts at `C(q0) = b·ln(1/p_min)` rather than
+  `b·ln(n)`, which is what the house is debited. Traders hold none of `q0`,
+  so settlement pays only what was traded. **The share vector is the opening
+  vector plus the sum of the order shares**: any replay from the fills starts
+  from `opening_shares_micro` (`views.priceHistory`, `views.sparklines`,
+  `follows.moves`), never from zeros. `b` is unchanged by a prior (§1.3).
 - **Costs round in the house's favour**, by `Math.ceil` in `lib/money.ts` —
   which rounds a buy up and a sell's proceeds down with one rule. The
   sub-micro-unit remainder therefore accrues to the venue, an integer round
@@ -380,61 +391,65 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   same transaction with the account row locked first, and every change
   bumps the standings cache. `email_verified` on Better Auth's
   `user` is still only the login address.
+- **Three pages, one per step: `/welcome`, `/signin`, `/verify-email`.**
+  `/welcome` is the only way to sign up (below); `/signin` is for people who
+  have an account (password, or "Email me a sign-in link", which also makes
+  an account for a new address). **`/verify-email` is the one page after an
+  email**: every mail's link lands on it and every code is typed on it, and
+  what it shows follows from the session, never from how the person got
+  there. Signed in with nothing owed: on to `next`. Signed in and owing a
+  name, a password or a waiting bet: `Finish` asks for what is missing,
+  places the bet, goes on. No session and `?email=`: `CodeForm`, the 6-digit
+  code (confirming signs in and refreshes the page into the case above). No
+  session and no address: a link opened twice, so `/signin?error=`.
+  Nothing else asks for a name or password after an email; don't add a
+  second page that does.
 - **Confirming is a link or a 6-digit code, never a dead end** (#15). One
   mail carries both (`sendVerificationEmail` mints the code with the
   email-OTP plugin's server-only `createVerificationOTP`, hashed, rotated on
-  every send, an hour like the link). The person types it at `/confirm`, in
-  the tab they signed up in; `POST /email-otp/verify-email` runs the same
-  `afterEmailVerification` and signs in. Every email-OTP route that sends
-  a code, signs in or changes the address is in `disabledPaths` — sign-in
-  by code would also sign up past the password — so the only ways to get a
-  code are a confirmation mail and the "choose a password" mail (below), and
-  the only resends are `/send-verification-email` and
-  `/request-password-reset`. Signing in unconfirmed with the right
+  every send, an hour like the link). `POST /email-otp/verify-email` runs
+  the same `afterEmailVerification` as the link and signs in. Every other
+  email-OTP route is in `disabledPaths` — sign-in by code would also sign up
+  past the password, and password codes are not used — so the only code
+  there is is the confirmation one, and the only resend is
+  `/send-verification-email`. Signing in unconfirmed with the right
   password (only a user from before sign-up stopped taking passwords has
-  one) resends (`sendOnSignIn`) and goes to `/confirm`. Sign-in, sign-up
-  and the mail's link return to the page the person came from (`?next=`,
+  one) resends (`sendOnSignIn`) and goes to `/verify-email`. Sign-in and
+  the mail's link return to the page the person came from (`?next=`,
   `callbackURL`), only ever a same-site path (`lib/return-to.ts`), by way
-  of `/signin/continue`, which first asks for anything the account lacks. A
-  viewer already signed in never sees `/signin` or `/signup`: they go
-  straight to `next`, or to `/profile` when there is none.
+  of `/verify-email`. A viewer already signed in never sees `/signin`: they
+  go straight to `next`, or to `/profile` when there is none.
 - **A broken or used mail link ends on `/signin`, saying why.** Better
   Auth sends a dead confirmation or sign-in link back to its return
   address with `?error=` (`INVALID_TOKEN`, `TOKEN_EXPIRED`, …), and one
-  opened a second time back with no error and no session. `/welcome` and
-  `/signin/continue`, the two return addresses, pass either on to
-  `/signin?error=` (`LINK_USED` for the second), never back to the start of
-  onboarding; `/signin` shows `lib/link-errors.ts`'s sentence (never the
-  raw code) above the form, and skips its first-visit detour to `/welcome`
-  so the message survives a fresh browser. The sign-in link under the form
-  is the way out in every case. While a
-  code is outstanding a banner follows them round the site, from this
-  browser's `localStorage` only (`lib/pending-confirmation.ts`); it grants
-  nothing. There is still no user session, account or reputation before
-  confirmation.
-- **Sign-up takes no password** (`POST /signup`, `server/signup.ts`,
-  shared with onboarding): a name and an email make a user with no
-  credential and mail the confirmation; the password is chosen after
-  confirming, at `/signin/continue`. Better Auth's `/sign-up/email` is in
-  `disabledPaths`. Otherwise anyone could sign up with your address and
-  their password and wait for you to confirm it, which Better Auth's own
-  confirmation does not undo. As a second lock, `afterEmailVerification`
-  drops every password and session the user had before the address was
-  proven (`revokeUnprovenAccess`); it runs before the confirmation's own
-  session is made. Five sign-up mails per address a day
-  (`signup-mail:<email>`, both routes together).
-- **Signing up with a taken address looks like success, and mails the
-  owner**: the code and link again if it was never confirmed, else "you
-  already have an account" (sign in, or choose a password). Don't turn
-  this into a 422: that tells anyone which addresses have accounts.
+  opened a second time back with no error and no session.
+  `/verify-email`, the return address, passes either on to
+  `/signin?error=` (`LINK_USED` for the second); `/signin` shows
+  `lib/link-errors.ts`'s sentence (never the raw code) above the form, and
+  skips its first-visit detour to `/welcome` so the message survives a
+  fresh browser. While a code is outstanding a banner follows them round
+  the site, from this browser's `localStorage` only
+  (`lib/pending-confirmation.ts`); it grants nothing. There is still no
+  user session, account or reputation before confirmation.
+- **Sign-up takes no password and no name** (`POST /onboarding`,
+  `server/onboarding.ts`; there is no other sign-up route): an email makes
+  a user with no credential and mails the confirmation; the name and
+  password come after confirming, at `/verify-email`. Better Auth's
+  `/sign-up/email` is in `disabledPaths`. Otherwise anyone could sign up
+  with your address and their password and wait for you to confirm it,
+  which Better Auth's own confirmation does not undo. As a second lock,
+  `afterEmailVerification` drops every password and session the user had
+  before the address was proven (`revokeUnprovenAccess`); it runs before
+  the confirmation's own session is made. Five sign-up mails per address a
+  day (`signup-mail:<email>`).
 - **Every auth mail spends a per-address budget**, `auth-mail:<email>`, 10
-  a day: confirmations, resets and "already registered" notes. Over it,
-  nothing is sent and the answer is unchanged — a 429 would tell anyone
-  which addresses have accounts, since Better Auth only mails an existing
-  one. It is checked before a code is minted, so it also caps the fresh
-  3-guess codes anyone can have made for an inbox.
+  a day: confirmations and resets. Over it, nothing is sent and the answer
+  is unchanged — a 429 would tell anyone which addresses have accounts,
+  since Better Auth only mails an existing one. It is checked before a code
+  is minted, so it also caps the fresh 3-guess codes anyone can have made
+  for an inbox.
 - **A password reset ends every other session**
-  (`revokeSessionsOnPasswordReset`), by link or by code.
+  (`revokeSessionsOnPasswordReset`).
 - **A handle never comes from the email** (`handleFrom`): it is public, and
   a local part is often a full name. No usable name gives `trader-xxxx`;
   the first name an account without one sets (`accounts.setDisplayName`)
@@ -448,35 +463,23 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   minutes. Opened, it signs in — and for an address with no user, makes
   one, confirmed (the link proves the inbox), with no name and no password;
   the trader account follows lazily as for any session. Every link lands on
-  `/signin/continue` (`lib/links.ts` `signInContinueHref`, errors too),
-  which asks for what `missingFromUser` says is missing: a name and a
-  password, or only a password, naming the signed-in address, then goes on
-  to `next` (or to `/welcome`'s last step while an onboarding bet waits).
-  The name is `PATCH /me { displayName }` (`accounts.setDisplayName`: the
-  account's display name and Better Auth's `user.name` together, then the
-  standings cache is bumped); the handle never changes.
-- **An account with no password gets a set-password link, not `/signin`.**
-  Onboarding makes accounts without one, so `mailAlreadyRegistered` (both
-  sign-up and `POST /onboarding` use it) sends such an account a Better
-  Auth password-reset link instead: one use, an hour, to `/set-password`
-  (`lib/links.ts` `setPasswordPath`, with the address), which sets the
+  `/verify-email` (`authHref(VERIFY_EMAIL, next)`, errors too), which asks
+  for what `missingFromUser` says is missing, as above. The name is
+  `PATCH /me { displayName }` (`accounts.setDisplayName`: the account's
+  display name and Better Auth's `user.name` together, then the standings
+  cache is bumped); the handle never changes.
+- **Choosing or resetting a password is its own flow**, apart from the
+  above: an account with no password (onboarding makes them) that asks for
+  a reset (`requestPasswordReset`, from `/set-password`'s "send a new
+  link") gets a Better Auth reset link — one use, an hour, to
+  `/set-password` (`lib/links.ts` `setPasswordPath`), which sets the
   password with the token (Better Auth creates the missing credential) and
   signs in. `sendResetPassword` words its mail by whether a password
-  exists. A dead link offers a new one to the same address.
-  **The token decides whose password is set**, not the URL: the page names
-  that account (`resetTokenEmail`, read without consuming the token) and
-  signs in as it; `?email=` is only a hint for a code and for resending.
+  exists. **The token decides whose password is set**, not the URL: the
+  page names that account (`resetTokenEmail`, read without consuming the
+  token) and signs in as it; `?email=` is only a hint for resending.
   Someone signed in as a different account is warned, by address, that
   they will be switched to the link's account.
-  The passwordless mail also carries a 6-digit `forget-password` code
-  (minted with `createVerificationOTP`, like the confirmation code), because
-  it may reach someone on `/welcome`'s confirm step, which asks for one.
-  `ConfirmForm` tries a code as a confirmation code first and, on
-  `INVALID_OTP`, checks it as a password code
-  (`/email-otp/check-verification-otp`), going on to
-  `/set-password?email=…&code=…`, which sets it with
-  `/email-otp/reset-password`. Those two email-OTP routes are therefore on;
-  every route that _sends_ a code stays off.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is
@@ -829,9 +832,14 @@ unpaginated, and 5 s for that search.
   markets (the paper page lists them only when there is more than one).
 - **Reject also covers a withdrawal** (#19): a paper withdrawn or
   desk-rejected before the decision settles as `Reject`, never void. That is
-  `../research`'s call when it settles, and the market's `description` says
-  so to traders (the seed's `DECISION_RULE`); the platform still interprets
+  `../research`'s call when it settles, and the market's `contract` says so
+  to traders (the seed's `DECISION_CONTRACT`); the platform still interprets
   no label.
+- **A market carries a `contract`** (`markets.contract`, `POST /markets`):
+  Markdown saying in detail how it resolves, edge cases included. Opaque,
+  supplied whole by the creating client, shown on the market's page under
+  "Contract" and never interpreted here. `description` is the short blurb and
+  stays free for anything else.
 - **Outcomes are ordered best first, worst last, and the headline is
   `1 − P(last)`** (`lib/headline.ts`) — for a paper, accepted in any form.
   For a binary `[YES, NO]` market that is exactly P(YES), so binary markets
@@ -876,7 +884,7 @@ unpaginated, and 5 s for that search.
   set, counting only `APP_URL`'s host. Every hit's URL and referrer pass
   `lib/analytics.ts`: same-site URLs keep an **allowlist** of query
   parameters (browsing state), never a hash; other sites keep origin and
-  path. `/confirm?email=` is why. A page that puts anything personal in its
+  path. `/verify-email?email=` is why. A page that puts anything personal in its
   URL stays out by default; add a parameter to the list only if it is not.
   The hook is installed before the script is added, never a bare `<script>`.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
@@ -1001,7 +1009,8 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
 - **One question at a time**, each in `components/OnboardingCard`, the step
   in `?step=` so back works: which paper (search in `DEFAULT_MARKET_KIND`,
   the most traded open ones before anything is typed), the bet (the market's
-  own `TradeBox`), then name and email. No comment step: it was dropped to
+  own `TradeBox`), then the email alone, which goes on to `/verify-email` (the name and the
+  password come there, after confirming). No comment step: it was dropped to
   keep the way in short. A signed-in viewer's bet goes straight through the
   API and the flow ends at the paper. What the steps collect is client state; a reload
   falls back to the search.
@@ -1011,15 +1020,14 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `welcomeBetHref`), sized against the starting balance. The page re-checks
   it against the market (open, before `closes_at`, its outcome, within the
   starting balance) and otherwise falls back to the full flow. The steps
-  are then email, confirm; back from the email is the market's page. Any market works there, not only a paper's main one.
+  is then the email alone; back from it is the market's page. Any market works there, not only a paper's main one.
 - **A visitor's bet is stored, never placed, until they confirm**
   (`pending_bets`, one per Better Auth user, `server/onboarding.ts`).
   `POST /onboarding` makes a Better Auth user **with no credential** and
-  mails the usual link and code back to `/welcome?step=finish`. Confirming
-  creates the account and grant exactly as sign-up does; there is still no
-  account or reputation before it. `Finish` then asks for a password
-  (`POST /me/password`, Better Auth's server-only `setPassword`; forgot
-  password also works for a user without one) and places the bet as an
+  mails the usual link and code, landing on `/verify-email`. Confirming
+  creates the account and grant; there is still no account or reputation
+  before it. `Finish` (on `/verify-email`) then asks for a name (`PATCH /me`) and a password
+  (`POST /me/password`, Better Auth's server-only `setPassword`) and places the bet as an
   ordinary order: **the stake is kept, not the share count**, sized on the
   board then and bounded by its quote. Then `DELETE /me/pending-bet`.
   Another onboarding with the same unconfirmed address may replace it, so
@@ -1038,12 +1046,17 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   (`browser_hash`). Only where `choseHere` matches is it placed unasked;
   anywhere else — another device, or a bet someone else planted with your
   unconfirmed address — it is shown, saying so.
-- **Same answer whether or not the address is taken**, as for sign-up: a
-  confirmed address is mailed "sign in instead" and its bet is dropped,
-  never added to that account. Five mails per address a day, shared with
-  `POST /signup` (`signup-mail:<email>`), since the route is anonymous.
-- **`/welcome` comes first, once per browser.** `/signin` and `/signup`
-  redirect to it (keeping `?next=`) until the `welcomed` cookie is set,
-  which `/welcome` sets when shown; its intro links to both. The cookie is
+- **Same answer whether or not the address is taken**: a confirmed
+  address is mailed a sign-in link (the magic link, to `/verify-email`) and
+  the bet is stored for that account, to be placed on arrival: unasked only
+  where `choseHere`, else shown to place or skip, so a bet planted with
+  someone's address is never placed unseen. A new address confirms, then
+  `Finish` asks for a name and a password and places it. A returning
+  person's way in is the link, not a code: sign-in by code stays off. Five
+  mails per address a day (`signup-mail:<email>`), since the route is
+  anonymous.
+- **`/welcome` comes first, once per browser.** `/signin` redirects to it
+  (keeping `?next=`) until the `welcomed` cookie is set, which `/welcome`
+  sets when shown; its intro links back to sign-in. The cookie is
   a preference, not a credential, and is not `localStorage` because the
   server has to read it to redirect.

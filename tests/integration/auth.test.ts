@@ -30,9 +30,17 @@ afterAll(async () => {
   await closePool();
 });
 
-/** Sign up (`POST /signup`) without clicking the link. */
-async function signUpUnconfirmed(email: string, name = 'Pending Person', next?: string) {
-  return api('POST', '/signup', { body: { email, name, ...(next ? { next } : {}) } });
+/** Sign up (`POST /onboarding`, with a small bet) without clicking the link. */
+async function signUpUnconfirmed(email: string) {
+  return api('POST', '/onboarding', {
+    body: {
+      email,
+      marketId: fx.marketId,
+      outcomeId: fx.outcomeIds[0],
+      stakeMicro: '1000000',
+      seenOrderCount: 0,
+    },
+  });
 }
 
 /**
@@ -180,33 +188,27 @@ describe('sign-up', () => {
   it('signing up again with an unconfirmed address resends the code and link, and creates nothing', async () => {
     await signUpUnconfirmed('twice@example.org');
     clearDevOutbox();
-    const again = await signUpUnconfirmed('twice@example.org', 'Twice', '/papers/x');
+    const again = await signUpUnconfirmed('twice@example.org');
     expect(again.status).toBe(200); // indistinguishable from a fresh sign-up
     expect(await db.select().from(user).where(eq(user.email, 'twice@example.org'))).toHaveLength(1);
 
     const mail = devOutbox().find((m) => m.to === 'twice@example.org')!;
     const otp = codeFrom(mail.text);
-    // The link returns via /signin/continue, which asks for the password, then to /papers/x.
-    expect(mail.text).toContain(encodeURIComponent('/signin/continue?next=%2Fpapers%2Fx'));
+    // The link returns via /verify-email, which asks for the name and password.
+    expect(mail.text).toContain(encodeURIComponent('/verify-email'));
     expect((await confirmWithCode('twice@example.org', otp)).status).toBe(200);
   });
 
-  it('refuses a `next` off the site', async () => {
-    await signUpUnconfirmed('away@example.org', 'Away', 'https://evil.example/');
-    const mail = devOutbox().find((m) => m.to === 'away@example.org')!;
-    expect(mail.text).not.toContain('evil.example');
-  });
-
-  it('signing up again with a confirmed address mails its owner to sign in, and changes nothing', async () => {
+  it('signing up again with a confirmed address mails its owner a sign-in link, and changes nothing', async () => {
     await signUp('taken@example.org', 'Taken');
     clearDevOutbox();
-    const again = await signUpUnconfirmed('taken@example.org', 'Impostor');
+    const again = await signUpUnconfirmed('taken@example.org');
     expect(again.status).toBe(200);
     expect(devOutbox()).toEqual([
       expect.objectContaining({
         to: 'taken@example.org',
-        subject: 'You already have an acceptodds account',
-        text: expect.stringContaining('/signin'),
+        subject: expect.stringContaining('sign-in link'),
+        text: expect.stringContaining('magic-link'),
       }),
     ]);
     const [row] = await db.select().from(user).where(eq(user.email, 'taken@example.org'));
@@ -247,7 +249,7 @@ describe('sign-up', () => {
 
 describe('confirming with the code from the mail', () => {
   it('the code confirms the address, creates the trader with one grant, and signs in', async () => {
-    await signUpUnconfirmed('code@example.org', 'Code Person');
+    await signUpUnconfirmed('code@example.org');
     const code = codeFrom(devOutbox().find((m) => m.to === 'code@example.org')!.text);
 
     const res = await confirmWithCode('code@example.org', code);
@@ -295,7 +297,7 @@ describe('confirming with the code from the mail', () => {
     expect((await confirmWithCode('resend@example.org', second)).status).toBe(200);
   });
 
-  it('keeps every email-OTP route that sends a code, signs in or changes the address off', async () => {
+  it('keeps every email-OTP route but confirming by code off', async () => {
     await signUpUnconfirmed('off@example.org');
     for (const path of [
       '/email-otp/send-verification-otp',
@@ -304,6 +306,8 @@ describe('confirming with the code from the mail', () => {
       '/forget-password/email-otp',
       '/email-otp/request-email-change',
       '/email-otp/change-email',
+      '/email-otp/check-verification-otp',
+      '/email-otp/reset-password',
     ]) {
       const res = await authCall('POST', path, { body: { email: 'off@example.org', type: 'sign-in', otp: '123456' } });
       expect(res.status, path).toBe(404);
@@ -360,8 +364,8 @@ describe('a session on /api/v1', () => {
   });
 
   it('is rate limited per user', async () => {
-    // Three: sign-up's own POST /me/password spends the first.
-    process.env.API_RATE_LIMIT_BURST = '3';
+    // Four: sign-up's own PATCH /me and POST /me/password spend the first two.
+    process.env.API_RATE_LIMIT_BURST = '4';
     process.env.API_RATE_LIMIT_PER_SECOND = '0.001';
     const cookie = await signUp('busy@example.org');
     expect((await api('GET', '/me', { cookie })).status).toBe(200);

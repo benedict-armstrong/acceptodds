@@ -14,7 +14,7 @@ import {
   type Market,
   type Outcome,
 } from '@/db/schema';
-import { headlinePrice, openingHeadline } from '@/lib/headline';
+import { headlinePrice } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
 import { percentAhead } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
@@ -585,7 +585,8 @@ export async function priceHistory(
     .where(eq(outcomes.marketId, market.id))
     .orderBy(asc(outcomes.ordinal));
   const ordinalOf = new Map(outcomeRows.map((o) => [o.id, o.ordinal]));
-  const shares = outcomeRows.map(() => 0n);
+  // The market's opening vector (zeros unless it opened at a prior), then the fills.
+  const shares = outcomeRows.map((o) => o.openingSharesMicro);
 
   const points: HistoryView['points'] = [];
   if (after) {
@@ -600,7 +601,7 @@ export async function priceHistory(
         ),
       )
       .groupBy(orders.outcomeId);
-    for (const row of base) shares[ordinalOf.get(row.outcomeId)!] = BigInt(row.total);
+    for (const row of base) shares[ordinalOf.get(row.outcomeId)!] += BigInt(row.total);
   } else {
     points.push({ at: market.createdAt, prices: prices(shares.map(microToFloat), market.b) });
   }
@@ -1277,7 +1278,7 @@ export async function sparklines(
      order by o.market_id, o.created_at, o.id
   `);
   const byMarket = new Map(wanted.map((v) => [v.market.id, v]));
-  const shares = new Map(wanted.map((v) => [v.market.id, v.outcomes.map(() => 0n)]));
+  const shares = new Map(wanted.map((v) => [v.market.id, v.outcomes.map((o) => o.openingSharesMicro)]));
   for (const r of result.rows) {
     const v = byMarket.get(r.market_id)!;
     const q = shares.get(r.market_id)!;
@@ -1288,8 +1289,17 @@ export async function sparklines(
   }
   for (const [id, list] of out) {
     // A market with fewer fills than asked for is shown from its opening price.
-    if (list.length < points) list.unshift(openingHeadline(byMarket.get(id)!.outcomes.length));
-    else out.set(id, list.slice(-points));
+    if (list.length < points) {
+      const v = byMarket.get(id)!;
+      list.unshift(
+        headlinePrice(
+          prices(
+            v.outcomes.map((o) => microToFloat(o.openingSharesMicro)),
+            v.market.b,
+          ),
+        ),
+      );
+    } else out.set(id, list.slice(-points));
   }
   return out;
 }

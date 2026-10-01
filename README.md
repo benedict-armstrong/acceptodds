@@ -57,7 +57,7 @@ src/
   server/accounts.ts accounts, balances, portfolio
   server/events.ts   append-only log of things that leave no other trace
   server/auth.ts     request -> account: API key or session cookie, scopes, trading gate
-  server/better-auth.ts Better Auth: email+password sign-up, apiKey plugin
+  server/better-auth.ts Better Auth: email-only sign-up (onboarding), apiKey plugin
   server/tokens.ts   API tokens on the apiKey plugin: mint, verify, list, revoke
   server/institution-domains.ts who may sign up: the email domain allowlist
   server/mail.ts     Resend, or a dev outbox printed to the log
@@ -66,7 +66,7 @@ src/
   server/views.ts    read models for the API (never writes)
   server/api/        the /api/v1 contract (Zod), handlers, OpenAPI, errors
   app/api/v1/        route files; each only re-exports a handler
-  app/               the UI: / (markets), /markets/[slug], /portfolio, /leaderboard, /signin, /signup
+  app/               the UI: / (markets), /markets/[slug], /portfolio, /leaderboard, /welcome, /signin, /verify-email
   components/        PriceChart, Sparkline (plain SVG)
   server/comments.ts market discussion, anonymous but for each author's stake
   server/follows.ts  following (starring) listings; server/digest.ts the morning email
@@ -108,14 +108,14 @@ npm run dev                 # http://localhost:3000, /healthz checks the databas
 `/api/v1/openapi.json`, which is generated from the same Zod schemas the
 handlers validate with.
 
-Humans sign up at `/api/auth` with email and password, **only from an email
+Humans sign up at `/welcome` with an email alone (`POST /api/v1/onboarding`), **only from an email
 domain on the institution allowlist** (below); anything else is refused with
 `422 EMAIL_DOMAIN_NOT_ALLOWED` before a user exists or a mail is sent.
 Confirming the address is the institutional verification: it creates their
 trader account, grants `STARTING_BALANCE_MICRO` as a `signup` ledger entry,
 and sets `verified_at`, so they can trade straight away. Nothing is granted
 before confirmation. The confirmation mail carries both a link and a 6-digit
-code (`POST /api/auth/email-otp/verify-email`, entered at `/confirm`); either
+code (`POST /api/auth/email-otp/verify-email`, entered at `/verify-email`); either
 confirms and signs in, and both last an hour. A signed-in user mints their own `read`/`trade` tokens
 with `POST /api/v1/me/tokens`. A signed-in user whose email is in
 `ADMIN_EMAILS` (comma-separated) can also create, close and settle markets.
@@ -165,8 +165,8 @@ sites; every `analytics.<zone>` reaches it). Set `UMAMI_URL`
 (`https://analytics.acceptodds.com`) and `UMAMI_WEBSITE_ID` (from the Umami
 UI) in `.env.production` and restart; either empty turns it off. It counts page
 views only on `APP_URL`'s host, is cookieless, and records URLs through an
-allowlist of query parameters (`lib/analytics.ts`), so `/confirm?email=…` is
-recorded as `/confirm`.
+allowlist of query parameters (`lib/analytics.ts`), so `/verify-email?email=…` is
+recorded as `/verify-email`.
 
 ### Who can sign up: `config/institution-domains.json`
 

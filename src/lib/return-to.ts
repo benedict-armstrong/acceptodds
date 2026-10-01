@@ -1,12 +1,15 @@
 /**
- * Where sign-in, sign-up and email confirmation send a person back to: the
+ * Where sign-in and email confirmation send a person back to: the
  * page they were on (issue #15). Carried as `?next=` and as Better Auth's
  * `callbackURL`, so it is attacker-chosen and must stay on this site — a
  * same-origin path, never `//host` or `/\host` (both are other hosts to a
  * browser), and never an auth page, which would loop.
  */
 
-const AUTH_PAGES = ['/signin', '/signup', '/confirm'];
+/** Where every mail's link and every typed code land: it asks for what the account lacks, then goes on. */
+export const VERIFY_EMAIL = '/verify-email';
+
+const AUTH_PAGES = ['/signin', VERIFY_EMAIL];
 
 export function safeReturnTo(raw: string | string[] | null | undefined): string {
   const path = Array.isArray(raw) ? raw[0] : raw;
@@ -19,9 +22,9 @@ export function safeReturnTo(raw: string | string[] | null | undefined): string 
   return path;
 }
 
-/** `/signin`, `/signup` or `/confirm`, returning to `returnTo` afterwards. */
+/** `/signin` or `/verify-email`, returning to `returnTo` afterwards. */
 export function authHref(
-  page: '/signin' | '/signup' | '/confirm',
+  page: '/signin' | typeof VERIFY_EMAIL,
   returnTo: string,
   extra: Record<string, string> = {},
 ): string {

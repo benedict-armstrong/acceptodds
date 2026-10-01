@@ -12,9 +12,7 @@ import { CLIENT_IP_HEADER } from './api/http';
 import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
 import { consume, type RateLimitConfig } from './ratelimit';
-import { setPasswordPath } from '@/lib/links';
 import { sendMail } from './mail';
-import { siteUrl } from './share';
 
 /**
  * Better Auth, mounted in-app with its tables in our Postgres
@@ -22,12 +20,12 @@ import { siteUrl } from './share';
  * verification and API keys. It does **not** own traders: `accounts` is ours,
  * one row per Better Auth `user`.
  *
- * Sign-up is email + password, and only from an address whose domain is on
+ * Sign-up is by email alone (`server/onboarding.ts`), and only from an address whose domain is on
  * the institution allowlist (`server/institution-domains.ts`). The trader
  * account — and with it the starting balance — is created only when that
  * address is **confirmed**, which is also what marks the account verified.
  * One mail confirms it two ways: a link, and a 6-digit code typed into
- * `/confirm` in the tab the person signed up in (issue #15), so they are never
+ * `/verify-email` in the tab the person signed up in (issue #15), so they are never
  * stuck on a "check your inbox" page or sent to a new tab.
  *
  * Nothing outside `server/auth.ts` should ask this module who a request is.
@@ -65,21 +63,21 @@ const MAGIC_LINK_TTL_SECONDS = 15 * 60;
 const MAGIC_LINK_MAIL_BUDGET: RateLimitConfig = { burst: 5, perSecond: 5 / 86_400 };
 
 /**
- * The email-OTP plugin's routes that stay off. It is here for the codes in
- * two mails: the confirmation mail, and the "choose a password" mail to an
- * account that has none (`sendResetPassword`). Both are only ever sent with
- * their link, from those two callbacks, so every route that *sends* a code
- * is off — there is one resend path per mail, not two. Sign-in by code
- * (which would also sign up, past the password) and email change are off
- * too. What stays on: confirming by code, checking a password code (to go
- * on to `/set-password` with it) and setting the password with it. Every
- * code is hashed, an hour, three wrong guesses.
+ * The email-OTP plugin's routes that stay off. It is here for one thing: the
+ * code in the confirmation mail, typed at `/verify-email`. That code is only
+ * ever sent with its link, from `sendVerificationEmail`, so every route that
+ * *sends* a code is off — one resend path, not two. Sign-in by code (which
+ * would also sign up, past the password), email change, and the password
+ * codes are off too. What stays on: confirming by code. Every code is
+ * hashed, an hour, three wrong guesses.
  */
 const DISABLED_OTP_PATHS = [
   '/email-otp/send-verification-otp',
   '/sign-in/email-otp',
   '/email-otp/request-password-reset',
   '/forget-password/email-otp',
+  '/email-otp/check-verification-otp',
+  '/email-otp/reset-password',
   '/email-otp/request-email-change',
   '/email-otp/change-email',
 ];
@@ -95,7 +93,7 @@ export async function hasPassword(userId: string, database: Database = getDb()):
 
 /**
  * What a signed-in user still lacks: a name (an account made by a sign-in
- * link has none) and a password. `/signin/continue` asks for these.
+ * link has none) and a password. `/verify-email` asks for these.
  */
 export async function missingFromUser(
   userId: string,
@@ -140,7 +138,7 @@ const AUTH_MAIL_BUDGET: RateLimitConfig = { burst: 10, perSecond: 10 / 86_400 };
 
 /**
  * Drop the passwords and sessions a user had before proving the address
- * (`afterEmailVerification`). Sign-up no longer takes a password, so this
+ * (`afterEmailVerification`). Sign-up takes no password, so this
  * only finds one set by a sign-up from before that, or by someone else.
  */
 async function revokeUnprovenAccess(userId: string, database: Database): Promise<void> {
@@ -148,38 +146,6 @@ async function revokeUnprovenAccess(userId: string, database: Database): Promise
     .delete(authSchema.account)
     .where(and(eq(authSchema.account.userId, userId), eq(authSchema.account.providerId, 'credential')));
   await database.delete(authSchema.session).where(eq(authSchema.session.userId, userId));
-}
-
-type RequestReset = (body: { email: string; redirectTo: string }) => Promise<unknown>;
-
-/**
- * To an address that already has a confirmed account and was just used to
- * sign up again: only the inbox's owner learns it is taken. An account made
- * by onboarding may have no password yet, and a link to `/signin` would be
- * no use to it: it gets a password-reset link instead, which sets its first
- * password and signs it in (`sendResetPassword`, `app/set-password`).
- */
-export async function mailAlreadyRegistered(email: string, database: Database = getDb()): Promise<void> {
-  await mailRegistered(email, database, (body) => getAuth().api.requestPasswordReset({ body }));
-}
-
-async function mailRegistered(email: string, database: Database, requestReset: RequestReset): Promise<void> {
-  const [row] = await database
-    .select({ id: authSchema.user.id })
-    .from(authSchema.user)
-    .where(eq(authSchema.user.email, email));
-  if (row && !(await hasPassword(row.id, database))) {
-    await requestReset({ email, redirectTo: setPasswordPath(email) });
-    return;
-  }
-  if (!(await authMailBudget(email))) return;
-  await sendMail({
-    to: email,
-    subject: 'You already have an acceptodds account',
-    text:
-      `Someone tried to sign up with this address, which already has an account. If it was you, sign in instead:\n\n` +
-      `${siteUrl()}/signin\n\nIf not, ignore this; nothing has changed.`,
-  });
 }
 
 export function createAuth(database: Database) {
@@ -198,30 +164,20 @@ export function createAuth(database: Database) {
       // after a stolen session actually locks the thief out (the person is
       // signed in afresh by `/set-password`).
       revokeSessionsOnPasswordReset: true,
-      // An account with no password yet (made by onboarding) is told so, and
-      // gets a code as well as the link: it may be on a page asking for one
-      // (`/welcome`'s last step), where the code leads to `/set-password`
-      // too. Each mail rotates the code. Either way it sets the first password.
+      // An account with no password yet (made by onboarding) is told so; either
+      // way the link sets one (`/set-password`) and signs in.
       sendResetPassword: async ({ user, url }) => {
         // Silently, over budget: saying so would tell anyone which addresses
         // have accounts (Better Auth answers the same for an unknown one).
         if (!(await authMailBudget(user.email))) return;
-        if (await hasPassword(user.id, database)) {
-          await sendMail({
-            to: user.email,
-            subject: 'Reset your acceptodds password',
-            text: `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
-          });
-          return;
-        }
-        const code = await auth.api.createVerificationOTP({ body: { email: user.email, type: 'forget-password' } });
+        const first = !(await hasPassword(user.id, database));
         await sendMail({
           to: user.email,
-          subject: `${code} is your acceptodds sign-in code`,
-          text:
-            `You already have an acceptodds account, but no password yet. Enter the code ${code} where you were asked ` +
-            `for one, or open this link, to choose a password and sign in:\n\n${url}\n\n` +
-            `Each works once, for an hour. If you did not ask for this, ignore it; nothing has changed.`,
+          subject: first ? 'Choose your acceptodds password' : 'Reset your acceptodds password',
+          text: first
+            ? `You have an acceptodds account but no password yet. Open this link to choose one and sign in:\n\n${url}\n\n` +
+              `It works once, for an hour. If you did not ask for this, ignore it; nothing has changed.`
+            : `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
         });
       },
     },
@@ -229,7 +185,7 @@ export function createAuth(database: Database) {
       // Signing in unconfirmed with the right password — only a user from
       // before sign-up stopped taking passwords can — sends a fresh code and
       // link. Confirming then drops that password (below), and
-      // `/signin/continue` asks for one.
+      // `/verify-email` asks for one.
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
       expiresIn: CONFIRMATION_TTL_SECONDS,
@@ -289,8 +245,8 @@ export function createAuth(database: Database) {
       },
     },
 
-    // Sign-up is ours (`server/signup.ts`, `POST /signup`): it takes no
-    // password, so Better Auth's, which does, is off.
+    // Sign-up is ours (`server/onboarding.ts`): it takes no password, so
+    // Better Auth's, which does, is off.
     disabledPaths: ['/sign-up/email', ...DISABLED_OTP_PATHS],
 
     advanced: {
@@ -306,7 +262,7 @@ export function createAuth(database: Database) {
       // Sign in by a link in the mail, from `/signin`. An address with no
       // account gets one when the link is opened — confirmed, since the link
       // proves the inbox, with no name and no password, which
-      // `/signin/continue` then asks for. The allowlist is checked here,
+      // `/verify-email` then asks for. The allowlist is checked here,
       // before any mail, as well as in the `user.create.before` hook, so an
       // unlisted address is refused on the sign-in page, not by a dead link.
       // The answer is otherwise the same whether or not the address has an

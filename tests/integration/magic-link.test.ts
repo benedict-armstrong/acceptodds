@@ -8,7 +8,7 @@ import { api, authCall, cookieFrom, signUp } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO } from './helpers';
 
 const db = getDb();
-const LANDING = '/signin/continue';
+const LANDING = '/verify-email';
 
 beforeEach(async () => {
   await resetDatabase();
