@@ -7,6 +7,7 @@ import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
+import { ViewCount } from '@/components/ViewCount';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { marketHeadline, shareTitleLine } from '@/lib/headline';
@@ -98,6 +99,7 @@ export default async function PaperPage({
           </div>
         )}
         <div className="mt-2 flex items-center justify-center gap-4">
+          <ViewCount listingId={listing.id} views={listing.viewCount} />
           {viewer && (
             <FollowStar
               listingId={listing.id}

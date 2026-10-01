@@ -62,6 +62,7 @@ export function presentListing(v: ListingView): z.input<typeof S.Listing> {
     kind: l.kind,
     createdAt: toIso(l.createdAt),
     followers: v.followers,
+    views: l.viewCount,
     markets: v.markets.map(presentMarket),
   };
 }

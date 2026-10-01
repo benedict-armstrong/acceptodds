@@ -181,6 +181,7 @@ export const Listing = z
   .object({
     ...ListingFields,
     followers: z.number().int().min(0).meta({ description: 'How many accounts follow this listing. Never who.' }),
+    views: z.number().int().min(0).meta({ description: 'Unique viewers per day, summed over every day so far.' }),
     markets: z.array(Market).meta({
       description: 'Its markets, drafts excluded, by `listingRank` ascending: the first is the main market.',
     }),
@@ -245,6 +246,13 @@ export const FollowState = z
     followers: z.number().int().min(0),
   })
   .meta({ id: 'FollowState' });
+
+export const ViewState = z
+  .object({
+    listingId: Id,
+    views: z.number().int().min(0).meta({ description: 'Unique viewers per day, summed over every day so far.' }),
+  })
+  .meta({ id: 'ViewState' });
 
 export const HeadlineMove = z
   .object({

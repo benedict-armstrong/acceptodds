@@ -19,6 +19,7 @@ import {
   updateGroup,
 } from '../groups';
 import { upsertListing } from '../listings';
+import { countView } from '../view-counter';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
@@ -44,7 +45,7 @@ import {
   resolveMarket,
 } from '../views';
 import { ApiError } from './errors';
-import { parseBody, parseParam, parseQuery, respond, route, toIso, toIsoOrNull } from './http';
+import { clientIp, parseBody, parseParam, parseQuery, respond, route, toIso, toIsoOrNull } from './http';
 import {
   presentFill,
   presentFollowed,
@@ -156,6 +157,19 @@ export const getListing = route(async (req, params) => {
   const view = await listingView(listing);
   events.log('listing.read', { accountId: accountIdOf(principal) });
   return respond(S.Listing, presentListing(view), { principal });
+});
+
+/**
+ * Count the caller as having viewed a listing today (unique per visitor per
+ * day, `server/view-counter.ts`). Public and anonymous, sent by the paper page
+ * from the browser; nothing about the visitor is stored but a daily hash.
+ */
+export const postListingView = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const views = await countView(listing.id, clientIp(req), req.headers.get('user-agent'));
+  if (views === null) throw new ApiError(404, 'not_found', `no listing ${listing.id}`);
+  return respond(S.ViewState, { listingId: listing.id, views }, { principal });
 });
 
 /** A listing's bibliography and the listings citing it (#38). */

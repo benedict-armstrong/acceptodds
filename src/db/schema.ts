@@ -121,6 +121,8 @@ export const listings = pgTable(
       .default(sql`'[]'::jsonb`),
     /** Opaque to the platform, like `markets.kind`. */
     kind: text('kind'),
+    /** Cache of the unique viewers per day, summed (`listing_views`). Written only by `server/view-counter.ts`. */
+    viewCount: integer('view_count').notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [
@@ -621,6 +623,25 @@ export const listingFollows = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.accountId, t.listingId] }), index('listing_follows_listing_idx').on(t.listingId)],
+);
+
+/**
+ * Who looked at a listing today, so that a visitor counts once a day
+ * (`server/view-counter.ts`). `visitor` is an HMAC of the UTC day, the client
+ * IP and user agent under a server secret: it cannot be reversed to an
+ * address, and, the day being inside it, cannot link one day's visitor to the
+ * next. Only today's and yesterday's rows are kept; `listings.view_count`
+ * is what lasts. A cache of reads, not a source of truth, so like `events` it
+ * has no foreign keys and can never take a lock on a row anything else holds.
+ */
+export const listingViews = pgTable(
+  'listing_views',
+  {
+    listingId: uuid('listing_id').notNull(),
+    day: date('day', { mode: 'string' }).notNull(),
+    visitor: text('visitor').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.listingId, t.day, t.visitor] }), index('listing_views_day_idx').on(t.day)],
 );
 
 /**

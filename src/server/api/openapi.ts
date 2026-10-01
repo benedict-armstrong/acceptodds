@@ -578,6 +578,20 @@ export function buildRegistry(): OpenAPIRegistry {
     );
   }
 
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/listings/{id}/view',
+      tags: ['listings'],
+      summary: 'Count a view of a listing',
+      description:
+        'Public. Counts the caller once per day: the visitor is a daily hash of IP and user agent, never stored in the clear. Sent by the paper page from the browser; a bot has no reason to call it.',
+      request: { params: listingIdParam },
+      ok: { status: 200, schema: S.ViewState, description: 'The listing’s views after this one.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
   for (const method of ['put', 'delete'] as const) {
     r.registerPath(
       op({

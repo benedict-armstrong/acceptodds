@@ -763,6 +763,20 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - The feed (papers sharing citations with what a trader follows or holds)
   is not built yet.
 
+### Views
+
+- **A paper's views are unique viewers per day, summed** (`listings.view_count`,
+  `listing_views`, written only by `server/view-counter.ts`). A visitor is an
+  HMAC of the UTC day, IP (`clientIp()`) and user agent under
+  `BETTER_AUTH_SECRET`: no address is stored, and the day inside the hash means
+  nobody can be followed from one day to the next. One statement inserts the
+  row and bumps the cache only when the row was new. Only the last two days'
+  rows are kept. Like `events`, no foreign keys and not a source of truth.
+- **Counted by a beacon, not on render**: `components/ViewCount` POSTs
+  `/api/v1/listings/{id}/view` (anonymous, `credentials: 'omit'`), so a page
+  Cloudflare cached still counts and a crawler without JS does not. Shown on
+  the paper page and as `views` on the listing. Unlisted markets have no count.
+
 ### Following and the morning digest (#9)
 
 - **Only listings can be followed** (`listing_follows`, pk account + listing,

@@ -21,6 +21,7 @@ import * as settleRoute from '@/app/api/v1/markets/[id]/settle/route';
 import * as listingsRoute from '@/app/api/v1/listings/route';
 import * as listingRoute from '@/app/api/v1/listings/[id]/route';
 import * as listingFollowRoute from '@/app/api/v1/listings/[id]/follow/route';
+import * as listingViewRoute from '@/app/api/v1/listings/[id]/view/route';
 import * as listingCitationsRoute from '@/app/api/v1/listings/[id]/citations/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
 import * as groupsRoute from '@/app/api/v1/groups/route';
@@ -72,6 +73,7 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/listings', listingsRoute],
   ['/listings/[id]', listingRoute],
   ['/listings/[id]/follow', listingFollowRoute],
+  ['/listings/[id]/view', listingViewRoute],
   ['/listings/[id]/citations', listingCitationsRoute],
   ['/leaderboard', leaderboardRoute],
   ['/groups', groupsRoute],
