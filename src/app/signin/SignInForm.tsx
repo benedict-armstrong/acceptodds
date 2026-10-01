@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 import { rememberPending } from '@/lib/pending-confirmation';
+import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 
 /**
@@ -43,6 +44,7 @@ export function SignInForm({ next }: { next: string }) {
     });
     setBusy(false);
     if (error) {
+      track('signin_link_refused', { reason: String(error.code ?? error.status) });
       setError(
         error.code === 'EMAIL_DOMAIN_NOT_ALLOWED'
           ? 'That address is not at an institution on our list.'
@@ -52,6 +54,7 @@ export function SignInForm({ next }: { next: string }) {
       );
       return;
     }
+    track('signin_link_requested');
     setLinkSent(address);
   }
 
@@ -70,6 +73,7 @@ export function SignInForm({ next }: { next: string }) {
         });
         if (error) {
           setBusy(false);
+          track('signin_failed', { reason: String(error.code ?? error.status) });
           if (error.code === 'EMAIL_NOT_VERIFIED') {
             rememberPending({ email: address, next });
             router.push(authHref(VERIFY_EMAIL, next, { email: address, resent: '1' }));
@@ -78,6 +82,7 @@ export function SignInForm({ next }: { next: string }) {
           setError(error.message ?? 'Could not sign in.');
           return;
         }
+        track('signin_succeeded');
         router.push(next);
         router.refresh();
       }}

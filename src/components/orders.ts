@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { rep, REP, shares } from '@/lib/format';
+import { track } from '@/lib/track';
 
 /** What the order endpoints' error codes mean, to a person. */
 export const MESSAGES: Record<string, string> = {
@@ -64,10 +65,12 @@ export function useOrder(marketId: string, onFilled: () => void) {
             : `staked ${rep(c)} ${REP} on ${label}: pays ${rep(BigInt(sharesMicro))} ${REP} if it wins.`,
         };
         idempotencyKey.current = null;
+        track('order_placed', { side: sell ? 'sell' : 'buy', first: !!body.firstTrade });
         if (body.firstTrade) window.dispatchEvent(new Event(FIRST_TRADE_EVENT));
         onFilled();
         router.refresh(); // the balance in the header
       } else {
+        track('order_refused', { reason: String(body.error?.code ?? res.status) });
         result = { ok: false, text: MESSAGES[body.error?.code] ?? body.error?.message ?? 'Something went wrong.' };
         // A refused order is final; the next attempt is a new order.
         if (res.status !== 429) idempotencyKey.current = null;

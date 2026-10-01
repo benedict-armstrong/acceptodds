@@ -9,6 +9,7 @@ import { authClient } from '@/lib/auth-client';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import { welcomeHref } from '@/lib/onboarding';
+import { track } from '@/lib/track';
 
 const field =
   'w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base';
@@ -41,6 +42,7 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
     setNote(null);
     const { error } = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp: code });
     if (error) {
+      track('code_failed', { reason: String(error.code ?? error.status) });
       setBusy(false);
       setCode(''); // ready for the next attempt, typed or pasted
       setNote({
@@ -54,6 +56,7 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
       });
       return;
     }
+    track('code_confirmed');
     clearPending();
     router.refresh();
   }
@@ -71,6 +74,7 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
       setNote({ ok: false, text: error.message ?? 'Could not send a new code.' });
       return;
     }
+    track('code_resent');
     rememberPending({ email: email.trim(), next });
     setCode('');
     setNote({ ok: true, text: 'Sent. Only the newest code works.' });

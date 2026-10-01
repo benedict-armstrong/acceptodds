@@ -15,6 +15,7 @@ import { marketHeadline } from '@/lib/headline';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
 import { rememberPending } from '@/lib/pending-confirmation';
+import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import type * as S from '@/server/api/schemas';
 import { publicJson } from '../markets/[slug]/MarketLive';
@@ -326,9 +327,13 @@ function EmailStep({
           }),
         }).catch(() => null);
         setBusy(false);
-        if (res?.ok) return onSent(address);
+        if (res?.ok) {
+          track('signup_submitted');
+          return onSent(address);
+        }
         const body = await res?.json().catch(() => null);
         const code = body?.error?.code;
+        track('signup_refused', { reason: res ? String(code ?? res.status) : 'network' });
         setError(
           code === 'email_domain_not_allowed'
             ? 'That address is not at an institution on our list.'

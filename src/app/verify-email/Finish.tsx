@@ -8,6 +8,7 @@ import { OnboardingCard } from '@/components/OnboardingCard';
 import { useOrder } from '@/components/orders';
 import { sharesForStake } from '@/components/quote';
 import { ui } from '@/components/ui';
+import { track } from '@/lib/track';
 import type * as S from '@/server/api/schemas';
 import { publicJson } from '../markets/[slug]/MarketLive';
 
@@ -76,6 +77,12 @@ export function Finish({
   const [auto, setAuto] = useState<'auto' | 'moved' | null>(unmoved ? 'auto' : null);
   const [placed, setPlaced] = useState<string | null>(null);
   const started = useRef(false);
+
+  // Signed in and confirmed, with something still owed: where the next drop-off would be.
+  useEffect(() => {
+    track('finish_shown', { bet: bet !== null, needsName, needsPassword });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!bet || !unmoved || started.current) return;
@@ -161,6 +168,7 @@ export function Finish({
   }
 
   async function leave(to: string) {
+    track('finish_completed', { bet: bet !== null });
     if (bet) await fetch('/api/v1/me/pending-bet', { method: 'DELETE' }).catch(() => null);
     router.push(to);
     router.refresh();

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { track } from '@/lib/track';
 import { StarIcon } from './icons';
 
 /**
@@ -38,6 +39,7 @@ export function FollowStar({
       const res = await fetch(`/api/v1/listings/${listingId}/follow`, { method: following ? 'DELETE' : 'PUT' });
       if (!res.ok) throw new Error(String(res.status));
       const body = await res.json();
+      track('follow_toggled', { following: body.following });
       setFollowing(body.following);
       setFollowers(body.followers);
       router.refresh();

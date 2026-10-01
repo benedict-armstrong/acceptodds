@@ -40,7 +40,7 @@ export function InvitePrompt({ siteName }: { siteName: string }) {
     fetch('/api/v1/me/groups')
       .then((r) => (r.ok ? r.json() : { groups: [] }))
       .then((b) => setGroups(b.groups))
-      .catch(() => { });
+      .catch(() => {});
   }, [open]);
 
   const origin = typeof window === 'undefined' ? '' : window.location.origin;

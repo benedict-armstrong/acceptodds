@@ -65,6 +65,7 @@ export function SharePanel({
           copied="copied"
           className={ui.linkBtn}
           title="Copy a BibTeX entry"
+          shareTarget="paper"
         />
         <PopoverTrigger
           className="flex cursor-pointer items-center px-1 text-muted hover:text-accent narrow:px-2"
@@ -81,8 +82,8 @@ export function SharePanel({
           <img src={badgeUrl} alt={`${kind ?? 'acceptodds'} odds`} />
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
-          <CopyButton value={markdown} label="Copy Markdown" />
-          <CopyButton value={html} label="Copy HTML" />
+          <CopyButton value={markdown} label="Copy Markdown" shareTarget="badge" />
+          <CopyButton value={html} label="Copy HTML" shareTarget="badge" />
         </div>
       </PopoverContent>
     </Popover>

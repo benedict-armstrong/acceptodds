@@ -24,6 +24,8 @@ export const ANALYTICS_PARAMS: ReadonlySet<string> = new Set([
   'around',
   'institution',
   'resent',
+  'step',
+  'error',
 ]);
 
 /** `url` as analytics may record it; `origin` is this site's. Unparseable input becomes ''. */

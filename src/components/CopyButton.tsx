@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import { track, type EventData } from '@/lib/track';
 import { ui } from './ui';
 
 /** Copies `value`; false when there is no clipboard (an insecure context), so the caller can show it instead. */
@@ -25,6 +26,7 @@ export function CopyButton({
   className = ui.btn({ ghost: true, inline: true }),
   title,
   onFail,
+  shareTarget,
 }: {
   value: string;
   label: ReactNode;
@@ -32,6 +34,8 @@ export function CopyButton({
   className?: string;
   title?: string;
   onFail?: () => void;
+  /** Counts a successful copy as a share of this kind (`share_copied`); a plain value, so Server Components can pass it. */
+  shareTarget?: EventData['target'];
 }) {
   const [done, setDone] = useState(false);
   return (
@@ -42,6 +46,7 @@ export function CopyButton({
       onClick={async () => {
         if (await copyText(value)) {
           setDone(true);
+          if (shareTarget) track('share_copied', { target: shareTarget });
           setTimeout(() => setDone(false), 1500);
         } else {
           onFail?.();

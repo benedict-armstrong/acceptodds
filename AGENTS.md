@@ -899,6 +899,11 @@ unpaginated, and 5 s for that search.
   path. `/verify-email?email=` is why. A page that puts anything personal in its
   URL stays out by default; add a parameter to the list only if it is not.
   The hook is installed before the script is added, never a bare `<script>`.
+  **Product events** go through `track()` in `lib/track.ts` (typed names, and
+  data limited to codes and flags: never an email, handle, name, id or amount),
+  for Umami funnels: `signup_submitted/refused`, `signin_*`, `code_*`,
+  `finish_shown/completed`, `order_placed/refused`, `follow_toggled`,
+  `share_copied`. `?step=` and `?error=` are allowlisted for the same funnels.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** wipes every table, then gives a venue of invented
