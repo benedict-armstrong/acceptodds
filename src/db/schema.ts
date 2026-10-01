@@ -167,6 +167,8 @@ export const listingReferences = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     year: integer('year'),
+    /** Where it appeared, as the bibliography sets it ("International Conference on Learning Representations"). Opaque. */
+    venue: text('venue'),
     /** http(s) only (checked at the API). */
     url: text('url'),
     citedSlug: text('cited_slug'),

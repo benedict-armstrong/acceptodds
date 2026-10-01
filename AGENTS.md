@@ -739,7 +739,7 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 ### Citations (#38)
 
 - **A listing's bibliography is supplied, never extracted.** `../research`
-  sends `references: [{ title, authors?, year?, url?, slug? }]` with
+  sends `references: [{ title, authors?, year?, venue?, url?, slug? }]` with
   `POST /listings`, replaced whole like every other field (left out, it is
   cleared). Stored in `listing_references`, written only by
   `server/listings.ts` in the upsert's transaction.
@@ -748,9 +748,13 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   lookup on `cited_slug`'s index. A listing citing itself is left out
   both ways.
 - `GET /listings/{id}/citations` gives both, each listed entry with its
-  main market; the paper page sets them as back matter (`References`,
-  then "Cited by", `components/Citations`), a listed entry linking to its
-  page with its odds in its likelihood colour. Prices, never values.
+  main market; the paper page sets them as back matter, References then
+  "Cited by" (`components/Citations`), **as ICLR sets a bibliography**
+  (`lib/bibliography.ts`, `Bibliography`): unnumbered, author–year, every
+  author ("A, B, and C"), alphabetical by first surname then year, venue
+  in italics, hanging indent. A listed entry links to its page with its
+  odds in its likelihood colour. Prices, never values. `References`, the
+  numbered list, stays for pages that cite in the text (`Cite`).
 - The feed (papers sharing citations with what a trader follows or holds)
   is not built yet.
 

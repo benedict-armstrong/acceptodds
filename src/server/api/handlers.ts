@@ -715,6 +715,7 @@ export const postListing = route(async (req) => {
       title: r.title,
       authors: r.authors ?? [],
       year: r.year ?? null,
+      venue: r.venue ?? null,
       url: r.url ?? null,
       citedSlug: r.slug ?? null,
     })),

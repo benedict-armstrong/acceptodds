@@ -1,48 +1,57 @@
 import Link from 'next/link';
+import { authorList, bibOrder } from '@/lib/bibliography';
 import { pct } from '@/lib/format';
 import { headlineLabel, marketHeadline } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type { CitedListing, ListingCitations } from '@/server/views';
 import { MathText } from './MathText';
-import { References } from './References';
+import { Bibliography } from './References';
 
 /**
  * A paper's back matter (#38): its bibliography, as `../research` supplied
- * it, and the papers here that cite it. An entry that is a paper here links
- * to its page and shows its odds — the main market's headline, or the
- * decision once settled — in its likelihood colour.
+ * it, and the papers here that cite it, both set as ICLR sets references
+ * (`lib/bibliography.ts`). An entry that is a paper here links to its page
+ * and shows its odds — the main market's headline, or the decision once
+ * settled — in its likelihood colour.
  */
 export function Citations({ citations }: { citations: ListingCitations }) {
-  const { references, citedBy, citedByTotal } = citations;
+  const { citedBy, citedByTotal } = citations;
+  const references = bibOrder(
+    citations.references.map(({ reference: r, cited }) => ({
+      key: r.position,
+      authors: r.authors.length > 0 ? r.authors : (cited?.listing.authors ?? []),
+      title: r.title,
+      year: r.year,
+      venue: r.venue,
+      url: r.url,
+      cited,
+    })),
+  );
+  const citing = bibOrder(
+    citedBy.map((c) => ({
+      key: c.listing.id,
+      authors: c.listing.authors,
+      title: c.listing.title,
+      year: null,
+      venue: c.listing.kind,
+      url: null,
+      cited: c,
+    })),
+  );
   return (
     <>
       {references.length > 0 && (
-        <References
-          items={references.map(({ reference: r, cited }) => (
-            <Entry
-              key={r.position}
-              authors={r.authors.length > 0 ? r.authors : (cited?.listing.authors ?? [])}
-              title={r.title}
-              url={r.url}
-              venue={r.year?.toString() ?? null}
-              cited={cited}
-            />
+        <Bibliography
+          items={references.map(({ key, ...e }) => (
+            <Entry key={key} {...e} />
           ))}
         />
       )}
-      {citedBy.length > 0 && (
-        <References
+      {citing.length > 0 && (
+        <Bibliography
           heading={citedByTotal > citedBy.length ? `Cited by (${citedBy.length} of ${citedByTotal} shown)` : 'Cited by'}
-          idPrefix="cited-by"
-          items={citedBy.map((c) => (
-            <Entry
-              key={c.listing.id}
-              authors={c.listing.authors}
-              title={c.listing.title}
-              url={null}
-              venue={c.listing.kind}
-              cited={c}
-            />
+          items={citing.map(({ key, ...e }) => (
+            <Entry key={key} {...e} />
           ))}
         />
       )}
@@ -50,23 +59,26 @@ export function Citations({ citations }: { citations: ListingCitations }) {
   );
 }
 
+/** "Authors. Title. <i>Venue</i>, year." — "Title, year." with no venue, as natbib sets a bare entry. */
 function Entry({
   authors,
   title,
-  url,
+  year,
   venue,
+  url,
   cited,
 }: {
-  authors: string[];
+  authors: readonly string[];
   title: string;
-  url: string | null;
+  year: number | null;
   venue: string | null;
+  url: string | null;
   cited: CitedListing | null;
 }) {
   const name = <MathText text={title} />;
   return (
-    <span>
-      {authors.length > 0 && <>{authorLine(authors)}. </>}
+    <>
+      {authors.length > 0 && <>{authorList(authors)}. </>}
       {cited ? (
         <Link href={`/papers/${encodeURIComponent(cited.listing.slug)}`}>{name}</Link>
       ) : url ? (
@@ -76,7 +88,14 @@ function Entry({
       ) : (
         name
       )}
-      .{venue && <> {venue}.</>}
+      {venue ? (
+        <>
+          . <i>{venue}</i>
+          {year !== null && `, ${year}`}.
+        </>
+      ) : (
+        <>{year !== null ? `, ${year}.` : '.'}</>
+      )}
       {cited && url && (
         <>
           {' '}
@@ -86,13 +105,8 @@ function Entry({
         </>
       )}
       {cited?.main && <Odds main={cited.main} />}
-    </span>
+    </>
   );
-}
-
-/** Up to five names in full, else the first and "et al.", as a bibliography does. */
-function authorLine(authors: string[]): string {
-  return authors.length <= 5 ? authors.join(', ') : `${authors[0]} et al.`;
 }
 
 function Odds({ main }: { main: NonNullable<CitedListing['main']> }) {

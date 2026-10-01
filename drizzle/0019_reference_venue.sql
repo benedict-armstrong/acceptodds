@@ -1,0 +1,1 @@
+ALTER TABLE "listing_references" ADD COLUMN "venue" text;

@@ -82,6 +82,7 @@ export function presentCitations(c: ListingCitations): z.input<typeof S.ListingC
       title: r.title,
       authors: r.authors,
       year: r.year,
+      venue: r.venue,
       url: r.url,
       slug: r.citedSlug,
       listing: cited ? presentCited(cited) : null,

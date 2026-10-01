@@ -204,6 +204,7 @@ export const ListingReferenceEntry = z
     title: z.string(),
     authors: z.array(z.string()),
     year: z.number().int().nullable(),
+    venue: z.string().nullable(),
     url: z.string().nullable(),
     slug: z.string().nullable().meta({ description: 'The cited work’s listing slug, as the creating client gave it.' }),
     listing: CitedListing.nullable().meta({
@@ -813,6 +814,10 @@ export const ReferenceRequest = z
     title: z.string().trim().min(1).max(1000),
     authors: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
     year: z.number().int().min(1000).max(3000).nullish(),
+    venue: z.string().trim().min(1).max(500).nullish().meta({
+      description:
+        'Where it appeared, as a bibliography sets it, e.g. "International Conference on Learning Representations". Opaque.',
+    }),
     url: z
       .url({ protocol: /^https?$/ })
       .max(2000)

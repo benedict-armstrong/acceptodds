@@ -683,14 +683,16 @@ const PAPERS: Paper[] = Array.from({ length: COPIES }, (_, c) =>
 const CLASSICS: ReferenceInput[] = [
   {
     title: 'Learning representations by back-propagating errors',
-    authors: ['D. E. Rumelhart', 'G. E. Hinton', 'R. J. Williams'],
+    authors: ['David E. Rumelhart', 'Geoffrey E. Hinton', 'Ronald J. Williams'],
     year: 1986,
+    venue: 'Nature',
     url: 'https://doi.org/10.1038/323533a0',
   },
   {
     title: 'Adam: A Method for Stochastic Optimization',
-    authors: ['D. P. Kingma', 'J. Ba'],
-    year: 2014,
+    authors: ['Diederik P. Kingma', 'Jimmy Ba'],
+    year: 2015,
+    venue: 'International Conference on Learning Representations',
     url: 'https://arxiv.org/abs/1412.6980',
   },
 ];
@@ -710,6 +712,7 @@ function referencesOf(p: Paper, seed: number): ReferenceInput[] {
       title: q.title,
       authors: q.authors ?? [],
       year: 2000 + Number(q.arxiv.slice(0, 2)),
+      venue: `arXiv preprint arXiv:${q.arxiv}`,
       url: `https://arxiv.org/abs/${q.arxiv}`,
       citedSlug: q.slug,
     })),

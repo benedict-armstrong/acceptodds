@@ -29,6 +29,7 @@ export interface ReferenceInput {
   title: string;
   authors?: string[];
   year?: number | null;
+  venue?: string | null;
   url?: string | null;
   /** The cited work's listing slug, if it has (or may get) one here. Matched when read. */
   citedSlug?: string | null;
@@ -67,6 +68,7 @@ export async function upsertListing(
           title: r.title,
           authors: r.authors ?? [],
           year: r.year ?? null,
+          venue: r.venue ?? null,
           url: r.url ?? null,
           citedSlug: r.citedSlug ?? null,
         })),

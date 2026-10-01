@@ -169,7 +169,7 @@ describe('citations (#38)', () => {
       slug: 'citing',
       title: 'Citing paper',
       references: [
-        { title: 'Off the site', authors: ['X. Y.'], year: 1986, url: 'https://example.org/x' },
+        { title: 'Off the site', authors: ['X. Y.'], year: 1986, venue: 'Nature', url: 'https://example.org/x' },
         { title: 'Cited paper', slug: 'cited' },
         { title: 'Not listed yet', slug: 'later' },
       ],
@@ -183,6 +183,7 @@ describe('citations (#38)', () => {
         title: 'Off the site',
         authors: ['X. Y.'],
         year: 1986,
+        venue: 'Nature',
         url: 'https://example.org/x',
         slug: null,
         listing: null,
