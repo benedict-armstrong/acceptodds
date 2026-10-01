@@ -1,0 +1,8 @@
+# Generated: rewritten by their tools, never by hand.
+drizzle/
+src/db/auth-schema.ts
+config/institution-domains.json
+package-lock.json
+next-env.d.ts
+scratch/
+public/

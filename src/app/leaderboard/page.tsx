@@ -88,9 +88,18 @@ export default async function LeaderboardPage({
   const boardName = group?.name ?? institution;
   // The whole field's shape, shared by every viewer, on the unfiltered net-worth board; a board's own, live.
   const snapshot =
-    basis !== 'net_worth' ? null : byWorth === null ? await fieldSnapshot() : shapeOf(byWorth.map((r) => r.netWorthMicro), new Date());
+    basis !== 'net_worth'
+      ? null
+      : byWorth === null
+        ? await fieldSnapshot()
+        : shapeOf(
+            byWorth.map((r) => r.netWorthMicro),
+            new Date(),
+          );
   const search = q === null ? null : parseTraderSearch(q);
-  const matches = (await matchingTraders(field, search?.name)).filter((r) => search === null || institutionsMatch(r.institutions, search));
+  const matches = (await matchingTraders(field, search?.name)).filter(
+    (r) => search === null || institutionsMatch(r.institutions, search),
+  );
   events.log('leaderboard.read', { accountId: viewer?.account.id ?? null });
 
   const me = viewer?.account.id ?? null;
@@ -111,7 +120,14 @@ export default async function LeaderboardPage({
 
   const href = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams();
-    const all = { basis: basis === 'net_worth' ? null : basis, institution, group: group?.id ?? null, q, around, ...patch };
+    const all = {
+      basis: basis === 'net_worth' ? null : basis,
+      institution,
+      group: group?.id ?? null,
+      q,
+      around,
+      ...patch,
+    };
     for (const [k, v] of Object.entries(all)) if (v) params.set(k, v);
     const s = params.toString();
     return s ? `/leaderboard?${s}` : '/leaderboard';
@@ -163,10 +179,7 @@ export default async function LeaderboardPage({
           title={<>{picker} leaderboard</>}
           byline={
             <Authors
-              authors={(group
-                ? members!
-                : byWorth!
-              ).map((m) => ({
+              authors={(group ? members! : byWorth!).map((m) => ({
                 name: m.displayName,
                 href: `/people/${encodeURIComponent(m.handle)}`,
                 isBot: m.isBot,
@@ -206,7 +219,10 @@ export default async function LeaderboardPage({
           placeholder="Find a trader by name, or institution:eth"
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
         />
-        <button type="submit" className="cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink">
+        <button
+          type="submit"
+          className="cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink"
+        >
           Search
         </button>
       </form>
@@ -220,7 +236,8 @@ export default async function LeaderboardPage({
         <div className="flex min-w-0 flex-col gap-0.5 text-muted">
           {mine >= 0 ? (
             <span>
-              You: <span className="font-semibold text-ink">#{field[mine].rank}</span> of {field.length.toLocaleString('en')}
+              You: <span className="font-semibold text-ink">#{field[mine].rank}</span> of{' '}
+              {field.length.toLocaleString('en')}
               {where}
               {standing(mine) !== null && <> · ahead of {standing(mine)}% of traders</>}
               {mine !== focus && (
@@ -235,10 +252,10 @@ export default async function LeaderboardPage({
               {group && role === null
                 ? 'You are not in this group.'
                 : institution && !viewer.account.institutions.includes(institution)
-                ? `You are not at ${institution}.`
-                : basis === 'settled_pnl'
-                  ? 'You are not on this board yet: it counts settled markets only.'
-                  : 'You are not on this board.'}
+                  ? `You are not at ${institution}.`
+                  : basis === 'settled_pnl'
+                    ? 'You are not on this board yet: it counts settled markets only.'
+                    : 'You are not on this board.'}
             </span>
           ) : null}
           {around !== null &&
@@ -252,7 +269,9 @@ export default async function LeaderboardPage({
                 </span>
               )
             ) : (
-              <span>No trader @{around} on this board{where}.</span>
+              <span>
+                No trader @{around} on this board{where}.
+              </span>
             ))}
           {q && (
             <span>
@@ -279,10 +298,10 @@ export default async function LeaderboardPage({
           other={
             focus >= 0 && focus !== mine
               ? {
-                handle: field[focus].handle,
-                worth: field[focus].netWorthMicro,
-                label: `@${field[focus].handle}${standing(focus) === null ? '' : ` · ahead of ${standing(focus)}%`}`,
-              }
+                  handle: field[focus].handle,
+                  worth: field[focus].netWorthMicro,
+                  label: `@${field[focus].handle}${standing(focus) === null ? '' : ` · ahead of ${standing(focus)}%`}`,
+                }
               : null
           }
         />
@@ -360,7 +379,6 @@ export default async function LeaderboardPage({
           href={(p) => href({ page: String(p) })}
         />
       )}
-
     </main>
   );
 }
@@ -376,7 +394,11 @@ function bestOf(field: readonly LeaderboardRow[]): Best {
     const m = field.reduce<bigint | null>((acc, r) => (acc === null || pick(r) > acc ? pick(r) : acc), null);
     return m !== null && m > 0n ? m : null;
   };
-  return { netWorth: max((r) => r.netWorthMicro), unrealized: max((r) => r.unrealizedPnlMicro), settled: max((r) => r.settledPnlMicro) };
+  return {
+    netWorth: max((r) => r.netWorthMicro),
+    unrealized: max((r) => r.unrealizedPnlMicro),
+    settled: max((r) => r.settledPnlMicro),
+  };
 }
 
 /** Bold when `v` is its column's best. */
@@ -412,7 +434,11 @@ function Segment({
       {rows.map((r) => {
         const highlight = r.accountId === me || r.accountId === focus;
         return (
-          <tr key={r.accountId} id={r.accountId === focus ? 'focus' : undefined} className={highlight ? 'bg-highlight' : ''}>
+          <tr
+            key={r.accountId}
+            id={r.accountId === focus ? 'focus' : undefined}
+            className={highlight ? 'bg-highlight' : ''}
+          >
             <td className={`${ui.td} font-mono text-[13px]`}>{r.rank}</td>
             <td className={ui.td}>
               <Link href={`/people/${encodeURIComponent(r.handle)}`} className="text-ink">
@@ -432,7 +458,9 @@ function Segment({
               ))}
             </td>
             <td className={`${ui.td} ${ui.num} ${bold(r.netWorthMicro, best.netWorth)}`}>{rep(r.netWorthMicro)}</td>
-            <td className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}>
+            <td
+              className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}
+            >
               {signedRep(r.unrealizedPnlMicro)}
             </td>
             <td className={`${ui.td} ${ui.num} ${ui.pnl(r.settledPnlMicro)} ${bold(r.settledPnlMicro, best.settled)}`}>

@@ -67,15 +67,7 @@ describe('maxCostMicro', () => {
 
   it('accepts a fill at exactly the limit', async () => {
     const q = await quote(fx.marketId, fx.outcomeIds[0], 10_000_000n, db);
-    const fill = await trade(
-      fx.traderIds[0],
-      fx.marketId,
-      fx.outcomeIds[0],
-      10_000_000n,
-      q.costMicro,
-      null,
-      db,
-    );
+    const fill = await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 10_000_000n, q.costMicro, null, db);
     expect(fill.costMicro).toBe(q.costMicro);
   });
 });
@@ -83,12 +75,8 @@ describe('maxCostMicro', () => {
 describe('idempotency', () => {
   it('returns the original fill on a retry instead of trading twice', async () => {
     const key = 'bot-retry-1';
-    const first = await trade(
-      fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 7_000_000n, 10n ** 12n, key, db,
-    );
-    const second = await trade(
-      fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 7_000_000n, 10n ** 12n, key, db,
-    );
+    const first = await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 7_000_000n, 10n ** 12n, key, db);
+    const second = await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 7_000_000n, 10n ** 12n, key, db);
 
     expect(second.orderId).toBe(first.orderId);
     expect(second.replayed).toBe(true);
@@ -144,9 +132,7 @@ describe('idempotency', () => {
 describe('selling', () => {
   it('is a trade with negative shares, on the same code path', async () => {
     await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 20_000_000n, 10n ** 12n, null, db);
-    const sale = await trade(
-      fx.traderIds[0], fx.marketId, fx.outcomeIds[0], -20_000_000n, 0n, null, db,
-    );
+    const sale = await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], -20_000_000n, 0n, null, db);
     expect(sale.costMicro).toBeLessThan(0n);
     expect(sale.positionAfterMicro).toBe(0n);
     expect(await reconcileBalances(db)).toEqual([]);

@@ -33,11 +33,7 @@ export function ConfirmBanner({ signedIn }: { signedIn: boolean }) {
         enter code
       </Link>
       <span className="flex-1" />
-      <button
-        className="cursor-pointer text-faint"
-        onClick={clearPending}
-        aria-label="dismiss"
-      >
+      <button className="cursor-pointer text-faint" onClick={clearPending} aria-label="dismiss">
         ×
       </button>
     </div>

@@ -57,8 +57,7 @@ export function costToMicro(costInMicro: number): bigint {
  */
 export function sharesToMicro(sharesInMicro: number): bigint {
   assertFinite(sharesInMicro, 'shares');
-  const rounded =
-    sharesInMicro < 0 ? -Math.round(-sharesInMicro) : Math.round(sharesInMicro);
+  const rounded = sharesInMicro < 0 ? -Math.round(-sharesInMicro) : Math.round(sharesInMicro);
   return BigInt(rounded);
 }
 

@@ -60,7 +60,9 @@ export function ContinueForm({
     <form onSubmit={submit}>
       <p className="mb-3 text-muted">
         Signed in as <b className="text-ink">{email}</b>.{' '}
-        {needsName ? 'Your name and a password, to sign in next time without a link.' : 'A password, to sign in next time without a link.'}
+        {needsName
+          ? 'Your name and a password, to sign in next time without a link.'
+          : 'A password, to sign in next time without a link.'}
       </p>
       {needsName && (
         <input

@@ -111,7 +111,12 @@ export default async function WelcomePage({
  * make: an open market before its close, one of its outcomes, and a stake
  * within the starting balance — what `POST /onboarding` will check again.
  */
-async function chosenBet(params: { market?: string; outcome?: string; stake?: string; seen?: string }): Promise<Chosen | null> {
+async function chosenBet(params: {
+  market?: string;
+  outcome?: string;
+  stake?: string;
+  seen?: string;
+}): Promise<Chosen | null> {
   const bet = parseChosenBet(params);
   if (!bet || bet.stakeMicro > startingBalanceMicro()) return null;
   const market = await resolveMarket(bet.marketId).catch(() => null);

@@ -10,7 +10,11 @@ import { SignInForm } from './SignInForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function SignIn({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const params = await searchParams;
   const next = safeReturnTo(params.next);
   // A link from one of our mails that did not work (`lib/link-errors.ts`).

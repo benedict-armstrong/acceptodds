@@ -45,7 +45,9 @@ async function main() {
   if (!url) throw new Error('DATABASE_URL is not set');
   const local = isLocal(url);
   if (!local && !process.argv.includes('--allow-remote')) {
-    throw new Error(`refusing to wipe ${new URL(url).hostname}: only a local database is seeded without --allow-remote`);
+    throw new Error(
+      `refusing to wipe ${new URL(url).hostname}: only a local database is seeded without --allow-remote`,
+    );
   }
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || (local ? ADMIN_PASSWORD : '');
   if (!adminPassword) throw new Error('SEED_ADMIN_PASSWORD is required to seed a remote database');
@@ -112,7 +114,11 @@ async function seedAdmin(db: Database, password: string) {
 
 /** A group the admin runs, joined by every third bot, through `server/groups.ts` as the API would. */
 async function seedGroup(db: Database, adminId: string, bots: Bot[]) {
-  const group = await createGroup(adminId, { name: 'Reading group', description: 'Papers we argued about on Thursdays.' }, db);
+  const group = await createGroup(
+    adminId,
+    { name: 'Reading group', description: 'Papers we argued about on Thursdays.' },
+    db,
+  );
   for (const bot of bots.filter((_, i) => i % 3 === 0)) await joinGroup(bot.id, group.inviteCode, db);
   console.log(`group       ${group.name}  /groups/join?code=${group.inviteCode}`);
 }
@@ -120,7 +126,9 @@ async function seedGroup(db: Database, adminId: string, bots: Bot[]) {
 /** Every trader's net worth, so a seed shows at a glance that the field is level. */
 async function report(db: Database) {
   const fmt = (micro: bigint) => (Number(micro) / 1e6).toFixed(0).padStart(6);
-  const rows = [...(await valuations(undefined, db)).values()].sort((a, b) => Number(b.netWorthMicro - a.netWorthMicro));
+  const rows = [...(await valuations(undefined, db)).values()].sort((a, b) =>
+    Number(b.netWorthMicro - a.netWorthMicro),
+  );
   for (const v of rows) {
     console.log(
       `  ${v.account.handle.padEnd(22)} net worth ${fmt(v.netWorthMicro)}  (cash ${fmt(v.cashMicro)}, ` +
@@ -266,7 +274,7 @@ const ICLR_2027: Paper[] = [
       'Foundation models, now powering most of the exciting applications in deep learning, are almost ' +
       'universally based on the Transformer architecture and its core attention module. Many subquadratic-time ' +
       'architectures such as linear attention, gated convolution and recurrent models, and structured state ' +
-      'space models (SSMs) have been developed to address Transformers\' computational inefficiency on long ' +
+      "space models (SSMs) have been developed to address Transformers' computational inefficiency on long " +
       'sequences, but they have not performed as well as attention on important modalities such as language. We' +
       ' identify that a key weakness of such models is their inability to perform content-based reasoning, and ' +
       'make several improvements. First, simply letting the SSM parameters be functions of the input addresses ' +
@@ -293,11 +301,11 @@ const ICLR_2027: Paper[] = [
       'proposed, they all have a finite memory capacity and are forced to drop old information. In this paper, ' +
       'we propose the $\\infty$-former, which extends the vanilla transformer with an unbounded long-term ' +
       'memory. By making use of a continuous-space attention mechanism to attend over the long-term memory, the' +
-      ' $\\infty$-former\'s attention complexity becomes independent of the context length, trading off memory ' +
+      " $\\infty$-former's attention complexity becomes independent of the context length, trading off memory " +
       'length with precision. In order to control where precision is more important, $\\infty$-former maintains ' +
       '"sticky memories" being able to model arbitrarily long contexts while keeping the computation budget ' +
       'fixed. Experiments on a synthetic sorting task, language modeling, and document grounded dialogue ' +
-      'generation demonstrate the $\\infty$-former\'s ability to retain information from long sequences.',
+      "generation demonstrate the $\\infty$-former's ability to retain information from long sequences.",
   },
   {
     // A title long enough to be cut to two lines in lists and in the share text.
@@ -313,7 +321,7 @@ const ICLR_2027: Paper[] = [
       ' a unified framework that converts all text-based language problems into a text-to-text format. Our ' +
       'systematic study compares pre-training objectives, architectures, unlabeled data sets, transfer ' +
       'approaches, and other factors on dozens of language understanding tasks. By combining the insights from ' +
-      'our exploration with scale and our new ``Colossal Clean Crawled Corpus\'\', we achieve state-of-the-art ' +
+      "our exploration with scale and our new ``Colossal Clean Crawled Corpus'', we achieve state-of-the-art " +
       'results on many benchmarks covering summarization, question answering, text classification, and more. To' +
       ' facilitate future work on transfer learning for NLP, we release our data set, pre-trained models, and ' +
       'code.',
@@ -452,13 +460,7 @@ async function seedPapers(db: Database, bots: Bot[]) {
   console.log(`papers: ${ICLR_2027.length}, markets: ${boards.length}`);
 }
 
-async function seedPaper(
-  db: Database,
-  p: Paper,
-  kind: string,
-  closesInDays: number,
-  seed: number,
-): Promise<Board[]> {
+async function seedPaper(db: Database, p: Paper, kind: string, closesInDays: number, seed: number): Promise<Board[]> {
   const { listing } = await upsertListing(
     {
       slug: p.slug,
@@ -631,7 +633,10 @@ async function spreadOverTime(db: Database, marketId: string, rand: () => number
   });
   times.sort((a, b) => a - b);
   for (const [i, f] of fills.entries()) {
-    await db.update(orders).set({ createdAt: new Date(times[i]) }).where(eq(orders.id, f.id));
+    await db
+      .update(orders)
+      .set({ createdAt: new Date(times[i]) })
+      .where(eq(orders.id, f.id));
   }
   await db
     .update(markets)

@@ -210,8 +210,14 @@ describe('browsing listings', () => {
   });
 
   it('sorts by likelihood: the headline, highest first, void last', async () => {
-    const opts = { startingBalanceMicro: STARTING_MICRO, expectedTraders: 10, kind: 'lk', closesAt: new Date(Date.now() + 86_400_000) };
-    const make = (slug: string, outcomes = ['YES', 'NO']) => createMarket({ ...opts, slug, question: `${slug}?`, outcomes });
+    const opts = {
+      startingBalanceMicro: STARTING_MICRO,
+      expectedTraders: 10,
+      kind: 'lk',
+      closesAt: new Date(Date.now() + 86_400_000),
+    };
+    const make = (slug: string, outcomes = ['YES', 'NO']) =>
+      createMarket({ ...opts, slug, question: `${slug}?`, outcomes });
     const low = await make('low');
     const high = await make('high');
     await make('mid');

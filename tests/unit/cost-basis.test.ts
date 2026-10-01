@@ -4,9 +4,16 @@ import { costBasis, type Fill } from '@/lib/cost-basis';
 
 /** A history a trader could have made: only ever selling what they hold. */
 const history = fc
-  .array(fc.record({ buy: fc.boolean(), shares: fc.bigInt({ min: 1n, max: 10n ** 9n }), price: fc.integer({ min: 1, max: 999 }) }), {
-    maxLength: 30,
-  })
+  .array(
+    fc.record({
+      buy: fc.boolean(),
+      shares: fc.bigInt({ min: 1n, max: 10n ** 9n }),
+      price: fc.integer({ min: 1, max: 999 }),
+    }),
+    {
+      maxLength: 30,
+    },
+  )
   .map((steps) => {
     const fills: Fill[] = [];
     let held = 0n;

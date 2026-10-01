@@ -3,7 +3,12 @@ import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
 
 describe('parseTraderSearch', () => {
   it('is only a name without filters', () => {
-    expect(parseTraderSearch('  ada lovelace ')).toEqual({ name: 'ada lovelace', include: [], exclude: [], errors: [] });
+    expect(parseTraderSearch('  ada lovelace ')).toEqual({
+      name: 'ada lovelace',
+      include: [],
+      exclude: [],
+      errors: [],
+    });
   });
 
   it('reads institution filters, aliases, quotes and negation', () => {

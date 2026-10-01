@@ -15,12 +15,16 @@ describe('stepIndexAt', () => {
 
   it('is the last point at or before the time', () => {
     fc.assert(
-      fc.property(fc.array(fc.integer({ min: 0, max: 1000 }), { minLength: 1 }), fc.integer({ min: 0, max: 1000 }), (raw, ms) => {
-        const t = [...raw].sort((a, b) => a - b);
-        const k = stepIndexAt(t, ms);
-        const expected = t[0] > ms ? 0 : t.findLastIndex((v) => v <= ms);
-        expect(k).toBe(expected);
-      }),
+      fc.property(
+        fc.array(fc.integer({ min: 0, max: 1000 }), { minLength: 1 }),
+        fc.integer({ min: 0, max: 1000 }),
+        (raw, ms) => {
+          const t = [...raw].sort((a, b) => a - b);
+          const k = stepIndexAt(t, ms);
+          const expected = t[0] > ms ? 0 : t.findLastIndex((v) => v <= ms);
+          expect(k).toBe(expected);
+        },
+      ),
     );
   });
 });

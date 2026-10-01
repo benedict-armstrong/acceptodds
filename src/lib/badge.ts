@@ -60,7 +60,8 @@ export function renderBadge(b: BadgeInput): string {
     const n = bars.length;
     for (const i of barOrder(n)) {
       const w = bars[i] * barW;
-      if (w > 0.05) segs += `<rect x="${x.toFixed(2)}" y="7" width="${w.toFixed(2)}" height="6" fill="${TIER_HEX[paletteSlot(i, n)]}"/>`;
+      if (w > 0.05)
+        segs += `<rect x="${x.toFixed(2)}" y="7" width="${w.toFixed(2)}" height="6" fill="${TIER_HEX[paletteSlot(i, n)]}"/>`;
       x += w;
     }
     segs = `<g clip-path="url(#bar)">${segs}</g>`;

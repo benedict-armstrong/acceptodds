@@ -100,13 +100,17 @@ describe('onboarding', () => {
     expect(me.body).toMatchObject({ canTrade: true, balanceMicro: STARTING_MICRO.toString() });
 
     expect((await api('POST', '/me/password', { cookie, body: { password: 'short' } })).status).toBe(400);
-    expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(200);
+    expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(
+      200,
+    );
     const again = await api('POST', '/me/password', { cookie, body: { password: 'another horse battery' } });
     expect(again.status).toBe(409);
     expect(again.body.error.code).toBe('password_already_set');
 
     // The new password signs in.
-    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    const signIn = await authCall('POST', '/sign-in/email', {
+      body: { email: 'ada@example.org', password: 'correct horse battery' },
+    });
     expect(signIn.status).toBe(200);
 
     expect((await api('DELETE', '/me/pending-bet', { cookie })).status).toBe(204);
@@ -122,7 +126,9 @@ describe('onboarding', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ email: 'ada@example.org' });
     expect(await db.select().from(pendingBets)).toEqual([]);
-    expect(devOutbox()).toEqual([expect.objectContaining({ to: 'ada@example.org', subject: expect.stringContaining('already have') })]);
+    expect(devOutbox()).toEqual([
+      expect.objectContaining({ to: 'ada@example.org', subject: expect.stringContaining('already have') }),
+    ]);
   });
 
   it('a confirmed address with no password yet is mailed a link that sets one, then signs in', async () => {
@@ -146,15 +152,24 @@ describe('onboarding', () => {
 
     const set = await authCall('POST', '/reset-password', { body: { newPassword: 'correct horse battery', token } });
     expect(set.status).toBe(200);
-    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    const signIn = await authCall('POST', '/sign-in/email', {
+      body: { email: 'ada@example.org', password: 'correct horse battery' },
+    });
     expect(signIn.status).toBe(200);
     // Once only.
-    expect((await authCall('POST', '/reset-password', { body: { newPassword: 'another horse battery', token } })).status).toBe(400);
+    expect(
+      (await authCall('POST', '/reset-password', { body: { newPassword: 'another horse battery', token } })).status,
+    ).toBe(400);
 
     // With a password, the same mail says "sign in".
     clearDevOutbox();
     await start('ada@example.org');
-    expect(devOutbox()).toEqual([expect.objectContaining({ subject: expect.stringContaining('already have'), text: expect.stringContaining('/signin') })]);
+    expect(devOutbox()).toEqual([
+      expect.objectContaining({
+        subject: expect.stringContaining('already have'),
+        text: expect.stringContaining('/signin'),
+      }),
+    ]);
   });
 
   it('the same mail carries a code, which is no confirmation code but sets the password, once', async () => {
@@ -186,7 +201,9 @@ describe('onboarding', () => {
       body: { email: 'ada@example.org', otp, password: 'correct horse battery' },
     });
     expect(set.status).toBe(200);
-    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    const signIn = await authCall('POST', '/sign-in/email', {
+      body: { email: 'ada@example.org', password: 'correct horse battery' },
+    });
     expect(signIn.status).toBe(200);
     const again = await authCall('POST', '/email-otp/reset-password', {
       body: { email: 'ada@example.org', otp, password: 'another horse battery' },
@@ -194,7 +211,7 @@ describe('onboarding', () => {
     expect(again.status).toBe(400);
   });
 
-  it('names the browser the bet was chosen in, and a replaced bet is no longer that browser\'s', async () => {
+  it("names the browser the bet was chosen in, and a replaced bet is no longer that browser's", async () => {
     const mine = await start('ada@example.org');
     const cookie = mine.headers.get('set-cookie')!;
     expect(cookie).toContain(`${ONBOARDING_BROWSER_COOKIE}=`);

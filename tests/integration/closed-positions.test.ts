@@ -83,7 +83,8 @@ describe('closed positions', () => {
     const a = await fill(trader, yes, 10n * UNIT);
     const b = await fill(trader, yes, 10n * UNIT);
     const paid = a.costMicro + b.costMicro;
-    const basis = async () => (await getPortfolio(trader, db)).holdings.find((h) => h.outcomeId === yes)?.costBasisMicro;
+    const basis = async () =>
+      (await getPortfolio(trader, db)).holdings.find((h) => h.outcomeId === yes)?.costBasisMicro;
     expect(await basis()).toBe(paid);
     // Its colour's inputs: first of the fixture's outcomes.
     const [held] = (await getPortfolio(trader, db)).holdings;

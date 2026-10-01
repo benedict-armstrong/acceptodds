@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { FieldCurve } from '@/components/FieldCurve';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
+import { ShareProfile } from '@/components/ShareProfile';
 import { SignOut } from '@/components/SignOut';
 import { TraderHeader } from '@/components/TraderHeader';
 import { TableNotes } from '@/components/TableNotes';
@@ -34,7 +35,8 @@ export default async function ProfilePage() {
   // Placed on the field by the board's own figure, as the leaderboard places them.
   const field = await leaderboardStandings({ basis: 'net_worth' });
   const row = field.find((r) => r.accountId === a.id) ?? null;
-  const ahead = row ? standingOf(field, a.id, 'net_worth')?.percentAhead ?? null : null;
+  const standing = row ? standingOf(field, a.id, 'net_worth') : null;
+  const ahead = standing?.percentAhead ?? null;
   const snapshot = await fieldSnapshot();
   const affiliations = (await listAffiliations(a.id)).map(presentAffiliation);
   // Tables are numbered by hand in page order: worth, then affiliations (not for bots), then follows.
@@ -43,11 +45,7 @@ export default async function ProfilePage() {
 
   return (
     <main className={`${ui.page} max-w-[560px]`}>
-      <TraderHeader
-        account={a}
-        email={viewer.email}
-        admin={viewer.isAdmin}
-      />
+      <TraderHeader account={a} email={viewer.email} admin={viewer.isAdmin} />
 
       <FieldCurve
         field={snapshot}
@@ -55,20 +53,19 @@ export default async function ProfilePage() {
         label={row ? (ahead === null ? 'you' : `you · ahead of ${ahead}%`) : null}
       />
 
-      {v && (
-        <WorthTable n={1} caption="Your reputation." worth={v} />
-      )}
-      <div className="mt-3 flex gap-4.5 font-sans text-sm">
+      {v && <WorthTable n={1} caption="Your reputation." worth={v} />}
+      <div className="mt-3 flex items-center gap-4.5 font-sans text-sm">
         <Link href="/portfolio">portfolio →</Link>
         <Link href="/leaderboard">leaderboard →</Link>
+        <ShareProfile account={a} standing={standing} />
       </div>
 
       {!a.isBot && (
         <section id="affiliations">
           <h2 className={ui.groupHeading}>Affiliations</h2>
           <p className="mt-1 mb-2 text-[15px] text-subtle">
-            The institutional email addresses that verify you. A confirmed address lets you trade, and its
-            institution appears next to your name.
+            The institutional email addresses that verify you. A confirmed address lets you trade, and its institution
+            appears next to your name.
           </p>
           <Affiliations initial={affiliations} n={v ? 2 : 1} />
         </section>
@@ -121,8 +118,9 @@ export default async function ProfilePage() {
                       </td>
                       <td className={`${ui.td} ${ui.num}`}>{f.move && f.main ? pct(f.move.now) : '—'}</td>
                       <td
-                        className={`${ui.td} ${ui.num} whitespace-nowrap ${pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'
-                          }`}
+                        className={`${ui.td} ${ui.num} whitespace-nowrap ${
+                          pp > 0 ? 'text-up' : pp < 0 ? 'text-down' : 'text-muted'
+                        }`}
                       >
                         {f.move && f.main ? `${pp > 0 ? '+' : pp < 0 ? '−' : '±'}${Math.abs(pp)} pp` : '—'}
                       </td>
@@ -148,7 +146,9 @@ export default async function ProfilePage() {
 
       <section id="email">
         <h2 className={ui.groupHeading}>Email</h2>
-        <p className="mt-1 mb-2 text-[15px] text-subtle">What we may email you, besides sign-in and confirmation mails.</p>
+        <p className="mt-1 mb-2 text-[15px] text-subtle">
+          What we may email you, besides sign-in and confirmation mails.
+        </p>
         <DigestToggle optIn={a.digestOptIn} minMovePp={minMovePp()} />
       </section>
 
@@ -166,4 +166,3 @@ export default async function ProfilePage() {
     </main>
   );
 }
-

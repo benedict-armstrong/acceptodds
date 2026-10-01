@@ -102,7 +102,11 @@ export function Affiliations({ initial, n }: { initial: AffiliationRow[]; n: num
   }
 
   function remove(row: AffiliationRow) {
-    return run(`remove:${row.id}`, () => fetch(`/api/v1/me/affiliations/${row.id}`, { method: 'DELETE' }), `Removed ${row.email}.`);
+    return run(
+      `remove:${row.id}`,
+      () => fetch(`/api/v1/me/affiliations/${row.id}`, { method: 'DELETE' }),
+      `Removed ${row.email}.`,
+    );
   }
 
   return (
@@ -152,7 +156,12 @@ export function Affiliations({ initial, n }: { initial: AffiliationRow[]; n: num
                       <button type="submit" className={ui.linkBtn} disabled={busy !== null}>
                         confirm
                       </button>
-                      <button type="button" className={ui.linkBtn} disabled={busy !== null} onClick={() => void add(r.email)}>
+                      <button
+                        type="button"
+                        className={ui.linkBtn}
+                        disabled={busy !== null}
+                        onClick={() => void add(r.email)}
+                      >
                         resend
                       </button>
                     </form>
@@ -160,7 +169,12 @@ export function Affiliations({ initial, n }: { initial: AffiliationRow[]; n: num
                 </td>
                 <td className={`${ui.td} text-right`}>
                   {!r.primary && (
-                    <button type="button" className={ui.linkBtn} disabled={busy !== null} onClick={() => void remove(r)}>
+                    <button
+                      type="button"
+                      className={ui.linkBtn}
+                      disabled={busy !== null}
+                      onClick={() => void remove(r)}
+                    >
                       remove
                     </button>
                   )}

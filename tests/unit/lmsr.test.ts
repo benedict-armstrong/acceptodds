@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import {
-  cost,
-  costToTrade,
-  liquidityFor,
-  maxSubsidy,
-  prices,
-  sharesForCost,
-  SUBSIDY_FRACTION,
-} from '@/lib/lmsr';
+import { cost, costToTrade, liquidityFor, maxSubsidy, prices, sharesForCost, SUBSIDY_FRACTION } from '@/lib/lmsr';
 import { costToMicro } from '@/lib/money';
 
 /**
@@ -267,9 +259,7 @@ describe('liquidityFor', () => {
           const b = liquidityFor(balance, traders, outcomes);
           expect(b).toBeGreaterThan(0);
           const expected = SUBSIDY_FRACTION * balance * traders;
-          expect(Math.abs(maxSubsidy(b, outcomes) - expected)).toBeLessThanOrEqual(
-            1e-9 * expected,
-          );
+          expect(Math.abs(maxSubsidy(b, outcomes) - expected)).toBeLessThanOrEqual(1e-9 * expected);
         },
       ),
       { numRuns: NUM_RUNS },

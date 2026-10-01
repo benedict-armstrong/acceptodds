@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  costToMicro,
-  formatMicro,
-  microToFloat,
-  microToUnits,
-  sharesToMicro,
-  unitsToMicro,
-} from '@/lib/money';
+import { costToMicro, formatMicro, microToFloat, microToUnits, sharesToMicro, unitsToMicro } from '@/lib/money';
 
 describe('money', () => {
   it('rounds every cost in the house favour, in both directions', () => {

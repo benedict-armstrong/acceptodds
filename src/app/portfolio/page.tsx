@@ -54,8 +54,8 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
 
       <h2 className={ui.groupHeading}>Open positions</h2>
       <p className="mt-1 mb-2 text-[15px] text-subtle">
-        The outcomes you hold shares in. Each share pays 1 {REP} if its outcome wins. You can sell a position, or
-        share it publicly.
+        The outcomes you hold shares in. Each share pays 1 {REP} if its outcome wins. You can sell a position, or share
+        it publicly.
       </p>
       {p.holdings.length === 0 ? (
         <div className={ui.empty}>No open positions.</div>
@@ -74,8 +74,8 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
 
       <h2 className={ui.groupHeading}>Closed positions</h2>
       <p className="mt-1 mb-2 text-[15px] text-subtle">
-        The outcomes you no longer hold, either because you sold them or because the market was settled, and what
-        each one made or lost.
+        The outcomes you no longer hold, either because you sold them or because the market was settled, and what each
+        one made or lost.
       </p>
       {closed.total === 0 ? (
         <div className={ui.empty}>No closed positions yet.</div>
@@ -84,7 +84,8 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           <div className={ui.tableScroll}>
             <table className={ui.table}>
               <caption className={ui.tableCaption}>
-                <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Outcomes you traded and no longer hold, over all their fills, newest first.
+                <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Outcomes you traded and no longer hold, over
+                all their fills, newest first.
               </caption>
               <thead>
                 <tr>

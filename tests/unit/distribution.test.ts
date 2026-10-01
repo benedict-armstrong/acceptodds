@@ -63,16 +63,20 @@ describe('helpers', () => {
     expect(niceTicks(0, 1000, 4)).toEqual([0, 500, 1000]);
     expect(niceTicks(873, 1219, 3)).toEqual([1000, 1200]);
     fc.assert(
-      fc.property(fc.double({ min: -1e6, max: 1e6, noNaN: true }), fc.double({ min: 1, max: 1e6, noNaN: true }), (lo, span) => {
-        const ts = niceTicks(lo, lo + span, 4);
-        expect(ts.length).toBeGreaterThan(0);
-        expect(ts.length).toBeLessThanOrEqual(10);
-        for (const [i, t] of ts.entries()) {
-          expect(t).toBeGreaterThanOrEqual(lo - span * 1e-6);
-          expect(t).toBeLessThanOrEqual(lo + span + span * 1e-6);
-          if (i > 0) expect(t).toBeGreaterThan(ts[i - 1]);
-        }
-      }),
+      fc.property(
+        fc.double({ min: -1e6, max: 1e6, noNaN: true }),
+        fc.double({ min: 1, max: 1e6, noNaN: true }),
+        (lo, span) => {
+          const ts = niceTicks(lo, lo + span, 4);
+          expect(ts.length).toBeGreaterThan(0);
+          expect(ts.length).toBeLessThanOrEqual(10);
+          for (const [i, t] of ts.entries()) {
+            expect(t).toBeGreaterThanOrEqual(lo - span * 1e-6);
+            expect(t).toBeLessThanOrEqual(lo + span + span * 1e-6);
+            if (i > 0) expect(t).toBeGreaterThan(ts[i - 1]);
+          }
+        },
+      ),
     );
   });
 });

@@ -33,7 +33,13 @@ beforeAll(async () => {
     ['botty', 'Bot 100%_sure', null, 300n, true],
   ];
   for (const [handle, displayName, institution, grant, isBot] of people) {
-    await createAccount({ handle, displayName, institutions: institution ? [institution] : [], grantMicro: grant * UNIT, isBot });
+    await createAccount({
+      handle,
+      displayName,
+      institutions: institution ? [institution] : [],
+      grantMicro: grant * UNIT,
+      isBot,
+    });
   }
 }, 60_000);
 
@@ -200,7 +206,10 @@ describe('GET /leaderboard with institution and q', () => {
     const seen: string[] = [];
     let cursor: string | null = null;
     do {
-      const page: any = await api('GET', `/leaderboard?basis=net_worth&q=o&limit=1${cursor ? `&cursor=${cursor}` : ''}`);
+      const page: any = await api(
+        'GET',
+        `/leaderboard?basis=net_worth&q=o&limit=1${cursor ? `&cursor=${cursor}` : ''}`,
+      );
       expect(page.status).toBe(200);
       seen.push(...page.body.entries.map((e: any) => e.handle));
       cursor = page.body.nextCursor;

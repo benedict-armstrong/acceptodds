@@ -37,7 +37,9 @@ async function settleEvents(): Promise<void> {
 }
 
 async function buy(token: string, outcomeId: string, sharesMicro: bigint, marketId = fx.marketId) {
-  const q = await api('POST', `/markets/${marketId}/quote`, { body: { outcomeId, sharesMicro: sharesMicro.toString() } });
+  const q = await api('POST', `/markets/${marketId}/quote`, {
+    body: { outcomeId, sharesMicro: sharesMicro.toString() },
+  });
   expect(q.status).toBe(200);
   return api('POST', `/markets/${marketId}/orders`, {
     token,
@@ -78,7 +80,11 @@ describe('OpenAPI', () => {
     const doc = (await api('GET', '/openapi.json')).body;
     expect(Object.keys(doc.paths).sort()).toEqual(routes);
     // …and the in-process test router knows about all of them.
-    expect(ROUTE_PATTERNS.filter((p) => p !== '/openapi.json').map((p) => p.replace(/\[(\w+)\]/g, '{$1}')).sort()).toEqual(routes);
+    expect(
+      ROUTE_PATTERNS.filter((p) => p !== '/openapi.json')
+        .map((p) => p.replace(/\[(\w+)\]/g, '{$1}'))
+        .sort(),
+    ).toEqual(routes);
   });
 });
 
@@ -574,7 +580,13 @@ describe('portfolio (§1.1)', () => {
 
     // Mid-market net worth is present only labelled, next to a caveat, and
     // nowhere at the top level where it could be read as a score.
-    expect(Object.keys(res.body).sort()).toEqual(['accountId', 'balanceMicro', 'holdings', 'summary', 'unsettledValuation']);
+    expect(Object.keys(res.body).sort()).toEqual([
+      'accountId',
+      'balanceMicro',
+      'holdings',
+      'summary',
+      'unsettledValuation',
+    ]);
     expect(res.body.unsettledValuation.caveat).toMatch(/not a score/i);
     expect(BigInt(res.body.unsettledValuation.liquidationValueMicro)).toBeLessThan(
       BigInt(res.body.unsettledValuation.midMarketNetWorthMicro),
@@ -717,7 +729,12 @@ describe('leaderboard (§1.2)', () => {
     const byHandle = Object.fromEntries(res.body.entries.map((e: any) => [e.handle, e]));
     // Everyone who is not the house, settled markets or not.
     expect(Object.keys(byHandle).sort()).toEqual(['idle', 'pumper']);
-    expect(byHandle.idle).toMatchObject({ netWorthMicro: STARTING_MICRO.toString(), unrealizedPnlMicro: '0', settledPnlMicro: '0', rank: 1 });
+    expect(byHandle.idle).toMatchObject({
+      netWorthMicro: STARTING_MICRO.toString(),
+      unrealizedPnlMicro: '0',
+      settledPnlMicro: '0',
+      rank: 1,
+    });
     // The pumper's mark says profit; the leaderboard does not.
     const pf = await api('GET', '/me/portfolio', { token: pumper.token });
     expect(BigInt(pf.body.unsettledValuation.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);

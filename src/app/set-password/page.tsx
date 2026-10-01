@@ -33,7 +33,8 @@ export default async function SetPassword({
     target = { email, proof: { code } };
   }
   const viewer = await viewerFromHeaders(await headers());
-  const signedInAs = viewer && target && viewer.email.toLowerCase() !== target.email.toLowerCase() ? viewer.email : null;
+  const signedInAs =
+    viewer && target && viewer.email.toLowerCase() !== target.email.toLowerCase() ? viewer.email : null;
 
   return (
     <main className="mx-auto my-10 max-w-[360px] px-4">

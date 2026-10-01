@@ -35,7 +35,8 @@ const OUT = 'config/institution-domains.json';
 const CURATED = 'config/institution-domains.curated.json';
 
 const SWOT_REPO = 'https://github.com/JetBrains/swot.git';
-const HIPO_URL = 'https://raw.githubusercontent.com/Hipo/university-domains-list/master/world_universities_and_domains.json';
+const HIPO_URL =
+  'https://raw.githubusercontent.com/Hipo/university-domains-list/master/world_universities_and_domains.json';
 const ROR_RECORDS = 'https://zenodo.org/api/records?communities=ror-data&sort=mostrecent&size=1';
 const PSL_URL = 'https://publicsuffix.org/list/public_suffix_list.dat';
 const FREEMAIL_URL = 'https://raw.githubusercontent.com/Kikobeats/free-email-domains/master/domains.json';
@@ -45,7 +46,22 @@ const FREEMAIL_URL = 'https://raw.githubusercontent.com/Kikobeats/free-email-dom
  * `edu.na`). The Public Suffix List misses some; a source that lists one as
  * an institution's domain would admit everyone registered under it.
  */
-const REGISTRY_LABELS = new Set(['ac', 'co', 'com', 'edu', 'go', 'gob', 'gov', 'mil', 'ne', 'net', 'or', 'org', 'sch', 'school']);
+const REGISTRY_LABELS = new Set([
+  'ac',
+  'co',
+  'com',
+  'edu',
+  'go',
+  'gob',
+  'gov',
+  'mil',
+  'ne',
+  'net',
+  'or',
+  'org',
+  'sch',
+  'school',
+]);
 
 /** Namespaces only institutions can register in; see Hipo above. */
 const ACADEMIC_LABELS = new Set(['edu', 'ac']);
@@ -186,14 +202,22 @@ async function main() {
   };
 
   const picked = new Map<string, { name: string; source: Source }>();
-  const dropped: Record<string, number> = { publicSuffix: 0, registry: 0, freemail: 0, swotAbused: 0, excluded: 0, malformed: 0 };
+  const dropped: Record<string, number> = {
+    publicSuffix: 0,
+    registry: 0,
+    freemail: 0,
+    swotAbused: 0,
+    excluded: 0,
+    malformed: 0,
+  };
   const offer = (domain: string, name: string, source: Source) => {
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) return void dropped.malformed++;
     if (under(domain, exclude)) return void dropped.excluded++;
     if (source !== 'curated') {
       const labels = domain.split('.');
       if (psl.has(domain) || psl.has(`*.${labels.slice(1).join('.')}`)) return void dropped.publicSuffix++;
-      if (labels.length === 2 && labels[1].length === 2 && REGISTRY_LABELS.has(labels[0])) return void dropped.registry++;
+      if (labels.length === 2 && labels[1].length === 2 && REGISTRY_LABELS.has(labels[0]))
+        return void dropped.registry++;
       if (under(domain, sw.bad)) return void dropped.swotAbused++;
       if (source !== 'swot' && free.has(domain) && !sw.domains.has(domain)) return void dropped.freemail++;
     }

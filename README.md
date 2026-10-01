@@ -14,7 +14,7 @@ The UI is one client of the API, not the other way round.
 **The platform knows nothing about papers.** A market here is a question, a set
 of outcomes, an id and a resolution rule. There is no corpus, no scraper, no
 arXiv, no OpenReview client and no model calls anywhere in this package.
-Anything that needs to know *what* is being traded lives in `../research`,
+Anything that needs to know _what_ is being traded lives in `../research`,
 which creates markets and reports outcomes through the same public API every
 other client uses.
 
@@ -27,17 +27,17 @@ to it. That is deliberate, and it is what keeps this a game.
 
 ## Status
 
-| Milestone | State |
-|---|---|
-| 0 — skeleton | done |
-| 1 — LMSR core + property tests | done |
-| 2 — schema and migrations | done |
-| 3 — engine (quote / trade / settle) | done |
-| 4 — public API | done |
-| 5 — auth and institutional signup | done (email domain allowlist; ORCID and ROR deferred) |
-| 6 — UI | in progress: markets, market page (trade, chart, comments), sign-in/up, portfolio, leaderboard. Token management and admin pages still to do |
-| 7 — jobs and backups | not started |
-| deployment | live at https://acceptodds.com (Docker, behind the host's shared Traefik and Cloudflare) |
+| Milestone                           | State                                                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 — skeleton                        | done                                                                                                                                         |
+| 1 — LMSR core + property tests      | done                                                                                                                                         |
+| 2 — schema and migrations           | done                                                                                                                                         |
+| 3 — engine (quote / trade / settle) | done                                                                                                                                         |
+| 4 — public API                      | done                                                                                                                                         |
+| 5 — auth and institutional signup   | done (email domain allowlist; ORCID and ROR deferred)                                                                                        |
+| 6 — UI                              | in progress: markets, market page (trade, chart, comments), sign-in/up, portfolio, leaderboard. Token management and admin pages still to do |
+| 7 — jobs and backups                | not started                                                                                                                                  |
+| deployment                          | live at https://acceptodds.com (Docker, behind the host's shared Traefik and Cloudflare)                                                     |
 
 The public brand is **acceptodds**; the code, package and database keep the
 name papermarket. Production is `Dockerfile` + `docker-compose.prod.yml`;

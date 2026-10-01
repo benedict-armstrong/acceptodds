@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const p = await loadPublicPosition((await params).id);
   const title = `${positionLine(p)} · ${(p.market.listingTitle ?? p.market.question).replace(/\$/g, '')}`;
-  const description = 'A position its holder made public, kept up to date as they trade. See the odds, and trade on them.';
+  const description =
+    'A position its holder made public, kept up to date as they trade. See the odds, and trade on them.';
   return {
     title: `${title} · ${siteName()}`,
     description,
@@ -55,7 +56,8 @@ export default async function PublicPositionPage({ params }: { params: Promise<{
     listingSlug: p.market.listingSlug,
   };
   const trading = p.market.status === 'open' || p.market.status === 'closed';
-  const average = p.heldMicro > 0n ? Number(p.costBasisMicro) / Number(p.heldMicro) : Number(p.paidMicro) / Number(p.boughtMicro);
+  const average =
+    p.heldMicro > 0n ? Number(p.costBasisMicro) / Number(p.heldMicro) : Number(p.paidMicro) / Number(p.boughtMicro);
 
   const rows: DetailsRow[] = [
     [
@@ -68,14 +70,27 @@ export default async function PublicPositionPage({ params }: { params: Promise<{
     ['Status', STATE[p.state]],
     ['Made public', `${day(p.createdAt)}, holding ${shares(p.sharedSharesMicro)} shares`],
     [p.market.status === 'settled' ? 'Shares at settlement' : 'Shares held now', shares(p.heldMicro)],
-    ['Bought @', <span key="b" className={ui.mono}>{pct(average, true)}</span>, 'a'],
+    [
+      'Bought @',
+      <span key="b" className={ui.mono}>
+        {pct(average, true)}
+      </span>,
+      'a',
+    ],
     ['Paid', <Amount key="p" micro={p.paidMicro} />],
   ];
   if (p.soldMicro > 0n) rows.push(['Sold for', <Amount key="s" micro={p.soldMicro} />]);
-  if (p.quotedExitMicro !== null) rows.push(['Selling now would pay', <Amount key="x" micro={p.quotedExitMicro} />, 'b']);
+  if (p.quotedExitMicro !== null)
+    rows.push(['Selling now would pay', <Amount key="x" micro={p.quotedExitMicro} />, 'b']);
   if (p.market.status === 'settled') rows.push(['Settlement paid', <Amount key="y" micro={p.payoutMicro} />]);
   rows.push(['P&L', <Amount key="l" micro={p.pnlMicro} signed />, 'c']);
-  if (trading) rows.push([`${p.outcome.label} trades at`, <span key="n" className={ui.mono}>{pct(p.price, true)}</span>]);
+  if (trading)
+    rows.push([
+      `${p.outcome.label} trades at`,
+      <span key="n" className={ui.mono}>
+        {pct(p.price, true)}
+      </span>,
+    ]);
 
   return (
     <main className={`${ui.page} max-w-[560px]`}>
@@ -98,7 +113,10 @@ export default async function PublicPositionPage({ params }: { params: Promise<{
         rows={rows}
         notes={[
           ['a', 'The average price paid per share held; once sold out, over every buy.'],
-          ['b', 'What selling every share held would pay now. Selling moves the price against the seller, so it is less than shares × price.'],
+          [
+            'b',
+            'What selling every share held would pay now. Selling moves the price against the seller, so it is less than shares × price.',
+          ],
           [
             'c',
             <>
@@ -115,7 +133,8 @@ export default async function PublicPositionPage({ params }: { params: Promise<{
       </div>
       {isOwner && (
         <div className="mt-4 font-sans text-[13px] text-muted">
-          This is your position, and anyone with the link sees it. You can <MakePrivateButton outcomeId={p.outcome.id} handle={p.trader.handle} />.
+          This is your position, and anyone with the link sees it. You can{' '}
+          <MakePrivateButton outcomeId={p.outcome.id} handle={p.trader.handle} />.
         </div>
       )}
     </main>

@@ -60,7 +60,11 @@ export function SetPasswordForm({
     setNote(null);
     const { error } = await authClient.requestPasswordReset({ email: resendTo, redirectTo: setPasswordPath(resendTo) });
     setBusy(false);
-    setNote(error ? { ok: false, text: error.message ?? 'Could not send a new link.' } : { ok: true, text: 'Sent. Check your inbox.' });
+    setNote(
+      error
+        ? { ok: false, text: error.message ?? 'Could not send a new link.' }
+        : { ok: true, text: 'Sent. Check your inbox.' },
+    );
   }
 
   if (dead || !target) {
@@ -86,8 +90,8 @@ export function SetPasswordForm({
       </p>
       {signedInAs && (
         <div className={`${ui.note(false)} mb-3`}>
-          You are signed in as <b>{signedInAs}</b>, not {target.email}. This sets the password of{' '}
-          <b>{target.email}</b> and signs you in as it instead.
+          You are signed in as <b>{signedInAs}</b>, not {target.email}. This sets the password of <b>{target.email}</b>{' '}
+          and signs you in as it instead.
         </div>
       )}
       {/* For password managers: which account the new password belongs to. */}

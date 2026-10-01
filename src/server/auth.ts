@@ -134,7 +134,9 @@ async function authenticateSession(req: Request): Promise<Principal | null> {
   // Normally created on email confirmation; this makes a missed hook harmless.
   const account = await ensureAccountForUser(session.user);
   const rateLimit = await limit(`user:${session.user.id}`);
-  const scopes: readonly TokenScope[] = isAdminEmail(session.user.email) ? [...SESSION_SCOPES, 'admin'] : SESSION_SCOPES;
+  const scopes: readonly TokenScope[] = isAdminEmail(session.user.email)
+    ? [...SESSION_SCOPES, 'admin']
+    : SESSION_SCOPES;
   return { account, method: 'session', scopes, credentialId: session.session.id, rateLimit };
 }
 

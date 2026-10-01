@@ -146,7 +146,10 @@ describe('browseListings pages', () => {
       pages.push(...page.rows.map((r) => r.market.slug));
     }
     expect(pages).toEqual(whole.rows.map((r) => r.market.slug));
-    expect(await browseListings({ kind: 'venue', sort: 'newest', offset: 9, limit: 3 })).toEqual({ rows: [], total: 7 });
+    expect(await browseListings({ kind: 'venue', sort: 'newest', offset: 9, limit: 3 })).toEqual({
+      rows: [],
+      total: 7,
+    });
     expect(await browseListings({ kind: 'nowhere', sort: 'newest' })).toEqual({ rows: [], total: 0 });
   });
 
@@ -180,7 +183,9 @@ describe('browseListings pages', () => {
     expect(await slugs({ heldBy: me })).toEqual(['fh', 'h']);
     expect(await slugs({ exceptFollowedBy: me, exceptHeldBy: me })).toEqual(['x']);
 
-    const [h] = (await browseListings({ kind: 'venue', sort: 'closing', heldBy: me })).rows.filter((r) => r.listing?.slug === 'h');
+    const [h] = (await browseListings({ kind: 'venue', sort: 'closing', heldBy: me })).rows.filter(
+      (r) => r.listing?.slug === 'h',
+    );
     expect(h.marketCount).toBe(2);
     expect(h.totalOrderCount).toBe(1);
     expect(h.market.slug).toBe('h-main');

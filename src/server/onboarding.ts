@@ -115,7 +115,8 @@ export async function setFirstPassword(headers: Headers, password: string): Prom
     await getAuth().api.setPassword({ body: { newPassword: password }, headers });
   } catch (err) {
     const code = (err as { body?: { code?: string } }).body?.code;
-    if (code === 'PASSWORD_ALREADY_SET') throw new ApiError(409, 'password_already_set', 'this account already has a password');
+    if (code === 'PASSWORD_ALREADY_SET')
+      throw new ApiError(409, 'password_already_set', 'this account already has a password');
     if (code === 'PASSWORD_TOO_SHORT' || code === 'PASSWORD_TOO_LONG') {
       throw new ApiError(400, 'validation_error', 'password must be 12 to 128 characters');
     }

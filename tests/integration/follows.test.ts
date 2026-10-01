@@ -164,7 +164,9 @@ describe('PATCH /me', () => {
     expect((await api('PATCH', '/me', { token: t.token, body: { nope: 1 } })).status).toBe(400);
 
     const cookie = await signUp('person@example.org');
-    expect((await api('PATCH', '/me', { cookie, origin: 'https://evil.example', body: { digestOptIn: false } })).status).toBe(403);
+    expect(
+      (await api('PATCH', '/me', { cookie, origin: 'https://evil.example', body: { digestOptIn: false } })).status,
+    ).toBe(403);
     expect((await api('PATCH', '/me', { cookie, body: { digestOptIn: false } })).body.digestOptIn).toBe(false);
   });
 });
@@ -216,9 +218,14 @@ describe('sendDailyDigest', () => {
     expect(sends).toEqual([expect.objectContaining({ accountId: alice.id, day: r.day })]);
     // Logged after the fact, without waiting on it.
     await expect
-      .poll(async () =>
-        (await db.select().from(events).where(and(eq(events.kind, 'digest.sent'), eq(events.accountId, alice.id))))
-          .length,
+      .poll(
+        async () =>
+          (
+            await db
+              .select()
+              .from(events)
+              .where(and(eq(events.kind, 'digest.sent'), eq(events.accountId, alice.id)))
+          ).length,
       )
       .toBe(1);
   });
@@ -309,5 +316,4 @@ describe('sendDailyDigest', () => {
     }
     expect((await sendDailyDigest({ baseUrl: BASE })).sent).toBe(1);
   });
-
 });

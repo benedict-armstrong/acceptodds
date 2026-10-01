@@ -26,7 +26,8 @@ async function main() {
   if (values['database-url']) process.env.DATABASE_URL = values['database-url'];
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
   const min = values['min-move-pp'] === undefined ? undefined : Number(values['min-move-pp']);
-  if (min !== undefined && !(Number.isFinite(min) && min > 0)) throw new Error('--min-move-pp must be a positive number');
+  if (min !== undefined && !(Number.isFinite(min) && min > 0))
+    throw new Error('--min-move-pp must be a positive number');
   try {
     const r = await sendDailyDigest({ minMovePp: min });
     console.log(

@@ -142,7 +142,10 @@ describe('affiliations', () => {
   it('refuses an expired code', async () => {
     const cookie = await signUp('ada@example.org', 'Ada');
     const added = await add(cookie, 'ada@ethz.ch');
-    await db.update(affiliations).set({ codeExpiresAt: new Date(Date.now() - 1000) }).where(eq(affiliations.id, added.body.id));
+    await db
+      .update(affiliations)
+      .set({ codeExpiresAt: new Date(Date.now() - 1000) })
+      .where(eq(affiliations.id, added.body.id));
     const res = await verify(cookie, added.body.id, codeFor('ada@ethz.ch')!);
     expect(res.status).toBe(422);
     expect(res.body.error.details.reason).toBe('expired');
@@ -260,7 +263,10 @@ describe('affiliations', () => {
       ['GET', '/me/affiliations'],
       ['POST', '/me/affiliations'],
     ] as const) {
-      const res = await api(method, path, { token: bot.token, body: method === 'POST' ? { email: 'x@ethz.ch' } : undefined });
+      const res = await api(method, path, {
+        token: bot.token,
+        body: method === 'POST' ? { email: 'x@ethz.ch' } : undefined,
+      });
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('session_required');
     }
@@ -268,7 +274,11 @@ describe('affiliations', () => {
 
   it('refuses a cross-site write', async () => {
     const cookie = await signUp('ada@example.org', 'Ada');
-    const res = await api('POST', '/me/affiliations', { cookie, origin: 'https://evil.example', body: { email: 'ada@ethz.ch' } });
+    const res = await api('POST', '/me/affiliations', {
+      cookie,
+      origin: 'https://evil.example',
+      body: { email: 'ada@ethz.ch' },
+    });
     expect(res.status).toBe(403);
   });
 });

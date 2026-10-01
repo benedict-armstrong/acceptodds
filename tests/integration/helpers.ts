@@ -22,7 +22,9 @@ export async function resetDatabase(): Promise<void> {
 }
 
 export async function closePool(): Promise<void> {
-  await getPool().end().catch(() => {});
+  await getPool()
+    .end()
+    .catch(() => {});
 }
 
 export interface Fixture {

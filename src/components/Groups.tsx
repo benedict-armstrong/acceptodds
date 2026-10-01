@@ -192,7 +192,10 @@ export function GroupActions({ group, role, viewerHandle, members }: GroupAction
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const { busy, error, run } = useWrite();
-  const invite = typeof window === 'undefined' ? groupInvitePath(group.inviteCode) : new URL(groupInvitePath(group.inviteCode), window.location.origin).href;
+  const invite =
+    typeof window === 'undefined'
+      ? groupInvitePath(group.inviteCode)
+      : new URL(groupInvitePath(group.inviteCode), window.location.origin).href;
   const base = `/groups/${group.id}`;
 
   return (

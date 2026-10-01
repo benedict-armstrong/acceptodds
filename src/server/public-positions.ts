@@ -96,7 +96,10 @@ export async function publish(
       .values({ accountId, outcomeId, sharedSharesMicro: held.sharesMicro })
       .onConflictDoNothing();
   }
-  const [view] = await read(and(eq(publicPositions.accountId, accountId), eq(publicPositions.outcomeId, outcomeId)), database);
+  const [view] = await read(
+    and(eq(publicPositions.accountId, accountId), eq(publicPositions.outcomeId, outcomeId)),
+    database,
+  );
   return view;
 }
 
@@ -117,7 +120,10 @@ export async function publicPosition(id: string, database: Database = getDb()): 
 }
 
 /** An account's public positions, newest first. */
-export async function publicPositionsOf(accountId: string, database: Database = getDb()): Promise<PublicPositionView[]> {
+export async function publicPositionsOf(
+  accountId: string,
+  database: Database = getDb(),
+): Promise<PublicPositionView[]> {
   return read(eq(publicPositions.accountId, accountId), database);
 }
 
@@ -164,7 +170,12 @@ async function read(where: SQL | undefined, database: Database): Promise<PublicP
       publicPositions,
       and(eq(publicPositions.accountId, orders.accountId), eq(publicPositions.outcomeId, orders.outcomeId)),
     )
-    .where(inArray(publicPositions.id, rows.map((r) => r.row.id)))
+    .where(
+      inArray(
+        publicPositions.id,
+        rows.map((r) => r.row.id),
+      ),
+    )
     .orderBy(asc(orders.createdAt), asc(orders.id));
 
   const boards = new Map<string, (typeof outcomes.$inferSelect)[]>();

@@ -41,7 +41,10 @@ async function signUpUnconfirmed(email: string, name = 'Pending Person', next?: 
  */
 async function unconfirmedWithPassword(email: string, password = 'correct horse battery') {
   const ctx = await getAuth().$context;
-  const u = await ctx.internalAdapter.createUser({ email, name: 'Pending Person', emailVerified: false }, { method: 'email' });
+  const u = await ctx.internalAdapter.createUser(
+    { email, name: 'Pending Person', emailVerified: false },
+    { method: 'email' },
+  );
   await ctx.internalAdapter.linkAccount({
     userId: u.id,
     providerId: 'credential',
@@ -124,7 +127,7 @@ describe('sign-up', () => {
     expect(grants).toHaveLength(1);
   });
 
-  it('takes no password: Better Auth\'s own sign-up is off, and nothing signs in before confirming', async () => {
+  it("takes no password: Better Auth's own sign-up is off, and nothing signs in before confirming", async () => {
     const off = await authCall('POST', '/sign-up/email', {
       body: { email: 'slow@example.org', password: 'correct horse battery', name: 'Slow' },
     });
@@ -159,11 +162,15 @@ describe('sign-up', () => {
 
   it('signing in unconfirmed with the right password sends a fresh code and link; a wrong one sends nothing', async () => {
     await unconfirmedWithPassword('again@example.org');
-    const wrong = await authCall('POST', '/sign-in/email', { body: { email: 'again@example.org', password: 'not the password' } });
+    const wrong = await authCall('POST', '/sign-in/email', {
+      body: { email: 'again@example.org', password: 'not the password' },
+    });
     expect(wrong.status).toBe(401);
     expect(devOutbox()).toHaveLength(0);
 
-    const right = await authCall('POST', '/sign-in/email', { body: { email: 'again@example.org', password: 'correct horse battery' } });
+    const right = await authCall('POST', '/sign-in/email', {
+      body: { email: 'again@example.org', password: 'correct horse battery' },
+    });
     expect(right.status).toBe(403);
     const mail = devOutbox().find((m) => m.to === 'again@example.org')!;
     expect(codeFrom(mail.text)).toMatch(/^\d{6}$/);
@@ -196,7 +203,11 @@ describe('sign-up', () => {
     const again = await signUpUnconfirmed('taken@example.org', 'Impostor');
     expect(again.status).toBe(200);
     expect(devOutbox()).toEqual([
-      expect.objectContaining({ to: 'taken@example.org', subject: 'You already have an acceptodds account', text: expect.stringContaining('/signin') }),
+      expect.objectContaining({
+        to: 'taken@example.org',
+        subject: 'You already have an acceptodds account',
+        text: expect.stringContaining('/signin'),
+      }),
     ]);
     const [row] = await db.select().from(user).where(eq(user.email, 'taken@example.org'));
     expect(row.name).toBe('Taken');
@@ -336,7 +347,11 @@ describe('a session on /api/v1', () => {
   it('refuses a cookie-authenticated write from another origin, or with no Origin', async () => {
     const cookie = await signUp('csrf@example.org');
     for (const origin of ['https://evil.example', null]) {
-      const res = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, origin, body: order(fx.outcomeIds[0]) });
+      const res = await api('POST', `/markets/${fx.marketId}/orders`, {
+        cookie,
+        origin,
+        body: order(fx.outcomeIds[0]),
+      });
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('forbidden');
     }
@@ -383,7 +398,10 @@ describe('trading eligibility', () => {
 
   it('exempts bots', async () => {
     const bot = await trader('robo', ['read', 'trade'], { isBot: true });
-    const res = await api('POST', `/markets/${fx.marketId}/orders`, { token: bot.token, body: order(fx.outcomeIds[0]) });
+    const res = await api('POST', `/markets/${fx.marketId}/orders`, {
+      token: bot.token,
+      body: order(fx.outcomeIds[0]),
+    });
     expect(res.status).toBe(201);
   });
 });
@@ -485,7 +503,10 @@ describe('token management', () => {
       ['POST', '/me/tokens'],
       ['DELETE', `/me/tokens/${t.tokenId}`],
     ] as const) {
-      const res = await api(method, path, { token: t.token, body: method === 'POST' ? { name: 'x', scopes: ['read'] } : undefined });
+      const res = await api(method, path, {
+        token: t.token,
+        body: method === 'POST' ? { name: 'x', scopes: ['read'] } : undefined,
+      });
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('session_required');
     }

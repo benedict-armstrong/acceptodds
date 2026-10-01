@@ -40,11 +40,15 @@ async function main() {
   const market = markets[0];
   const outcome = market.outcomes[0];
   console.log(`  market: ${market.slug} — ${market.question}`);
-  console.log(`  ${market.outcomes.map((o: { label: string; price: number }) => `${o.label}=${o.price.toFixed(4)}`).join('  ')}`);
+  console.log(
+    `  ${market.outcomes.map((o: { label: string; price: number }) => `${o.label}=${o.price.toFixed(4)}`).join('  ')}`,
+  );
 
   const sharesMicro = '5000000'; // 5 shares
   const quote = await call('POST', `/markets/${market.id}/quote`, { outcomeId: outcome.id, sharesMicro });
-  console.log(`  quote: ${sharesMicro} micro-shares of ${quote.outcomeLabel} costs ${quote.costMicro} micro, price ${quote.priceBefore.toFixed(4)} -> ${quote.priceAfter.toFixed(4)}`);
+  console.log(
+    `  quote: ${sharesMicro} micro-shares of ${quote.outcomeLabel} costs ${quote.costMicro} micro, price ${quote.priceBefore.toFixed(4)} -> ${quote.priceAfter.toFixed(4)}`,
+  );
 
   const key = `smoke-${Date.now()}`;
   const order = { outcomeId: outcome.id, sharesMicro, maxCostMicro: quote.costMicro };
@@ -56,17 +60,26 @@ async function main() {
 
   const portfolio = await call('GET', '/me/portfolio');
   for (const h of portfolio.holdings) {
-    console.log(`  holding: ${h.sharesMicro} ${h.outcomeLabel} on ${h.marketSlug}: mark ${h.markMicro}, quoted exit ${h.quotedExitMicro}`);
+    console.log(
+      `  holding: ${h.sharesMicro} ${h.outcomeLabel} on ${h.marketSlug}: mark ${h.markMicro}, quoted exit ${h.quotedExitMicro}`,
+    );
   }
-  console.log(`  balance ${portfolio.balanceMicro}; liquidation value ${portfolio.unsettledValuation.liquidationValueMicro}`);
+  console.log(
+    `  balance ${portfolio.balanceMicro}; liquidation value ${portfolio.unsettledValuation.liquidationValueMicro}`,
+  );
 
-  const exit = await call('POST', `/markets/${market.id}/quote`, { outcomeId: outcome.id, sharesMicro: `-${sharesMicro}` });
+  const exit = await call('POST', `/markets/${market.id}/quote`, {
+    outcomeId: outcome.id,
+    sharesMicro: `-${sharesMicro}`,
+  });
   const sell = await call('POST', `/markets/${market.id}/orders`, {
     outcomeId: outcome.id,
     sharesMicro: `-${sharesMicro}`,
     maxCostMicro: exit.costMicro,
   });
-  console.log(`  sold back: proceeds ${-BigInt(sell.costMicro)} micro (paid ${fill.costMicro}); round trip cost ${BigInt(fill.costMicro) + BigInt(sell.costMicro)} micro`);
+  console.log(
+    `  sold back: proceeds ${-BigInt(sell.costMicro)} micro (paid ${fill.costMicro}); round trip cost ${BigInt(fill.costMicro) + BigInt(sell.costMicro)} micro`,
+  );
 
   console.log('ok');
 }

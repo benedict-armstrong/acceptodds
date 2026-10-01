@@ -67,7 +67,8 @@ async function heldMicro(accountId: string, outcomeId: string): Promise<bigint> 
 describe('comment bodies', () => {
   it('store Markdown and math as raw text and return it verbatim', async () => {
     const t = await trader('writer');
-    const body = '# Claim\n\n**Novel**: $\\mathcal{O}(n \\log n)$ beats\n\n$$\\sum_i x_i^2$$\n\n- a\n- b\n\n<script>alert(1)</script> [x](javascript:alert(1))';
+    const body =
+      '# Claim\n\n**Novel**: $\\mathcal{O}(n \\log n)$ beats\n\n$$\\sum_i x_i^2$$\n\n- a\n- b\n\n<script>alert(1)</script> [x](javascript:alert(1))';
     const id = await comment(t.token, `  ${body}\n `);
     expect(byId((await list()).body, id).body).toBe(body);
   });
@@ -154,7 +155,10 @@ describe('backing a comment', () => {
     const reader = await trader('reader', ['read']);
     const unverified = await trader('unverified', ['read', 'trade'], { verified: false });
     const id = await comment(alice.token, 'x');
-    expect((await api('POST', `/comments/${id}/backing`, { body: { outcomeId: fx.outcomeIds[0], sharesMicro: '1' } })).status).toBe(401);
+    expect(
+      (await api('POST', `/comments/${id}/backing`, { body: { outcomeId: fx.outcomeIds[0], sharesMicro: '1' } }))
+        .status,
+    ).toBe(401);
     expect((await back(reader.token, id, fx.outcomeIds[0], 1)).status).toBe(403);
     expect((await back(unverified.token, id, fx.outcomeIds[0], 1)).body.error.code).toBe('not_verified');
     expect((await api('DELETE', `/comments/${id}/backing`, { token: reader.token })).status).toBe(403);
@@ -184,7 +188,9 @@ describe('backing a comment', () => {
     expect((await api('DELETE', `/comments/${id}/backing`, { token: bob.token })).status).toBe(204);
     const after = byId((await list(bob.token)).body, id).backing;
     expect(after).toEqual({ totalMicro: '0', byOutcome: [], backers: 0, yours: [] });
-    expect((await api('DELETE', '/comments/00000000-0000-4000-8000-000000000000/backing', { token: bob.token })).status).toBe(404);
+    expect(
+      (await api('DELETE', '/comments/00000000-0000-4000-8000-000000000000/backing', { token: bob.token })).status,
+    ).toBe(404);
     // And the stake is free again.
     expect((await back(bob.token, id, yes, 10)).status).toBe(201);
   });

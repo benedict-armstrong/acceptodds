@@ -1,41 +1,49 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { notFound } from 'next/navigation';
 import { Amount } from '@/components/Amount';
 import { DetailsTable } from '@/components/DetailsTable';
 import { FieldCurve } from '@/components/FieldCurve';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { PaperName } from '@/components/PaperName';
+import { ShareProfile } from '@/components/ShareProfile';
 import { TableNotes } from '@/components/TableNotes';
 import { TraderHeader } from '@/components/TraderHeader';
 import { ui } from '@/components/ui';
 import { WORTH_NOTES } from '@/components/WorthTable';
 import { signedRep } from '@/lib/format';
 import { publicPositionPath } from '@/lib/links';
-import { ApiError } from '@/server/api/errors';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { fieldSnapshot } from '@/server/field-snapshot';
 import { publicPositionsOf } from '@/server/public-positions';
 import { siteName } from '@/server/share';
-import { leaderboardStandings, publicAccount, standingOf } from '@/server/views';
+import { standingOf } from '@/server/views';
+import { loadPerson } from './load';
 
 export const dynamic = 'force-dynamic';
 
-async function load(handle: string) {
-  try {
-    return await publicAccount(handle);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) notFound();
-    throw err;
-  }
-}
+const personPath = (handle: string) => `/people/${encodeURIComponent(handle)}`;
 
+/**
+ * The link preview's text: who, and where they stand on the board. The image
+ * (`opengraph-image.tsx`, added by Next) draws the field with them on it.
+ */
 export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }): Promise<Metadata> {
-  const handle = decodeURIComponent((await params).handle);
-  const { account } = await load(handle);
-  return { title: `${account.displayName} (@${account.handle}) · ${siteName()}` };
+  const { account, standing } = await loadPerson((await params).handle);
+  const title = `${account.displayName} (@${account.handle})`;
+  const description = standing
+    ? `#${standing.rank} of ${standing.fieldSize.toLocaleString('en')} traders by net worth` +
+      (standing.percentAhead === null ? '.' : `, ahead of ${standing.percentAhead}%.`)
+    : `A trader on ${siteName()}.`;
+  const path = personPath(account.handle);
+  return {
+    title: `${title} · ${siteName()}`,
+    description,
+    alternates: { canonical: path },
+    openGraph: { title, description, url: path, type: 'profile', siteName: siteName() },
+    twitter: { card: 'summary_large_image', title, description },
+  };
 }
 
 const POSITION_STATE = { held: 'held', sold: 'sold', won: 'won', lost: 'lost', void: 'void' } as const;
@@ -50,12 +58,8 @@ const POSITION_STATE = { held: 'held', sold: 'sold', won: 'won', lost: 'lost', v
  * a mark (§1.2). House accounts are not people and 404.
  */
 export default async function PersonPage({ params }: { params: Promise<{ handle: string }> }) {
-  const handle = decodeURIComponent((await params).handle);
-  const { account: a, settledPnlMicro, settledMarkets } = await load(handle);
+  const { account: a, settledPnlMicro, settledMarkets, field, row, standing } = await loadPerson((await params).handle);
   const viewer = await viewerFromHeaders(await headers());
-  const field = await leaderboardStandings({ basis: 'net_worth' });
-  const row = field.find((r) => r.accountId === a.id) ?? null;
-  const standing = row ? standingOf(field, a.id, 'net_worth') : null;
   const snapshot = await fieldSnapshot();
   const shared = await publicPositionsOf(a.id);
   events.log('account.read', { accountId: viewer?.account.id ?? null });
@@ -114,8 +118,9 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
           ['c', WORTH_NOTES.realized],
         ]}
       />
-      <div className="mt-3 font-sans text-sm">
+      <div className="mt-3 flex items-center gap-4.5 font-sans text-sm">
         <Link href={board}>on the leaderboard →</Link>
+        <ShareProfile account={a} standing={standing} />
       </div>
 
       {shared.length > 0 && (

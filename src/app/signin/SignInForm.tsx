@@ -64,7 +64,11 @@ export function SignInForm({ next }: { next: string }) {
         setError(null);
         const address = email.trim();
         // `callbackURL` is only for the confirmation mail an unconfirmed sign-in gets.
-        const { error } = await authClient.signIn.email({ email: address, password, callbackURL: signInContinueHref(next) });
+        const { error } = await authClient.signIn.email({
+          email: address,
+          password,
+          callbackURL: signInContinueHref(next),
+        });
         if (error) {
           setBusy(false);
           if (error.code === 'EMAIL_NOT_VERIFIED') {
@@ -81,11 +85,26 @@ export function SignInForm({ next }: { next: string }) {
     >
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Email
-        <input ref={emailField} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
+        <input
+          ref={emailField}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+          className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base"
+        />
       </label>
       <label className="mt-2.5 block font-sans text-[13px] text-muted">
         Password
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base" />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          autoComplete="current-password"
+          className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base"
+        />
       </label>
       <button className={ui.btn()} disabled={busy}>
         Sign in

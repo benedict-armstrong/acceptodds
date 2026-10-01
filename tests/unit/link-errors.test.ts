@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LINK_USED, linkErrorMessage } from '@/lib/link-errors';
 
 describe('linkErrorMessage', () => {
-  it('explains Better Auth\'s codes and a used link', () => {
+  it("explains Better Auth's codes and a used link", () => {
     expect(linkErrorMessage('TOKEN_EXPIRED')).toContain('expired');
     expect(linkErrorMessage('INVALID_TOKEN')).toContain('not valid');
     expect(linkErrorMessage(LINK_USED)).toContain('already used');

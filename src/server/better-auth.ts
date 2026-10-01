@@ -64,7 +64,6 @@ const MAGIC_LINK_TTL_SECONDS = 15 * 60;
  */
 const MAGIC_LINK_MAIL_BUDGET: RateLimitConfig = { burst: 5, perSecond: 5 / 86_400 };
 
-
 /**
  * The email-OTP plugin's routes that stay off. It is here for the codes in
  * two mails: the confirmation mail, and the "choose a password" mail to an
@@ -102,7 +101,10 @@ export async function missingFromUser(
   userId: string,
   database: Database = getDb(),
 ): Promise<{ name: boolean; password: boolean }> {
-  const [row] = await database.select({ name: authSchema.user.name }).from(authSchema.user).where(eq(authSchema.user.id, userId));
+  const [row] = await database
+    .select({ name: authSchema.user.name })
+    .from(authSchema.user)
+    .where(eq(authSchema.user.id, userId));
   return { name: !row?.name.trim(), password: !(await hasPassword(userId, database)) };
 }
 
@@ -116,7 +118,10 @@ export async function resetTokenEmail(token: string, database: Database = getDb(
   const ctx = await getAuth().$context;
   const row = await ctx.internalAdapter.findVerificationValue(`reset-password:${token}`);
   if (!row || row.expiresAt < new Date()) return null;
-  const [u] = await database.select({ email: authSchema.user.email }).from(authSchema.user).where(eq(authSchema.user.id, row.value));
+  const [u] = await database
+    .select({ email: authSchema.user.email })
+    .from(authSchema.user)
+    .where(eq(authSchema.user.id, row.value));
   return u?.email ?? null;
 }
 
@@ -159,7 +164,10 @@ export async function mailAlreadyRegistered(email: string, database: Database = 
 }
 
 async function mailRegistered(email: string, database: Database, requestReset: RequestReset): Promise<void> {
-  const [row] = await database.select({ id: authSchema.user.id }).from(authSchema.user).where(eq(authSchema.user.email, email));
+  const [row] = await database
+    .select({ id: authSchema.user.id })
+    .from(authSchema.user)
+    .where(eq(authSchema.user.email, email));
   if (row && !(await hasPassword(row.id, database))) {
     await requestReset({ email, redirectTo: setPasswordPath(email) });
     return;

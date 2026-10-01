@@ -40,7 +40,7 @@ export function SharePanel({
     refreshInterval: 3000,
   });
   const byOrdinal = [...market.outcomes].sort((a, b) => a.ordinal - b.ordinal);
-    const text = shareText({
+  const text = shareText({
     title,
     kind,
     url: shareUrl,

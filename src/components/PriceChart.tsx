@@ -114,7 +114,14 @@ export function PriceChart({ points, labels }: { points: ChartPoint[]; labels: s
           )}
           {hoverX !== null && at && (
             <g pointerEvents="none">
-              <line x1={hoverX} x2={hoverX} y1={pad.t} y2={height - pad.b} strokeDasharray="2 3" className="stroke-faint" />
+              <line
+                x1={hoverX}
+                x2={hoverX}
+                y1={pad.t}
+                y2={height - pad.b}
+                strokeDasharray="2 3"
+                className="stroke-faint"
+              />
               {lines.map((i) => (
                 <circle
                   key={i}
@@ -132,12 +139,7 @@ export function PriceChart({ points, labels }: { points: ChartPoint[]; labels: s
           <text x={pad.l} y={height - 4} className="fill-muted font-mono text-[11px]">
             {date(t0)}
           </text>
-          <text
-            x={width - pad.r}
-            y={height - 4}
-            textAnchor="end"
-            className="fill-muted font-mono text-[11px]"
-          >
+          <text x={width - pad.r} y={height - 4} textAnchor="end" className="fill-muted font-mono text-[11px]">
             {date(t1)}
           </text>
         </svg>

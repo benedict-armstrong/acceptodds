@@ -104,8 +104,14 @@ export function TradeBox({
           <span className="font-mono">{REP}</span>
         </label>
         {cashMicro !== null && (
-          <div className={`mt-3 text-justify font-bold text-sm [text-align-last:justify] ${short ? 'text-down' : 'text-faint'}`}>
-            out of <span className="font-mono">{rep(cashMicro)} {REP}</span> balance
+          <div
+            className={`mt-3 text-justify font-bold text-sm [text-align-last:justify] ${short ? 'text-down' : 'text-faint'}`}
+          >
+            out of{' '}
+            <span className="font-mono">
+              {rep(cashMicro)} {REP}
+            </span>{' '}
+            balance
           </div>
         )}
       </div>
@@ -138,7 +144,9 @@ export function TradeBox({
           <button
             className={ui.btn()}
             disabled={budget === null || budget <= 0n || short}
-            onClick={() => budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget, seenOrderCount: market.orderCount })}
+            onClick={() =>
+              budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget, seenOrderCount: market.orderCount })
+            }
           >
             Stake {budget ? rep(budget) : ''} {REP} on {outcome.label}
           </button>
@@ -156,12 +164,16 @@ export function TradeBox({
         <button
           className={ui.btn()}
           disabled={!current || busy || short}
-          onClick={() => current && signed !== null && send(outcome.id, outcome.label, signed.toString(), current.costMicro)}
+          onClick={() =>
+            current && signed !== null && send(outcome.id, outcome.label, signed.toString(), current.costMicro)
+          }
         >
           {busy ? '…' : `Stake ${cost !== null ? rep(cost) : ''} ${REP} on ${outcome.label}`}
         </button>
       )}
-      {cost !== null && !onChoose && <div className={ui.fine}>Refused if the price moves against you before it fills.</div>}
+      {cost !== null && !onChoose && (
+        <div className={ui.fine}>Refused if the price moves against you before it fills.</div>
+      )}
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
     </div>
   );

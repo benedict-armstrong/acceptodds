@@ -86,11 +86,7 @@ describe('50 concurrent trades against one market', () => {
       .orderBy(asc(outcomes.ordinal));
     const ordinalOf = new Map(board.map((o) => [o.id, o.ordinal]));
 
-    const tape = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.marketId, fx.marketId))
-      .orderBy(asc(orders.createdAt));
+    const tape = await db.select().from(orders).where(eq(orders.marketId, fx.marketId)).orderBy(asc(orders.createdAt));
     expect(tape).toHaveLength(TRADES);
 
     const q = board.map(() => 0);
@@ -147,10 +143,7 @@ describe('50 concurrent trades against one market', () => {
   });
 
   it('has positions equal to the sum of order shares per account', async () => {
-    const held = await db
-      .select()
-      .from(positions)
-      .where(inArray(positions.outcomeId, fx.outcomeIds));
+    const held = await db.select().from(positions).where(inArray(positions.outcomeId, fx.outcomeIds));
     for (const p of held) {
       const [{ total }] = await db
         .select({ total: sql<string>`coalesce(sum(${orders.sharesMicro}), 0)` })

@@ -335,7 +335,8 @@ export function prefixOf(node: { include: string[]; exclude: string[] }): string
  */
 export function requiredText(node: SearchNode | null): Extract<SearchNode, { kind: 'text' }> | null {
   if (node === null) return null;
-  const text = node.kind === 'text' ? node : node.kind === 'and' ? node.items.find((i) => i.kind === 'text') : undefined;
+  const text =
+    node.kind === 'text' ? node : node.kind === 'and' ? node.items.find((i) => i.kind === 'text') : undefined;
   return text?.kind === 'text' && text.include.length > 0 ? text : null;
 }
 

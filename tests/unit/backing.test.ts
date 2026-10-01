@@ -69,7 +69,15 @@ describe('Markdown link filter', () => {
     expect(safeUrl('https://arxiv.org/abs/1')).toBe('https://arxiv.org/abs/1');
     expect(safeUrl('HTTP://x.org')).toBe('HTTP://x.org');
     expect(safeUrl('mailto:a@b.org')).toBe('mailto:a@b.org');
-    for (const bad of ['javascript:alert(1)', ' javascript:alert(1)', 'data:text/html,x', 'vbscript:x', '/relative', '//evil.org', 'file:///etc/passwd']) {
+    for (const bad of [
+      'javascript:alert(1)',
+      ' javascript:alert(1)',
+      'data:text/html,x',
+      'vbscript:x',
+      '/relative',
+      '//evil.org',
+      'file:///etc/passwd',
+    ]) {
       expect(safeUrl(bad)).toBe('');
     }
   });

@@ -23,8 +23,11 @@ describe('movedEnough', () => {
   });
   it('is symmetric in direction', () => {
     fc.assert(
-      fc.property(fc.double({ min: 0, max: 1, noNaN: true }), fc.double({ min: 0, max: 1, noNaN: true }), fc.double({ min: 0.1, max: 50, noNaN: true }), (a, b, t) =>
-        movedEnough({ then: a, now: b }, t) === movedEnough({ then: b, now: a }, t),
+      fc.property(
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0.1, max: 50, noNaN: true }),
+        (a, b, t) => movedEnough({ then: a, now: b }, t) === movedEnough({ then: b, now: a }, t),
       ),
     );
   });

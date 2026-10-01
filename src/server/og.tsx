@@ -1,15 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { ReactNode } from 'react';
 import { ImageResponse } from 'next/og';
 import { pct } from '@/lib/format';
 import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, placeLabels, shareTitleParts, TIER_HEX } from '@/lib/headline';
+import { microToFloat } from '@/lib/money';
+import type { FieldSnapshot } from './field-snapshot';
 import type { ShareSubject } from './share';
 
 /**
- * The link-preview image of a paper or market (issue #11 §1): the question
+ * The link-preview images. A paper's or market's (issue #11 §1): the question
  * (`<title> @ <kind>?`, as the share text words it) and the outcome bar with
- * each outcome's price beside its label. Settled: the result. Everything on it comes from the database.
- * Prices, not values (§1.1); nothing here writes.
+ * each outcome's price beside its label. Settled: the result. A trader's
+ * (`profileImage`): their rank and the field's curve with them on it.
+ * Everything on them comes from the database. Prices, not values (§1.1);
+ * nothing here writes.
  */
 
 export const OG_SIZE = { width: 1200, height: 630 };
@@ -132,18 +137,25 @@ export async function previewImage(subject: ShareSubject | null, holder?: string
   const n = main?.outcomes.length ?? 0;
   const status = main?.market.status;
   const trading = status === 'open' || status === 'closed';
-  const parts = subject ? shareTitleParts(subject.title, subject.kind, OG_TITLE_MAX) : { head: 'Not found', suffix: '' };
+  const parts = subject
+    ? shareTitleParts(subject.title, subject.kind, OG_TITLE_MAX)
+    : { head: 'Not found', suffix: '' };
   // With no venue the suffix is a bare `?`: it belongs to the title's last word, not a word of its own.
   const [head, suffix] = parts.suffix.startsWith(' ') ? [parts.head, parts.suffix] : [parts.head + parts.suffix, ''];
   const titleSize = head.length + suffix.length > 70 ? 54 : 64;
   // One box per word so the venue can take its own colour and still wrap with the title.
   const words = [
     ...head.split(' ').map((w) => ({ w, color: INK })),
-    ...suffix.trim().split(' ').filter(Boolean).map((w) => ({ w, color: ACCENT })),
+    ...suffix
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+      .map((w) => ({ w, color: ACCENT })),
   ];
   const barred = main && trading && n >= 2 && n <= MAX_BAR_OUTCOMES;
   const legend = barred ? barLegend(main.outcomes) : null;
-  const won = status === 'settled' && main ? main.outcomes.findIndex((o) => o.id === main.market.resolvedOutcomeId) : -1;
+  const won =
+    status === 'settled' && main ? main.outcomes.findIndex((o) => o.id === main.market.resolvedOutcomeId) : -1;
   const winner = won >= 0 ? main!.outcomes[won] : undefined;
   // The bar of a decided market is all the winner; a void one is empty.
   const endBar = winner
@@ -154,81 +166,92 @@ export async function previewImage(subject: ShareSubject | null, holder?: string
       ? RULE
       : null;
 
-  return new ImageResponse(
-    (
+  return card(
+    subject?.kind ?? '',
+    <div style={BODY}>
       <div
         style={{
-          width: '100%',
-          height: '100%',
           display: 'flex',
-          flexDirection: 'column',
-          background: '#fbfaf7',
-          padding: '56px 72px',
-          color: INK,
+          flexWrap: 'wrap',
+          marginTop: 44,
           fontFamily: 'Serif',
-          borderTop: `12px solid ${ACCENT}`,
+          fontSize: titleSize,
+          lineHeight: 1.15,
+          maxHeight: holder ? 170 : 230,
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 30, color: MUTED }}>
-          <div style={{ display: 'flex', fontFamily: 'Serif', fontSize: 36, color: INK }}>
-            accept<span style={{ color: ACCENT }}>odds</span>
-            <span style={{ color: MUTED }}>.com</span>
+        {words.map(({ w, color }, k) => (
+          <div key={k} style={{ display: 'flex', color, marginRight: titleSize * 0.25 }}>
+            {w}
           </div>
-          <div style={{ display: 'flex' }}>{subject?.kind ?? ''}</div>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            marginTop: 44,
-            fontFamily: 'Serif',
-            fontSize: titleSize,
-            lineHeight: 1.15,
-            maxHeight: holder ? 170 : 230,
-            overflow: 'hidden',
-          }}
-        >
-          {words.map(({ w, color }, k) => (
-            <div key={k} style={{ display: 'flex', color, marginRight: titleSize * 0.25 }}>
-              {w}
-            </div>
-          ))}
-        </div>
-
-        {holder && (
-          <div style={{ display: 'flex', marginTop: 20, fontSize: 36, color: MUTED }}>{holder}</div>
-        )}
-
-        <div style={{ display: 'flex', flex: 1 }} />
-
-        {legend && (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <Labels row={legend.above} above />
-            <Ticks row={legend.above} />
-            <div style={{ display: 'flex', height: 30, borderRadius: 6, overflow: 'hidden' }}>
-              {legend.segments.map((it) => (
-                <div key={it.i} style={{ display: 'flex', width: `${it.price * 100}%`, background: it.color }} />
-              ))}
-            </div>
-            <Ticks row={legend.below} />
-            <Labels row={legend.below} above={false} />
-          </div>
-        )}
-
-        {endBar && (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', height: 30, borderRadius: 6, background: endBar }} />
-            <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 16, height: 64 }}>
-              <div style={{ display: 'flex', fontSize: LABEL_SIZE + 4, color: MUTED, marginRight: 12 }}>
-                {winner ? 'Decided' : 'Void'}
-              </div>
-              {winner && <div style={{ display: 'flex', fontSize: PCT_SIZE + 6, color: INK }}>{winner.label}</div>}
-            </div>
-          </div>
-        )}
+        ))}
       </div>
-    ),
+
+      {holder && <div style={{ display: 'flex', marginTop: 20, fontSize: 36, color: MUTED }}>{holder}</div>}
+
+      <div style={{ display: 'flex', flex: 1 }} />
+
+      {legend && (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <Labels row={legend.above} above />
+          <Ticks row={legend.above} />
+          <div style={{ display: 'flex', height: 30, borderRadius: 6, overflow: 'hidden' }}>
+            {legend.segments.map((it) => (
+              <div key={it.i} style={{ display: 'flex', width: `${it.price * 100}%`, background: it.color }} />
+            ))}
+          </div>
+          <Ticks row={legend.below} />
+          <Labels row={legend.below} above={false} />
+        </div>
+      )}
+
+      {endBar && (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', height: 30, borderRadius: 6, background: endBar }} />
+          <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 16, height: 64 }}>
+            <div style={{ display: 'flex', fontSize: LABEL_SIZE + 4, color: MUTED, marginRight: 12 }}>
+              {winner ? 'Decided' : 'Void'}
+            </div>
+            {winner && <div style={{ display: 'flex', fontSize: PCT_SIZE + 6, color: INK }}>{winner.label}</div>}
+          </div>
+        </div>
+      )}
+    </div>,
+  );
+}
+
+/**
+ * Every preview's frame: the accent rule, the site's name, `corner` opposite
+ * it, then `children` — one column box (`BODY`), never a fragment, which
+ * Satori lays out as a row.
+ */
+const BODY = { display: 'flex', flexDirection: 'column', flex: 1 } as const;
+
+async function card(corner: string, children: ReactNode): Promise<ImageResponse> {
+  return new ImageResponse(
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#fbfaf7',
+        padding: '56px 72px',
+        color: INK,
+        fontFamily: 'Serif',
+        borderTop: `12px solid ${ACCENT}`,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 30, color: MUTED }}>
+        <div style={{ display: 'flex', fontFamily: 'Serif', fontSize: 36, color: INK }}>
+          accept<span style={{ color: ACCENT }}>odds</span>
+          <span style={{ color: MUTED }}>.com</span>
+        </div>
+        <div style={{ display: 'flex' }}>{corner}</div>
+      </div>
+      {children}
+    </div>,
     {
       ...OG_SIZE,
       fonts: [{ name: 'Serif', data: await serifFont(), style: 'normal', weight: 400 }],
@@ -236,4 +259,111 @@ export async function previewImage(subject: ShareSubject | null, holder?: string
       headers: { 'Cache-Control': 'public, max-age=300, s-maxage=300' },
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// a trader's card
+// ---------------------------------------------------------------------------
+
+const CURVE_HEIGHT = 170;
+
+export interface ProfilePreview {
+  displayName: string;
+  handle: string;
+  institutions: readonly string[];
+  /** Their place on the net-worth board; null when they are not on it. */
+  standing: { rank: number; fieldSize: number; percentAhead: number | null } | null;
+  /** The field's shared snapshot (`server/field-snapshot.ts`). */
+  field: FieldSnapshot;
+  /** Their own net worth from the board, as their page places them; null for no marker. */
+  worthMicro: bigint | null;
+}
+
+/**
+ * A trader's link preview: name and author line as their page sets them,
+ * their rank on the net-worth board, and the field's curve (liquidation
+ * value, never a mark, §1.2) with the part below them shaded and a line at
+ * them — Figure 1 of their page. Only what that page already shows.
+ */
+export async function profileImage(p: ProfilePreview): Promise<ImageResponse> {
+  const byline = [`@${p.handle}`, p.institutions.join('; ')].filter(Boolean).join(', ');
+  const st = p.standing;
+  const nameSize = p.displayName.length > 32 ? 52 : 64;
+  const drawn = p.field.worthsMicro.length >= 2 ? fieldPaths(p.field, p.worthMicro, BAR_WIDTH, CURVE_HEIGHT) : null;
+  return card(
+    'Leaderboard',
+    <div style={BODY}>
+      <div
+        style={{
+          display: 'flex',
+          marginTop: 40,
+          fontSize: nameSize,
+          lineHeight: 1.1,
+          maxHeight: nameSize * 1.1,
+          overflow: 'hidden',
+        }}
+      >
+        {p.displayName}
+      </div>
+      <div style={{ display: 'flex', marginTop: 12, fontSize: 30, color: MUTED }}>{byline}</div>
+      {st && (
+        <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 22, fontSize: 40 }}>
+          <div style={{ display: 'flex', color: ACCENT }}>#{st.rank.toLocaleString('en')}</div>
+          <div style={{ display: 'flex', marginLeft: 12, color: INK }}>
+            {`of ${st.fieldSize.toLocaleString('en')} traders`}
+            {st.percentAhead === null ? '' : `, ahead of ${st.percentAhead}%`}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flex: 1 }} />
+
+      {drawn && (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <svg width={BAR_WIDTH} height={CURVE_HEIGHT} viewBox={`0 0 ${BAR_WIDTH} ${CURVE_HEIGHT}`}>
+            <path d={drawn.area} fill={RULE} />
+            {drawn.below && <path d={drawn.below} fill={ACCENT} fillOpacity={0.18} />}
+            <path d={drawn.line} fill="none" stroke={MUTED} strokeWidth={3} strokeLinejoin="round" />
+            <line x1={0} x2={BAR_WIDTH} y1={CURVE_HEIGHT - 1} y2={CURVE_HEIGHT - 1} stroke={MUTED} strokeWidth={2} />
+            {drawn.at && (
+              <line x1={drawn.at.x} x2={drawn.at.x} y1={0} y2={CURVE_HEIGHT} stroke={ACCENT} strokeWidth={4} />
+            )}
+            {drawn.at && (
+              <circle cx={drawn.at.x} cy={drawn.at.y} r={8} fill={ACCENT} stroke="#fbfaf7" strokeWidth={3} />
+            )}
+          </svg>
+          <div style={{ display: 'flex', marginTop: 14, fontSize: 24, color: MUTED }}>
+            {`Net worth of all ${p.field.worthsMicro.length.toLocaleString('en')} traders, if each sold everything now.`}
+          </div>
+        </div>
+      )}
+    </div>,
+  );
+}
+
+/**
+ * The snapshot's curve as SVG paths in a `width` × `height` box: the line,
+ * the area under it, the part of that area left of `worthMicro` (clamped
+ * into the curve's range, as the page's chart clamps it), and the point on
+ * the curve there. Plotting only.
+ */
+function fieldPaths(field: FieldSnapshot, worthMicro: bigint | null, width: number, height: number) {
+  const [lo, hi] = field.domain;
+  const n = field.curve.length - 1;
+  const top = 12;
+  const base = height - 1;
+  const sx = (i: number) => (i / n) * width;
+  const sy = (y: number) => base - y * (base - top);
+  const pts = field.curve.map((y, i): [number, number] => [sx(i), sy(y)]);
+  const path = (ps: [number, number][]) =>
+    ps.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join('');
+  const line = path(pts);
+  const area = `${line}L${width},${base}L0,${base}Z`;
+  if (worthMicro === null || !(hi > lo)) return { line, area, below: null, at: null };
+  const t = Math.min(1, Math.max(0, (microToFloat(worthMicro) / 1_000_000 - lo) / (hi - lo)));
+  const k = Math.min(n - 1, Math.floor(t * n));
+  const f = t * n - k;
+  const at = { x: t * width, y: sy(field.curve[k] + (field.curve[k + 1] - field.curve[k]) * f) };
+  const below = `${path([...pts.slice(0, k + 1), [at.x, at.y]])}L${at.x.toFixed(1)},${base}L0,${base}Z`;
+  return { line, area, below, at };
 }

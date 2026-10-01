@@ -69,10 +69,14 @@ describe('sign-in links', () => {
     const renamed = await api('PATCH', '/me', { cookie, body: { displayName: 'Augusta Ada King' } });
     expect(renamed.body.handle).toBe('ada-lovelace');
     expect((await userRow('ada@example.org')).name).toBe('Augusta Ada King');
-    expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(200);
+    expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(
+      200,
+    );
     expect(await missingFromUser(u.id)).toEqual({ name: false, password: false });
 
-    const signIn = await authCall('POST', '/sign-in/email', { body: { email: 'ada@example.org', password: 'correct horse battery' } });
+    const signIn = await authCall('POST', '/sign-in/email', {
+      body: { email: 'ada@example.org', password: 'correct horse battery' },
+    });
     expect(signIn.status).toBe(200);
   });
 
@@ -116,7 +120,9 @@ describe('a password reset', () => {
     await getAuth().api.requestPasswordReset({ body: { email: 'ada@example.org', redirectTo: '/set-password' } });
     const link = /https?:\/\/\S+/.exec(devOutbox()[0].text)![0];
     const token = /reset-password\/([^?]+)/.exec(link)![1];
-    expect((await authCall('POST', '/reset-password', { body: { newPassword: 'a new horse battery', token } })).status).toBe(200);
+    expect(
+      (await authCall('POST', '/reset-password', { body: { newPassword: 'a new horse battery', token } })).status,
+    ).toBe(200);
     expect((await api('GET', '/me', { cookie: elsewhere })).status).toBe(401);
   });
 });
@@ -126,7 +132,9 @@ describe('a password-reset token', () => {
     await signUp('ada@example.org', 'Ada');
     await signUp('bob@example.org', 'Bob');
     clearDevOutbox();
-    await getAuth().api.requestPasswordReset({ body: { email: 'bob@example.org', redirectTo: '/set-password?email=ada%40example.org' } });
+    await getAuth().api.requestPasswordReset({
+      body: { email: 'bob@example.org', redirectTo: '/set-password?email=ada%40example.org' },
+    });
     const link = /https?:\/\/\S+/.exec(devOutbox()[0].text)![0];
     const token = /reset-password\/([^?]+)/.exec(link)![1];
     expect(await resetTokenEmail(token)).toBe('bob@example.org');

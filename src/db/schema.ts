@@ -28,24 +28,11 @@ import { user } from './auth-schema';
  */
 const money = (name: string) => bigint(name, { mode: 'bigint' });
 
-const createdAt = () =>
-  timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow();
+const createdAt = () => timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow();
 
-export const marketStatus = pgEnum('market_status', [
-  'draft',
-  'open',
-  'closed',
-  'settled',
-  'void',
-]);
+export const marketStatus = pgEnum('market_status', ['draft', 'open', 'closed', 'settled', 'void']);
 
-export const ledgerReason = pgEnum('ledger_reason', [
-  'signup',
-  'trade',
-  'settlement',
-  'subsidy',
-  'adjustment',
-]);
+export const ledgerReason = pgEnum('ledger_reason', ['signup', 'trade', 'settlement', 'subsidy', 'adjustment']);
 
 /**
  * Traders. Ours, not Better Auth's.
@@ -77,11 +64,16 @@ export const accounts = pgTable(
      * the sign-up address's first, then by confirmation time; distinct. Written
      * in the same transaction as the affiliation, always (`server/affiliations.ts`).
      */
-    institutions: text('institutions').array().notNull().default(sql`'{}'::text[]`),
+    institutions: text('institutions')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     /** When the account's first institutional address was confirmed; `null` once none is. Gates trading. */
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
     /** Cache of `sum(ledger_entries.delta_micro)`. Written in the same transaction, always. */
-    balanceMicro: money('balance_micro').notNull().default(sql`0`),
+    balanceMicro: money('balance_micro')
+      .notNull()
+      .default(sql`0`),
     isBot: boolean('is_bot').notNull().default(false),
     isHouse: boolean('is_house').notNull().default(false),
     /** Whether the daily digest of followed papers may be mailed (`server/digest.ts`). On by default. */
@@ -117,9 +109,15 @@ export const listings = pgTable(
     slug: text('slug').notNull(),
     title: text('title').notNull(),
     summary: text('summary'),
-    authors: text('authors').array().notNull().default(sql`'{}'::text[]`),
+    authors: text('authors')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     /** `[{ label, url }]`, http(s) only (checked at the API). Display data, nothing more. */
-    links: jsonb('links').$type<ListingLink[]>().notNull().default(sql`'[]'::jsonb`),
+    links: jsonb('links')
+      .$type<ListingLink[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** Opaque to the platform, like `markets.kind`. */
     kind: text('kind'),
     createdAt: createdAt(),
@@ -203,7 +201,9 @@ export const markets = pgTable(
      * Written by `engine.trade` in the fill's own transaction, under the
      * market row lock it already holds — like `accounts.balance_micro`.
      */
-    volumeMicro: money('volume_micro').notNull().default(sql`0`),
+    volumeMicro: money('volume_micro')
+      .notNull()
+      .default(sql`0`),
     orderCount: integer('order_count').notNull().default(0),
     lastTradeAt: timestamp('last_trade_at', { withTimezone: true, mode: 'date' }),
     /**
@@ -221,10 +221,16 @@ export const markets = pgTable(
     index('markets_listing_id_idx').on(t.listingId),
     index('markets_created_idx').on(t.createdAt, t.id),
     // Browse rows (`views.browseListings`): the main markets of a venue.
-    index('markets_main_idx').on(t.kind, t.status).where(sql`is_main`),
-    uniqueIndex('markets_main_per_listing_key').on(t.listingId).where(sql`is_main`),
+    index('markets_main_idx')
+      .on(t.kind, t.status)
+      .where(sql`is_main`),
+    uniqueIndex('markets_main_per_listing_key')
+      .on(t.listingId)
+      .where(sql`is_main`),
     // The other visible markets of a listing, summed into its row.
-    index('markets_secondary_idx').on(t.listingId).where(sql`not is_main and status <> 'draft'`),
+    index('markets_secondary_idx')
+      .on(t.listingId)
+      .where(sql`not is_main and status <> 'draft'`),
     // Full-text search; see `listings_search_idx`. `search_vector` here is
     // `market_search_vector(question, description)`, likewise stored.
     index('markets_search_idx').using('gin', sql`search_vector`),
@@ -242,7 +248,9 @@ export const outcomes = pgTable(
     label: text('label').notNull(),
     /** Position in the share vector. Stable; the cost function is indexed by it. */
     ordinal: integer('ordinal').notNull(),
-    sharesMicro: money('shares_micro').notNull().default(sql`0`),
+    sharesMicro: money('shares_micro')
+      .notNull()
+      .default(sql`0`),
   },
   (t) => [
     uniqueIndex('outcomes_market_ordinal_key').on(t.marketId, t.ordinal),
@@ -309,7 +317,9 @@ export const positions = pgTable(
     outcomeId: uuid('outcome_id')
       .notNull()
       .references(() => outcomes.id, { onDelete: 'cascade' }),
-    sharesMicro: money('shares_micro').notNull().default(sql`0`),
+    sharesMicro: money('shares_micro')
+      .notNull()
+      .default(sql`0`),
   },
   (t) => [
     primaryKey({ columns: [t.accountId, t.outcomeId] }),
@@ -340,10 +350,7 @@ export const ledgerEntries = pgTable(
     marketId: uuid('market_id').references(() => markets.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
-  (t) => [
-    index('ledger_entries_account_id_idx').on(t.accountId),
-    index('ledger_entries_order_id_idx').on(t.orderId),
-  ],
+  (t) => [index('ledger_entries_account_id_idx').on(t.accountId), index('ledger_entries_order_id_idx').on(t.orderId)],
 );
 
 /**
@@ -373,10 +380,7 @@ export const events = pgTable(
     marketId: uuid('market_id'),
     createdAt: createdAt(),
   },
-  (t) => [
-    index('events_created_at_idx').on(t.createdAt),
-    index('events_kind_created_idx').on(t.kind, t.createdAt),
-  ],
+  (t) => [index('events_created_at_idx').on(t.createdAt), index('events_kind_created_idx').on(t.kind, t.createdAt)],
 );
 
 /**
@@ -395,9 +399,7 @@ export const usdCosts = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     source: text('source').notNull(),
     amountUsdMicro: money('amount_usd_micro').notNull(),
-    incurredAt: timestamp('incurred_at', { withTimezone: true, mode: 'date' })
-      .notNull()
-      .defaultNow(),
+    incurredAt: timestamp('incurred_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     createdAt: createdAt(),
   },
   (t) => [index('usd_costs_incurred_at_idx').on(t.incurredAt)],
@@ -554,10 +556,7 @@ export const listingFollows = pgTable(
       .references(() => listings.id, { onDelete: 'cascade' }),
     createdAt: createdAt(),
   },
-  (t) => [
-    primaryKey({ columns: [t.accountId, t.listingId] }),
-    index('listing_follows_listing_idx').on(t.listingId),
-  ],
+  (t) => [primaryKey({ columns: [t.accountId, t.listingId] }), index('listing_follows_listing_idx').on(t.listingId)],
 );
 
 /**
@@ -629,7 +628,9 @@ export const groupMembers = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
-    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+    joinedAt: timestamp('joined_at', { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
   },
   (t) => [primaryKey({ columns: [t.groupId, t.accountId] }), index('group_members_account_idx').on(t.accountId)],
 );

@@ -113,7 +113,10 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
       credentials: 'omit',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ outcomeId: bet.outcomeId, sharesMicro: shares.toString() }),
-    }).then((r) => (r.ok ? r.json() : null), () => null);
+    }).then(
+      (r) => (r.ok ? r.json() : null),
+      () => null,
+    );
     if (!quote) {
       setError('Could not price the bet. Try again.');
       return 'failed';
@@ -182,7 +185,12 @@ export function Finish({ bet, needsPassword }: { bet: PendingBet | null; needsPa
         )}
         {error && <div className={ui.note(false)}>{error}</div>}
         {bet && !placed && error && (
-          <button type="button" className={`${ui.linkBtn} mt-3 text-sm`} disabled={busy} onClick={() => leave(bet.href)}>
+          <button
+            type="button"
+            className={`${ui.linkBtn} mt-3 text-sm`}
+            disabled={busy}
+            onClick={() => leave(bet.href)}
+          >
             Skip the bet
           </button>
         )}

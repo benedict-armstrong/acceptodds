@@ -4,7 +4,11 @@ import { ConfirmForm } from './ConfirmForm';
 export const dynamic = 'force-dynamic';
 
 /** Enter the code from the confirmation mail, in the tab you signed up in (issue #15). */
-export default async function Confirm({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function Confirm({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const sp = await searchParams;
   const email = typeof sp.email === 'string' ? sp.email : '';
   return (

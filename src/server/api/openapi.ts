@@ -323,8 +323,7 @@ export function buildRegistry(): OpenAPIRegistry {
       errors: {
         403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
         404: 'not_found: no such market or outcome.',
-        409:
-          'slippage_exceeded | insufficient_balance | insufficient_shares | market_not_open | market_closed | idempotency_key_reused',
+        409: 'slippage_exceeded | insufficient_balance | insufficient_shares | market_not_open | market_closed | idempotency_key_reused',
       },
     }),
   );
@@ -448,7 +447,11 @@ export function buildRegistry(): OpenAPIRegistry {
       scope: 'read',
       request: { params: groupIdParam, body: { content: { 'application/json': { schema: S.UpdateGroupRequest } } } },
       ok: { status: 200, schema: S.Group, description: 'The group.' },
-      errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 400: 'validation_error', 404: 'not_found' },
+      errors: {
+        403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.',
+        400: 'validation_error',
+        404: 'not_found',
+      },
     }),
   );
 
@@ -463,7 +466,10 @@ export function buildRegistry(): OpenAPIRegistry {
         scope: 'read',
         request: { params: groupIdParam },
         ok: { status: 200, schema: S.Group, description: 'unused' },
-        errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 404: 'not_found' },
+        errors: {
+          403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.',
+          404: 'not_found',
+        },
       },
       'Deleted.',
     ),
@@ -479,7 +485,10 @@ export function buildRegistry(): OpenAPIRegistry {
       scope: 'read',
       request: { params: groupIdParam },
       ok: { status: 200, schema: S.Group, description: 'The group, with its new code.' },
-      errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 404: 'not_found' },
+      errors: {
+        403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.',
+        404: 'not_found',
+      },
     }),
   );
 
@@ -509,7 +518,11 @@ export function buildRegistry(): OpenAPIRegistry {
         scope: 'read',
         request: { params: z.object({ id: S.Id, handle: S.Handle }) },
         ok: { status: 200, schema: S.Group, description: 'unused' },
-        errors: { 403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.', 404: 'not_found', 409: 'group_admin: the admin cannot be removed.' },
+        errors: {
+          403: 'forbidden: the token lacks the "read" scope, or you are not the group’s admin.',
+          404: 'not_found',
+          409: 'group_admin: the admin cannot be removed.',
+        },
       },
       'Removed.',
     ),
@@ -658,7 +671,8 @@ export function buildRegistry(): OpenAPIRegistry {
     path: '/me/affiliations/{id}',
     tags: ['me'],
     summary: 'Remove an affiliation',
-    description: 'Pending or confirmed; never the address you signed up with. Removing your last confirmed one stops you trading.',
+    description:
+      'Pending or confirmed; never the address you signed up with. Removing your last confirmed one stops you trading.',
     request: { params: affiliationIdParam },
     ok: { status: 200, schema: S.AffiliationList, description: 'unused' },
     errors: { 404: 'not_found', 409: 'primary_affiliation: the address you signed up with.' },
@@ -686,7 +700,8 @@ export function buildRegistry(): OpenAPIRegistry {
     path: '/me/pending-bet',
     tags: ['me'],
     summary: 'Drop your onboarding bet',
-    description: 'The bet chosen during onboarding, once placed through `POST /markets/{id}/orders` or declined. Idempotent.',
+    description:
+      'The bet chosen during onboarding, once placed through `POST /markets/{id}/orders` or declined. Idempotent.',
     ok: { status: 200, schema: S.PasswordSet, description: 'unused' },
   });
   delete dropPendingBet.responses[200];

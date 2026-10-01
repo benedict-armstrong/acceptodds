@@ -125,7 +125,15 @@ export function StandingChart({
         <path d={line} fill="none" strokeWidth={2} strokeLinejoin="round" className="stroke-subtle" />
         {/* One tick per trader: the data under the curve. */}
         {values.map((v, i) => (
-          <line key={i} x1={sx(v)} x2={sx(v)} y1={base} y2={base - 6} strokeWidth={1} className="stroke-faint opacity-60" />
+          <line
+            key={i}
+            x1={sx(v)}
+            x2={sx(v)}
+            y1={base}
+            y2={base - 6}
+            strokeWidth={1}
+            className="stroke-faint opacity-60"
+          />
         ))}
         <line x1={PAD.left} x2={width - PAD.right} y1={base} y2={base} strokeWidth={1} className="stroke-rule-strong" />
         {ticks.map((t) => (
@@ -154,7 +162,14 @@ export function StandingChart({
         {youX !== null && youY !== null && (
           <>
             {/* The viewer. */}
-            <line x1={youX} x2={youX} y1={base} y2={Math.min(youY, top - 6)} strokeWidth={2} className="stroke-accent" />
+            <line
+              x1={youX}
+              x2={youX}
+              y1={base}
+              y2={Math.min(youY, top - 6)}
+              strokeWidth={2}
+              className="stroke-accent"
+            />
             <circle cx={youX} cy={youY} r={4} strokeWidth={2} className="fill-accent stroke-card" />
             {label && (
               <text
@@ -171,7 +186,15 @@ export function StandingChart({
           </>
         )}
         {hoverX !== null && (
-          <line x1={hoverX} x2={hoverX} y1={top} y2={base} strokeWidth={1} className="stroke-rule-strong" pointerEvents="none" />
+          <line
+            x1={hoverX}
+            x2={hoverX}
+            y1={top}
+            y2={base}
+            strokeWidth={1}
+            className="stroke-rule-strong"
+            pointerEvents="none"
+          />
         )}
       </svg>
       {hover !== null && hoverX !== null && (

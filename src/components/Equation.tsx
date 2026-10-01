@@ -11,7 +11,9 @@ export function Equation({ tex, n }: { tex: string; n: number }) {
       <div
         className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden text-center"
         // KaTeX's output: it escapes the source itself.
-        dangerouslySetInnerHTML={{ __html: katex.renderToString(tex, { displayMode: true, throwOnError: false, output: 'html' }) }}
+        dangerouslySetInnerHTML={{
+          __html: katex.renderToString(tex, { displayMode: true, throwOnError: false, output: 'html' }),
+        }}
       />
       <span className="shrink-0">({n})</span>
     </div>

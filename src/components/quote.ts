@@ -32,7 +32,12 @@ export function sharesForStake(market: Market, idx: number, stakeMicro: bigint):
  * debounced, whenever the order changes or `board` does: pass the polled
  * outcomes, which change on every poll, to keep the quote fresh.
  */
-export function useQuote(marketId: string, outcomeId: string, sharesMicro: bigint | null, board: unknown): Quote | null {
+export function useQuote(
+  marketId: string,
+  outcomeId: string,
+  sharesMicro: bigint | null,
+  board: unknown,
+): Quote | null {
   const [quote, setQuote] = useState<{ key: string; q: Quote } | null>(null);
   const key = `${outcomeId}:${sharesMicro}`;
 

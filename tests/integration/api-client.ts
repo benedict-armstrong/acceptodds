@@ -156,8 +156,7 @@ export async function api<T = any>(
 
   const { mod, params } = match(url.pathname.replace(/^\/api\/v1/, ''));
   const handler = mod[method] as
-    | ((req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response> | Response)
-    | undefined;
+    ((req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response> | Response) | undefined;
   if (!handler) throw new Error(`no ${method} export for ${url.pathname}`);
   const res = await handler(req, { params: Promise.resolve(params) });
   const text = await res.text();
@@ -234,9 +233,7 @@ export async function trader(
       .update(accounts)
       .set({
         userId,
-        ...(opts.verified === false
-          ? {}
-          : { verifiedAt: new Date(), institutions: ['Test University'] }),
+        ...(opts.verified === false ? {} : { verifiedAt: new Date(), institutions: ['Test University'] }),
       })
       .where(eq(accounts.id, account.id))
       .returning();

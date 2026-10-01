@@ -81,15 +81,23 @@ async function pageOf(
   return { ...result, page: pages, pages };
 }
 
-export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const sp = await searchParams;
   const kinds = await marketKinds();
   const wanted = one(sp.kind);
   // ?kind=all shows every venue; otherwise the requested one, else the default
   // venue if it has markets, else everything.
   const kind =
-    wanted === 'all' ? null : wanted ?? (kinds.some((k) => k.kind === defaultMarketKind()) ? defaultMarketKind() : null);
-  const status: Status = (STATUSES as readonly string[]).includes(one(sp.status) ?? '') ? (one(sp.status) as Status) : 'open';
+    wanted === 'all'
+      ? null
+      : (wanted ?? (kinds.some((k) => k.kind === defaultMarketKind()) ? defaultMarketKind() : null));
+  const status: Status = (STATUSES as readonly string[]).includes(one(sp.status) ?? '')
+    ? (one(sp.status) as Status)
+    : 'open';
   // A search keeps the venue and status filters (the form carries them) and
   // sorts by relevance unless another sort is asked for.
   const q = normalizeSearch(one(sp.q));
@@ -175,10 +183,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       <TitleBlock
         title={
           <>
-            accept<i className="text-accent not-italic">odds</i>: Which papers will get accepted{kind ? ` at ${kind}` : ''}?
+            accept<i className="text-accent not-italic">odds</i>: Which papers will get accepted
+            {kind ? ` at ${kind}` : ''}?
           </>
         }
-        abstract={q ? null : ABSTRACT} />
+        abstract={q ? null : ABSTRACT}
+      />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />
@@ -190,7 +200,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           defaultValue={q ?? ''}
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search papers and people"
-          placeholder='Search papers and people'
+          placeholder="Search papers and people"
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
         />
         <button
@@ -273,9 +283,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       </form>
 
       {parsed && parsed.errors.length > 0 && (
-        <div className="mt-2 font-sans text-[13px] text-down">
-          Ignored: {parsed.errors.join('; ')}
-        </div>
+        <div className="mt-2 font-sans text-[13px] text-down">Ignored: {parsed.errors.join('; ')}</div>
       )}
 
       {q && (
@@ -338,7 +346,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         <Popover>
           {/* Not a flex box: an icon alone gives a flex item no text baseline, and the row aligns on
               baselines. Inline, `align-middle` centres the dots on the text's x-height. */}
-          <PopoverTrigger title="More filters: status, following" className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent">
+          <PopoverTrigger
+            title="More filters: status, following"
+            className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent"
+          >
             {activeFilters}
             <MoreIcon className={`inline-block size-5 align-middle ${activeFilters ? 'ml-1' : ''}`} />
           </PopoverTrigger>
@@ -481,8 +492,9 @@ function SearchSyntax() {
         </tbody>
       </table>
       <p className="mt-1.5">
-        Numbers take <code>: = != &gt; &lt; &gt;= &lt;=</code>; text filters take <code>:</code> and <code>!=</code>. Quote a
-        value with spaces. For example: <code>(venue:iclr OR venue:neurips) diffusion accept&gt;=60 -status:settled</code>
+        Numbers take <code>: = != &gt; &lt; &gt;= &lt;=</code>; text filters take <code>:</code> and <code>!=</code>.
+        Quote a value with spaces. For example:{' '}
+        <code>(venue:iclr OR venue:neurips) diffusion accept&gt;=60 -status:settled</code>
       </p>
     </>
   );
@@ -525,7 +537,10 @@ function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
       <span className="narrow:hidden" title={r.listing ? r.market.question : undefined}>
         <Sparkline values={spark} />
       </span>
-      <span className={`text-right font-mono text-sm ${look.text}`} title={r.listing ? `${r.market.question} · chance of acceptance` : undefined}>
+      <span
+        className={`text-right font-mono text-sm ${look.text}`}
+        title={r.listing ? `${r.market.question} · chance of acceptance` : undefined}
+      >
         {headline(r)}
       </span>
     </div>
@@ -552,7 +567,13 @@ function headline(r: BrowseRow): React.ReactNode {
   return (
     <span className="inline-flex flex-col items-end gap-1">
       {pct(h)}
-      {n > 2 && <OutcomeBar prices={r.outcomes.map((o) => o.price)} labels={r.outcomes.map((o) => o.label)} className="h-1 w-14" />}
+      {n > 2 && (
+        <OutcomeBar
+          prices={r.outcomes.map((o) => o.price)}
+          labels={r.outcomes.map((o) => o.label)}
+          className="h-1 w-14"
+        />
+      )}
     </span>
   );
 }

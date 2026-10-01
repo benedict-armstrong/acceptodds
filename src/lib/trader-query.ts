@@ -67,7 +67,10 @@ export function parseTraderSearch(input: string): TraderSearch {
 }
 
 /** Whether a trader's institutions pass the search's filters. */
-export function institutionsMatch(institutions: readonly string[], search: Pick<TraderSearch, 'include' | 'exclude'>): boolean {
+export function institutionsMatch(
+  institutions: readonly string[],
+  search: Pick<TraderSearch, 'include' | 'exclude'>,
+): boolean {
   const has = (v: string) => institutions.some((name) => name.toLowerCase().includes(v.toLowerCase()));
   return search.include.every(has) && !search.exclude.some(has);
 }

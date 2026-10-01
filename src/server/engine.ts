@@ -3,15 +3,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import { isUniqueViolation } from '@/db/errors';
 import * as schema from '@/db/schema';
-import {
-  accounts,
-  commentBackings,
-  ledgerEntries,
-  markets,
-  orders,
-  outcomes,
-  positions,
-} from '@/db/schema';
+import { accounts, commentBackings, ledgerEntries, markets, orders, outcomes, positions } from '@/db/schema';
 import { lifoTrim } from '@/lib/backing';
 import { cost, costToTrade, liquidityFor, maxSubsidy, prices } from '@/lib/lmsr';
 import { headlinePrice, openingHeadline } from '@/lib/headline';
@@ -99,15 +91,8 @@ interface Board {
   b: number;
 }
 
-async function readBoard(
-  ex: Executor,
-  market: typeof markets.$inferSelect,
-): Promise<Board> {
-  const rows = await ex
-    .select()
-    .from(outcomes)
-    .where(eq(outcomes.marketId, market.id))
-    .orderBy(asc(outcomes.ordinal));
+async function readBoard(ex: Executor, market: typeof markets.$inferSelect): Promise<Board> {
+  const rows = await ex.select().from(outcomes).where(eq(outcomes.marketId, market.id)).orderBy(asc(outcomes.ordinal));
 
   if (rows.length < 2) {
     throw new EngineError('invalid_market', `market ${market.id} has ${rows.length} outcomes`);
@@ -191,11 +176,7 @@ export async function createMarket(
       }
     }
 
-    const [treasury] = await tx
-      .select()
-      .from(accounts)
-      .where(eq(accounts.handle, HOUSE_HANDLE))
-      .for('update');
+    const [treasury] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
     if (!treasury) {
       throw new EngineError('not_found', `no house account with handle "${HOUSE_HANDLE}"`);
     }
@@ -212,11 +193,7 @@ export async function createMarket(
      * a different formula (liquidity-sensitive LMSR) with different
      * invariants, and it is out of scope.
      */
-    const b = liquidityFor(
-      microToFloat(input.startingBalanceMicro),
-      input.expectedTraders,
-      input.outcomes.length,
-    );
+    const b = liquidityFor(microToFloat(input.startingBalanceMicro), input.expectedTraders, input.outcomes.length);
 
     // The house's worst case, and exactly the seed the maker needs: the maker
     // starts holding C(0) = b·ln(n).
@@ -374,15 +351,7 @@ export async function trade(
   database: Db = getDb(),
 ): Promise<Fill> {
   try {
-    const fill = await runTrade(
-      accountId,
-      marketId,
-      outcomeId,
-      sharesMicro,
-      maxCostMicro,
-      idempotencyKey,
-      database,
-    );
+    const fill = await runTrade(accountId, marketId, outcomeId, sharesMicro, maxCostMicro, idempotencyKey, database);
     // After the commit, never inside it. The log must not be able to touch a
     // row the transaction is holding. A fill moves the trader's balance and
     // every holder's exit value in this market: the cached field is stale.
@@ -422,11 +391,7 @@ async function runTrade(
      * nothing. It serializes **this market only** — different markets still
      * run in parallel.
      */
-    const [market] = await tx
-      .select()
-      .from(markets)
-      .where(eq(markets.id, marketId))
-      .for('update');
+    const [market] = await tx.select().from(markets).where(eq(markets.id, marketId)).for('update');
     if (!market) throw new EngineError('not_found', `no market ${marketId}`);
 
     if (idempotencyKey) {
@@ -444,11 +409,7 @@ async function runTrade(
     // Locked in a fixed order — market, then trader — so that concurrent
     // trades cannot deadlock. The trader's row is locked because the balance
     // check below must not race a trade of theirs on another market.
-    const [account] = await tx
-      .select()
-      .from(accounts)
-      .where(eq(accounts.id, accountId))
-      .for('update');
+    const [account] = await tx.select().from(accounts).where(eq(accounts.id, accountId)).for('update');
     if (!account) throw new EngineError('not_found', `no account ${accountId}`);
 
     // Read the share vector INSIDE the lock, and re-price against it. The
@@ -603,11 +564,7 @@ async function runTrade(
   });
 }
 
-async function findFillByIdempotencyKey(
-  ex: Executor,
-  accountId: string,
-  idempotencyKey: string,
-): Promise<Fill | null> {
+async function findFillByIdempotencyKey(ex: Executor, accountId: string, idempotencyKey: string): Promise<Fill | null> {
   const [existing] = await ex
     .select()
     .from(orders)
@@ -656,11 +613,7 @@ export async function settle(
   database: Db = getDb(),
 ): Promise<void> {
   await database.transaction(async (tx) => {
-    const [market] = await tx
-      .select()
-      .from(markets)
-      .where(eq(markets.id, marketId))
-      .for('update');
+    const [market] = await tx.select().from(markets).where(eq(markets.id, marketId)).for('update');
     if (!market) throw new EngineError('not_found', `no market ${marketId}`);
 
     // Idempotence: a second run settles nothing.
@@ -695,24 +648,13 @@ export async function settle(
       }
     }
 
-    await tx
-      .update(positions)
-      .set({ sharesMicro: 0n })
-      .where(inArray(positions.outcomeId, outcomeIds));
+    await tx.update(positions).set({ sharesMicro: 0n }).where(inArray(positions.outcomeId, outcomeIds));
 
     // Whatever the maker has left is the venue's P&L on this market. Sweep it
     // back to the treasury so the maker account closes at zero and the sum of
     // all balances is untouched.
-    const [maker] = await tx
-      .select()
-      .from(accounts)
-      .where(eq(accounts.id, market.makerAccountId))
-      .for('update');
-    const [treasury] = await tx
-      .select()
-      .from(accounts)
-      .where(eq(accounts.handle, HOUSE_HANDLE))
-      .for('update');
+    const [maker] = await tx.select().from(accounts).where(eq(accounts.id, market.makerAccountId)).for('update');
+    const [treasury] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
     if (maker && treasury && maker.balanceMicro !== 0n) {
       const residual = maker.balanceMicro;
       await creditAccount(tx, maker.id, -residual, 'settlement', { marketId });
@@ -739,11 +681,7 @@ export async function settle(
 /** Close a market to trading without resolving it. Idempotent. */
 export async function closeMarket(marketId: string, database: Db = getDb()): Promise<void> {
   await database.transaction(async (tx) => {
-    const [market] = await tx
-      .select()
-      .from(markets)
-      .where(eq(markets.id, marketId))
-      .for('update');
+    const [market] = await tx.select().from(markets).where(eq(markets.id, marketId)).for('update');
     if (!market) throw new EngineError('not_found', `no market ${marketId}`);
     if (market.status !== 'open') return;
     await tx.update(markets).set({ status: 'closed' }).where(eq(markets.id, marketId));

@@ -20,7 +20,11 @@ export function safeReturnTo(raw: string | string[] | null | undefined): string 
 }
 
 /** `/signin`, `/signup` or `/confirm`, returning to `returnTo` afterwards. */
-export function authHref(page: '/signin' | '/signup' | '/confirm', returnTo: string, extra: Record<string, string> = {}): string {
+export function authHref(
+  page: '/signin' | '/signup' | '/confirm',
+  returnTo: string,
+  extra: Record<string, string> = {},
+): string {
   const params = new URLSearchParams(extra);
   const next = safeReturnTo(returnTo);
   if (next !== '/') params.set('next', next);

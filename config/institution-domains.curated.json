@@ -104,11 +104,5 @@
     "baai.ac.cn": "Beijing Academy of Artificial Intelligence",
     "pjlab.org.cn": "Shanghai AI Laboratory"
   },
-  "exclude": [
-    "docomo.ne.jp",
-    "cox.com",
-    "yahoo.co.jp",
-    "sapo.pt",
-    "zoho.com"
-  ]
+  "exclude": ["docomo.ne.jp", "cox.com", "yahoo.co.jp", "sapo.pt", "zoho.com"]
 }

@@ -1,6 +1,17 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { accounts, groupMembers, listingFollows, listings, markets, orders, outcomes, type Listing, type Market, type Outcome } from '@/db/schema';
+import {
+  accounts,
+  groupMembers,
+  listingFollows,
+  listings,
+  markets,
+  orders,
+  outcomes,
+  type Listing,
+  type Market,
+  type Outcome,
+} from '@/db/schema';
 import { headlinePrice, openingHeadline } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
 import { percentAhead } from '@/lib/leaderboard';
@@ -368,9 +379,7 @@ export async function listMarkets(
   const where = [
     q.status ? eq(markets.status, q.status) : ne(markets.status, 'draft'),
     q.kind ? eq(markets.kind, q.kind) : undefined,
-    after
-      ? sql`(${markets.createdAt}, ${markets.id}) < (${after.t}::timestamptz, ${after.id}::uuid)`
-      : undefined,
+    after ? sql`(${markets.createdAt}, ${markets.id}) < (${after.t}::timestamptz, ${after.id}::uuid)` : undefined,
   ];
 
   const rows = await database
@@ -465,9 +474,7 @@ export async function listListings(
     .where(
       and(
         q.kind ? eq(listings.kind, q.kind) : undefined,
-        after
-          ? sql`(${listings.createdAt}, ${listings.id}) < (${after.t}::timestamptz, ${after.id}::uuid)`
-          : undefined,
+        after ? sql`(${listings.createdAt}, ${listings.id}) < (${after.t}::timestamptz, ${after.id}::uuid)` : undefined,
       ),
     )
     .orderBy(desc(listings.createdAt), desc(listings.id))
@@ -605,9 +612,7 @@ async function ordersPage(
     .where(
       and(
         filter,
-        before
-          ? sql`(${orders.createdAt}, ${orders.id}) < (${before.t}::timestamptz, ${before.id}::uuid)`
-          : undefined,
+        before ? sql`(${orders.createdAt}, ${orders.id}) < (${before.t}::timestamptz, ${before.id}::uuid)` : undefined,
       ),
     )
     .orderBy(desc(orders.createdAt), desc(orders.id))
@@ -746,7 +751,14 @@ export interface LeaderboardRow {
  * field before `q`, the denominator of a rank.
  */
 export async function leaderboard(
-  q: { basis?: LeaderboardBasis; institution?: string | null; group?: string | null; q?: string | null; cursor?: string; limit: number },
+  q: {
+    basis?: LeaderboardBasis;
+    institution?: string | null;
+    group?: string | null;
+    q?: string | null;
+    cursor?: string;
+    limit: number;
+  },
   database: Database = getDb(),
 ): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null; fieldSize: number }> {
   const basis = q.basis ?? 'settled_pnl';
@@ -792,7 +804,11 @@ export interface Standing {
 }
 
 /** `accountId`'s standing in `field`, or `null` when they are not on it. */
-export function standingOf(field: readonly LeaderboardRow[], accountId: string, basis: LeaderboardBasis): Standing | null {
+export function standingOf(
+  field: readonly LeaderboardRow[],
+  accountId: string,
+  basis: LeaderboardBasis,
+): Standing | null {
   const row = field.find((r) => r.accountId === accountId);
   if (!row) return null;
   const score = leaderboardScore(row, basis);
@@ -843,7 +859,8 @@ export async function leaderboardStandings(
         );
   return ranked(
     field.filter(
-      (r) => (institution == null || r.institutions.includes(institution)) && (members === null || members.has(r.accountId)),
+      (r) =>
+        (institution == null || r.institutions.includes(institution)) && (members === null || members.has(r.accountId)),
     ),
     basis,
   );
@@ -1072,7 +1089,10 @@ export async function browseListings(
   const order = {
     closing: [sql`m.closes_at asc`],
     // Void has no headline, whatever the cache last held.
-    likelihood: [sql`(case when m.status = 'void' then null else m.headline end) desc nulls last`, sql`m.closes_at asc`],
+    likelihood: [
+      sql`(case when m.status = 'void' then null else m.headline end) desc nulls last`,
+      sql`m.closes_at asc`,
+    ],
     volume: [sql`m.volume_micro + coalesce(sec.volume_micro, 0) desc`],
     activity: [sql`greatest(m.last_trade_at, sec.last_trade_at) desc nulls last`],
     newest: [sql`m.created_at desc`],
@@ -1116,7 +1136,9 @@ export async function browseListings(
   if (found.length === 0) {
     // Past the end, or nothing at all: the page is empty, the total is not.
     const total =
-      offset === 0 ? 0 : ((await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0);
+      offset === 0
+        ? 0
+        : ((await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0);
     return { rows: [], total };
   }
   const total = found[0].total;
@@ -1125,10 +1147,12 @@ export async function browseListings(
     .select({ market: markets, listing: listings })
     .from(markets)
     .leftJoin(listings, eq(listings.id, markets.listingId))
-    .where(inArray(
-      markets.id,
-      found.map((r) => r.id),
-    ));
+    .where(
+      inArray(
+        markets.id,
+        found.map((r) => r.id),
+      ),
+    );
   const byId = new Map(loaded.map((r) => [r.market.id, r]));
   const inOrder = found.map((r) => byId.get(r.id)!);
   const views = await marketViews(
@@ -1151,13 +1175,15 @@ export async function browseListings(
 
 /** Every `kind` with at least one visible row, most rows first. A listing counts once, by its main market. */
 export async function marketKinds(database: Database = getDb()): Promise<{ kind: string; count: number }[]> {
-  return database
-    .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
-    .from(markets)
-    .where(eq(markets.isMain, true))
-    .groupBy(markets.kind)
-    // Byte order, so ties sort the same whatever locale the database was created with.
-    .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`);
+  return (
+    database
+      .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
+      .from(markets)
+      .where(eq(markets.isMain, true))
+      .groupBy(markets.kind)
+      // Byte order, so ties sort the same whatever locale the database was created with.
+      .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`)
+  );
 }
 
 /**

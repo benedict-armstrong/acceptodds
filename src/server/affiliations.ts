@@ -115,7 +115,11 @@ export async function addAffiliation(
   const email = normalizeEmail(input.email);
   const institution = institutionForEmail(email);
   if (!institution) {
-    throw new ApiError(422, 'email_domain_not_allowed', 'affiliations are open to approved institutional email domains only');
+    throw new ApiError(
+      422,
+      'email_domain_not_allowed',
+      'affiliations are open to approved institutional email domains only',
+    );
   }
   const budget = await consume(`affiliation-mail:${input.account.id}`, MAIL_BUDGET);
   if (!budget.allowed) {
@@ -135,7 +139,8 @@ export async function addAffiliation(
       .select()
       .from(affiliations)
       .where(and(eq(affiliations.accountId, input.account.id), eq(affiliations.email, email)));
-    if (mine?.verifiedAt) throw new ApiError(409, 'already_affiliated', 'this address is already one of your affiliations');
+    if (mine?.verifiedAt)
+      throw new ApiError(409, 'already_affiliated', 'this address is already one of your affiliations');
 
     const [elsewhere] = await tx
       .select({ id: affiliations.id })
@@ -159,7 +164,11 @@ export async function addAffiliation(
       .from(affiliations)
       .where(and(eq(affiliations.accountId, input.account.id), isNull(affiliations.verifiedAt)));
     if (pending >= MAX_PENDING) {
-      throw new ApiError(409, 'too_many_pending', `confirm or remove one of your ${pending} unconfirmed addresses first`);
+      throw new ApiError(
+        409,
+        'too_many_pending',
+        `confirm or remove one of your ${pending} unconfirmed addresses first`,
+      );
     }
     const [created] = await tx
       .insert(affiliations)

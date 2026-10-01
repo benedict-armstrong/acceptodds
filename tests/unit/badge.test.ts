@@ -8,7 +8,9 @@ describe('renderBadge', () => {
     const svg = renderBadge(base);
     expect(svg).toContain('>papermarket</text>');
     expect(svg).toContain('>67% accept</text>');
-    const fills = [...svg.matchAll(/<rect x="[\d.]+" y="7" width="[\d.]+" height="6" fill="(#[0-9a-f]+)"/g)].map((m) => m[1]);
+    const fills = [...svg.matchAll(/<rect x="[\d.]+" y="7" width="[\d.]+" height="6" fill="(#[0-9a-f]+)"/g)].map(
+      (m) => m[1],
+    );
     expect(fills).toEqual(['#a24a3f', '#c49a2c', '#3d7a4f', '#3f6a9a']);
   });
 

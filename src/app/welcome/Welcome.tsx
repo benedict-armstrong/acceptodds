@@ -205,7 +205,15 @@ export function Welcome({
 }
 
 /** Search the venue's papers; before anything is typed, the most traded ones. */
-function PaperSearch({ kind, suggestions, onPick }: { kind: string; suggestions: Listing[]; onPick: (l: Listing) => void }) {
+function PaperSearch({
+  kind,
+  suggestions,
+  onPick,
+}: {
+  kind: string;
+  suggestions: Listing[];
+  onPick: (l: Listing) => void;
+}) {
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   useEffect(() => {
@@ -270,7 +278,9 @@ function BetStep({
   });
   return (
     <>
-      <p className="mb-1.5 text-sm text-muted">Current probabilities, set by everyone’s bets. Pick an outcome and stake on it.</p>
+      <p className="mb-1.5 text-sm text-muted">
+        Current probabilities, set by everyone’s bets. Pick an outcome and stake on it.
+      </p>
       <TradeBox
         market={market}
         cashMicro={BigInt(viewer.cashMicro)}
@@ -283,15 +293,7 @@ function BetStep({
 }
 
 /** Name and institutional email: `POST /onboarding` stores the bet and mails a link and a code. */
-function EmailStep({
-  market,
-  choice,
-  onSent,
-}: {
-  market: Market;
-  choice: Choice;
-  onSent: (email: string) => void;
-}) {
+function EmailStep({ market, choice, onSent }: { market: Market; choice: Choice; onSent: (email: string) => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);

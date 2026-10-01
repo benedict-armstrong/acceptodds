@@ -5,7 +5,17 @@
  * part below the viewer is shaded, as on the portfolio chart. Decorative:
  * the caller carries the percentile in text (title, aria-label).
  */
-export function MiniCurve({ curve, at, width = 56, height = 16 }: { curve: number[]; at: number; width?: number; height?: number }) {
+export function MiniCurve({
+  curve,
+  at,
+  width = 56,
+  height = 16,
+}: {
+  curve: number[];
+  at: number;
+  width?: number;
+  height?: number;
+}) {
   if (curve.length < 2) return null;
   const n = curve.length - 1;
   const x = (i: number) => (i / n) * width;

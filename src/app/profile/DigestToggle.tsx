@@ -40,7 +40,8 @@ export function DigestToggle({ optIn: initial, minMovePp }: { optIn: boolean; mi
           onChange={(e) => change(e.target.checked)}
         />
         <span>
-          Email me each morning when a paper I follow has moved by {minMovePp} percentage points or more over the last day.
+          Email me each morning when a paper I follow has moved by {minMovePp} percentage points or more over the last
+          day.
           <span className="block text-xs text-muted">One email a day at most, only when something moved.</span>
         </span>
       </label>

@@ -25,7 +25,10 @@ export function Pager({
     .filter((p) => p >= 1 && p <= pages)
     .sort((a, b) => a - b);
   return (
-    <nav aria-label="Pages" className="mt-2 flex flex-wrap justify-end gap-x-3 gap-y-1 font-sans text-[13px] text-muted narrow:gap-x-4 narrow:gap-y-2 narrow:text-sm">
+    <nav
+      aria-label="Pages"
+      className="mt-2 flex flex-wrap justify-end gap-x-3 gap-y-1 font-sans text-[13px] text-muted narrow:gap-x-4 narrow:gap-y-2 narrow:text-sm"
+    >
       {label && <span>{label}</span>}
       {page > 1 && (
         <Link href={href(page - 1)} rel="prev">

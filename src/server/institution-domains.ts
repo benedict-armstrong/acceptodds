@@ -38,7 +38,9 @@ function domains(): Map<string, string> {
   if (cached?.path === path) return cached.domains;
   // Read at runtime from the working directory; the image copies config/ in
   // itself. Traced, this one read pulls the whole project into standalone.
-  const parsed = JSON.parse(readFileSync(/*turbopackIgnore: true*/ path, 'utf8')) as { domains?: Record<string, unknown> };
+  const parsed = JSON.parse(readFileSync(/*turbopackIgnore: true*/ path, 'utf8')) as {
+    domains?: Record<string, unknown>;
+  };
   if (!parsed.domains || typeof parsed.domains !== 'object') {
     throw new Error(`${path} must be { "domains": { "<domain>": "<institution name>" } }`);
   }

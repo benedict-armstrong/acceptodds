@@ -42,7 +42,8 @@ export function BoardPicker({
     const match = (o: BoardOption) => t === '' || o.label.toLowerCase().includes(t);
     const listed = new Set(mine.flatMap((s) => s.options.map((o) => o.href)));
     const out = mine.map((s) => ({ ...s, options: s.options.filter(match) }));
-    if (t !== '') out.push({ section: 'All institutions', options: institutions.filter((o) => !listed.has(o.href) && match(o)) });
+    if (t !== '')
+      out.push({ section: 'All institutions', options: institutions.filter((o) => !listed.has(o.href) && match(o)) });
     return out.filter((s) => s.options.length > 0);
   }, [text, mine, institutions]);
   const flat = sections.flatMap((s) => s.options);
@@ -101,7 +102,9 @@ export function BoardPicker({
           {sections.length === 0 && <div className="px-1 py-1 italic text-muted">No board matches.</div>}
           {sections.map((s, k) => (
             <div key={s.section ?? ''} role="group" aria-label={s.section ?? undefined}>
-              {s.section && <div className="mt-1.5 px-1 text-[11px] tracking-wide text-faint uppercase">{s.section}</div>}
+              {s.section && (
+                <div className="mt-1.5 px-1 text-[11px] tracking-wide text-faint uppercase">{s.section}</div>
+              )}
               {s.options.map((o, j) => {
                 const n = starts[k] + j;
                 return (

@@ -40,9 +40,7 @@ export interface TokenRecord {
 function scopesOf(permissions: unknown): TokenScope[] {
   const parsed = typeof permissions === 'string' ? safeParse(permissions) : permissions;
   const list = (parsed as Record<string, unknown> | null)?.[API_KEY_RESOURCE];
-  return Array.isArray(list)
-    ? TOKEN_SCOPES.filter((s) => list.includes(s))
-    : [];
+  return Array.isArray(list) ? TOKEN_SCOPES.filter((s) => list.includes(s)) : [];
 }
 
 function safeParse(s: string): unknown {
@@ -89,11 +87,7 @@ export interface MintedToken {
   record: TokenRecord;
 }
 
-export async function mintToken(input: {
-  account: Account;
-  name: string;
-  scopes: TokenScope[];
-}): Promise<MintedToken> {
+export async function mintToken(input: { account: Account; name: string; scopes: TokenScope[] }): Promise<MintedToken> {
   const scopes = TOKEN_SCOPES.filter((s) => input.scopes.includes(s));
   if (scopes.length === 0) throw new Error('a token needs at least one scope');
   const userId = await userIdFor(input.account);

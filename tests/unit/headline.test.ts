@@ -33,10 +33,14 @@ describe('headline', () => {
 
   it('agrees with 1 − P(last) on binary markets too, so the convention is one rule', () => {
     fc.assert(
-      fc.property(fc.double({ min: -50, max: 50, noNaN: true }), fc.double({ min: -50, max: 50, noNaN: true }), (a, b) => {
-        const ps = prices([a, b], 10);
-        expect(headlinePrice(ps)).toBeCloseTo(1 - ps[1], 12);
-      }),
+      fc.property(
+        fc.double({ min: -50, max: 50, noNaN: true }),
+        fc.double({ min: -50, max: 50, noNaN: true }),
+        (a, b) => {
+          const ps = prices([a, b], 10);
+          expect(headlinePrice(ps)).toBeCloseTo(1 - ps[1], 12);
+        },
+      ),
     );
   });
 
@@ -131,7 +135,12 @@ describe('placeLabels', () => {
         (items) => {
           const sorted = [...items].sort((a, b) => a[0] - b[0]);
           const widths = sorted.map(([, w]) => w);
-          const left = placeLabels(sorted.map(([c]) => c), widths, 1000, 12);
+          const left = placeLabels(
+            sorted.map(([c]) => c),
+            widths,
+            1000,
+            12,
+          );
           const last = left.length - 1;
           expect(left[last] + widths[last]).toBeLessThanOrEqual(1000 + 1e-9);
           if (widths.reduce((a, b) => a + b, 0) + 12 * last > 1000) return;
@@ -169,7 +178,9 @@ describe('shareText', () => {
   });
 
   it('escapes BibTeX specials in the title', () => {
-    expect(shareText({ ...base, title: 'A_b & 50% of $x$' })).toContain('title        = {A\\_b \\& 50\\% of x @ ICLR 2027?}');
+    expect(shareText({ ...base, title: 'A_b & 50% of $x$' })).toContain(
+      'title        = {A\\_b \\& 50\\% of x @ ICLR 2027?}',
+    );
   });
 
   it('has no bar for a settled or void market, or one with too many outcomes', () => {

@@ -50,7 +50,14 @@ describe('groups', () => {
 
     const mine = await api('GET', '/me/groups', { token: a.token });
     expect(mine.body.groups).toEqual([
-      { id: g.id, name: 'Hinton lab', description: 'Mostly Boltzmann machines', memberCount: 1, role: 'admin', inviteCode: g.inviteCode },
+      {
+        id: g.id,
+        name: 'Hinton lab',
+        description: 'Mostly Boltzmann machines',
+        memberCount: 1,
+        role: 'admin',
+        inviteCode: g.inviteCode,
+      },
     ]);
   });
 
@@ -91,14 +98,19 @@ describe('groups', () => {
     for (const t of [b, c]) await api('POST', '/groups/join', { token: t.token, body: { inviteCode: g.inviteCode } });
 
     expect((await api('PATCH', `/groups/${g.id}`, { token: b.token, body: { name: 'Mine' } })).status).toBe(403);
-    const renamed = await api('PATCH', `/groups/${g.id}`, { token: a.token, body: { name: 'Journal club', description: ' ' } });
+    const renamed = await api('PATCH', `/groups/${g.id}`, {
+      token: a.token,
+      body: { name: 'Journal club', description: ' ' },
+    });
     expect(renamed.body).toMatchObject({ name: 'Journal club', description: null });
 
     expect((await api('POST', `/groups/${g.id}/invite`, { token: b.token })).status).toBe(403);
     const rotated = await api('POST', `/groups/${g.id}/invite`, { token: a.token });
     expect(rotated.body.inviteCode).not.toBe(g.inviteCode);
     const d = await trader('dave', ['read']);
-    expect((await api('POST', '/groups/join', { token: d.token, body: { inviteCode: g.inviteCode } })).status).toBe(404);
+    expect((await api('POST', '/groups/join', { token: d.token, body: { inviteCode: g.inviteCode } })).status).toBe(
+      404,
+    );
 
     // A member removes nobody but themselves; the admin anyone but themselves.
     expect((await api('DELETE', `/groups/${g.id}/members/carol`, { token: b.token })).status).toBe(403);
@@ -119,7 +131,11 @@ describe('groups', () => {
   it('caps the groups one admin runs', async () => {
     const a = await trader('alice', ['read']);
     await db.insert(groups).values(
-      Array.from({ length: MAX_GROUPS_PER_ADMIN }, (_, i) => ({ name: `g${i}`, adminAccountId: a.id, inviteCode: `code-${i}` })),
+      Array.from({ length: MAX_GROUPS_PER_ADMIN }, (_, i) => ({
+        name: `g${i}`,
+        adminAccountId: a.id,
+        inviteCode: `code-${i}`,
+      })),
     );
     const res = await api('POST', '/groups', { token: a.token, body: { name: 'one more' } });
     expect(res.status).toBe(409);

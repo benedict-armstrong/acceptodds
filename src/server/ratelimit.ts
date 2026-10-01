@@ -66,10 +66,10 @@ export async function consume(
     const refilled = Math.min(burst, rows[0].tokens + Math.max(0, rows[0].elapsed) * perSecond);
     const allowed = refilled >= 1;
     const after = allowed ? refilled - 1 : refilled;
-    await client.query(
-      `update rate_limit_buckets set tokens = $2, updated_at = clock_timestamp() where key = $1`,
-      [key, after],
-    );
+    await client.query(`update rate_limit_buckets set tokens = $2, updated_at = clock_timestamp() where key = $1`, [
+      key,
+      after,
+    ]);
     await client.query('commit');
 
     return {

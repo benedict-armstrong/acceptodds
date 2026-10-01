@@ -2,7 +2,14 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { user } from '@/db/auth-schema';
 import { accounts, digestSends, listingFollows, listings } from '@/db/schema';
-import { DEFAULT_DIGEST_TIMEZONE, digestDay, minMovePp, movedEnough, renderDigest, type DigestItem } from '@/lib/digest';
+import {
+  DEFAULT_DIGEST_TIMEZONE,
+  digestDay,
+  minMovePp,
+  movedEnough,
+  renderDigest,
+  type DigestItem,
+} from '@/lib/digest';
 import * as events from './events';
 import { DAY_MS, moves } from './follows';
 import { sendMail } from './mail';

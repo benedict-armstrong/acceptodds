@@ -17,7 +17,9 @@
     "api:smoke": "tsx scripts/api-smoke.ts",
     "digest:send": "tsx scripts/send-digest.ts",
     "institutions:build": "NODE_OPTIONS=--max-old-space-size=4096 tsx scripts/build-institution-domains.ts",
-    "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts"
+    "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
@@ -55,6 +57,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "16.3.7",
     "fast-check": "^4.10.2",
+    "prettier": "3.9.9",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

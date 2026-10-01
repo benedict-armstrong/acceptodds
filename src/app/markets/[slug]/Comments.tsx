@@ -97,7 +97,11 @@ export function Comments({
   }
 
   const available: Available[] = (data.viewer?.available ?? [])
-    .map((a) => ({ outcomeId: a.outcomeId, outcomeLabel: a.outcomeLabel, freeMicro: BigInt(a.heldMicro) - BigInt(a.allocatedMicro) }))
+    .map((a) => ({
+      outcomeId: a.outcomeId,
+      outcomeLabel: a.outcomeLabel,
+      freeMicro: BigInt(a.heldMicro) - BigInt(a.allocatedMicro),
+    }))
     .filter((a) => a.freeMicro > 0n);
   const canBack = viewer.canTrade && tradable;
 
@@ -117,7 +121,11 @@ export function Comments({
           {(['relevance', 'newest'] as const).map((s, i) => (
             <span key={s}>
               {i > 0 && ' · '}
-              <button type="button" className={`cursor-pointer ${sort === s ? ui.on : 'hover:underline'}`} onClick={() => setSort(s)}>
+              <button
+                type="button"
+                className={`cursor-pointer ${sort === s ? ui.on : 'hover:underline'}`}
+                onClick={() => setSort(s)}
+              >
                 {s}
               </button>
             </span>
@@ -131,8 +139,11 @@ export function Comments({
           <div className="flex items-center justify-between gap-3">
             <span className={ui.fine}>Shown anonymously, with your position in this market. {MARKDOWN_HINT}</span>
             <span className="flex gap-2">
-              <button className={ui.btn({ inline: true, ghost: true })} disabled={body.trim().length === 0 && !preview}
-                onClick={() => setPreview((p) => !p)}>
+              <button
+                className={ui.btn({ inline: true, ghost: true })}
+                disabled={body.trim().length === 0 && !preview}
+                onClick={() => setPreview((p) => !p)}
+              >
                 {preview ? 'Edit' : 'Preview'}
               </button>
               <button className={ui.btn({ inline: true })} disabled={busy || body.trim().length === 0} onClick={post}>
@@ -144,7 +155,13 @@ export function Comments({
         </div>
       ) : (
         <div className={ui.fine}>
-          {viewer.signedIn ? 'Only verified accounts can comment.' : <><SignInLink>Sign in</SignInLink> to comment.</>}
+          {viewer.signedIn ? (
+            'Only verified accounts can comment.'
+          ) : (
+            <>
+              <SignInLink>Sign in</SignInLink> to comment.
+            </>
+          )}
         </div>
       )}
 
@@ -153,7 +170,14 @@ export function Comments({
       )}
 
       {data.comments.map((c) => (
-        <CommentItem key={c.id} c={c} outcomeIds={outcomeIds} canBack={canBack} available={available} onChanged={changed} />
+        <CommentItem
+          key={c.id}
+          c={c}
+          outcomeIds={outcomeIds}
+          canBack={canBack}
+          available={available}
+          onChanged={changed}
+        />
       ))}
     </section>
   );
@@ -221,14 +245,26 @@ function CommentItem({
               .map((o) => `${shares(o.sharesMicro)} ${o.outcomeLabel}`)
               .join(', ')}. A relevance weight, not a sale price.`}
           >
-            ▲ {rep(c.backing.totalMicro)} {REP} backing · {c.backing.backers} {c.backing.backers === 1 ? 'backer' : 'backers'}
+            ▲ {rep(c.backing.totalMicro)} {REP} backing · {c.backing.backers}{' '}
+            {c.backing.backers === 1 ? 'backer' : 'backers'}
           </span>
         )}
         {mine && (
           <span>
-            yours: {c.backing.yours.map((y) => `${shares(y.sharesMicro)} ${c.backing.byOutcome.find((o) => o.outcomeId === y.outcomeId)?.outcomeLabel ?? ''}`).join(', ')}
+            yours:{' '}
+            {c.backing.yours
+              .map(
+                (y) =>
+                  `${shares(y.sharesMicro)} ${c.backing.byOutcome.find((o) => o.outcomeId === y.outcomeId)?.outcomeLabel ?? ''}`,
+              )
+              .join(', ')}
             {' · '}
-            <button type="button" className="cursor-pointer underline disabled:opacity-50" disabled={busy} onClick={withdraw}>
+            <button
+              type="button"
+              className="cursor-pointer underline disabled:opacity-50"
+              disabled={busy}
+              onClick={withdraw}
+            >
               withdraw
             </button>
           </span>

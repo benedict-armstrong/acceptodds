@@ -36,12 +36,13 @@ export default function HowItWorksPage() {
         abstract={`Every paper has a market on its decision. You buy shares in the outcome you believe in; each share of the outcome that happens pays 1 ${REP} and every other share pays nothing, so an outcome's price is the market's probability for it. Prices are set by an automated market maker, so there is always someone to trade with, and you can sell what you hold until trading closes. Trading is in reputation, which cannot be bought: everyone starts with ${start}.`}
       />
 
-      <h2 id="trade" className={ui.groupHeading}>What you trade</h2>
+      <h2 id="trade" className={ui.groupHeading}>
+        What you trade
+      </h2>
       <div className={prose}>
         <p>
-          Each paper has a market on its decision, usually with four outcomes, best first: <i>Oral</i>,{' '}
-          <i>Spotlight</i>, <i>Poster</i> and <i>Reject</i>. A withdrawn or desk-rejected paper counts as{' '}
-          <i>Reject</i>.
+          Each paper has a market on its decision, usually with four outcomes, best first: <i>Oral</i>, <i>Spotlight</i>
+          , <i>Poster</i> and <i>Reject</i>. A withdrawn or desk-rejected paper counts as <i>Reject</i>.
         </p>
         <p>
           You buy <b>shares</b> in an outcome. When the decision is published, every share of the outcome that happened
@@ -55,7 +56,9 @@ export default function HowItWorksPage() {
         </p>
       </div>
 
-      <h2 id="reputation" className={ui.groupHeading}>Reputation</h2>
+      <h2 id="reputation" className={ui.groupHeading}>
+        Reputation
+      </h2>
       <div className={prose}>
         <p>
           Trading is in reputation, <span className="font-mono">{REP}</span>, not money. Everyone starts with{' '}
@@ -64,7 +67,9 @@ export default function HowItWorksPage() {
         </p>
       </div>
 
-      <h2 id="buying" className={ui.groupHeading}>Buying</h2>
+      <h2 id="buying" className={ui.groupHeading}>
+        Buying
+      </h2>
       <div className={prose}>
         <p>
           You say how much to stake; the trade box shows how many shares that buys, as what it pays if the outcome wins.
@@ -81,7 +86,9 @@ export default function HowItWorksPage() {
         </p>
       </div>
 
-      <h2 id="selling" className={ui.groupHeading}>Selling</h2>
+      <h2 id="selling" className={ui.groupHeading}>
+        Selling
+      </h2>
       <div className={prose}>
         <p>
           You can sell shares you hold, in part or in full, at any time until trading closes. You cannot sell shares you
@@ -95,17 +102,21 @@ export default function HowItWorksPage() {
         </p>
       </div>
 
-      <h2 id="maker" className={ui.groupHeading}>The market maker</h2>
+      <h2 id="maker" className={ui.groupHeading}>
+        The market maker
+      </h2>
       <div className={prose}>
         <p>
           Prices are set by an automated market maker, Hanson’s logarithmic market scoring rule (LMSR){' '}
-          <Cite n={[1, 2]} />. It always quotes a price for any outcome, and the price depends only on how many shares of
-          each outcome have been bought so far. Write <MathText text="$q_i$" /> for the shares of outcome{' '}
+          <Cite n={[1, 2]} />. It always quotes a price for any outcome, and the price depends only on how many shares
+          of each outcome have been bought so far. Write <MathText text="$q_i$" /> for the shares of outcome{' '}
           <MathText text="$i$" /> bought so far, out of <MathText text="$n$" /> outcomes. The market maker keeps the
           cost function
         </p>
         <Equation n={1} tex={String.raw`C(q) = b \ln \sum_{i=1}^{n} e^{q_i / b},`} />
-        <p>and the price of outcome <MathText text="$i$" /> is how fast that cost grows with its shares,</p>
+        <p>
+          and the price of outcome <MathText text="$i$" /> is how fast that cost grows with its shares,
+        </p>
         <Equation n={2} tex={String.raw`p_i(q) = \frac{e^{q_i / b}}{\sum_{j} e^{q_j / b}},`} />
         <p>
           which is always between 0 and 1, and sums to 1 over the outcomes. Buying <MathText text="$\Delta$" /> shares
@@ -124,17 +135,20 @@ export default function HowItWorksPage() {
         </p>
       </div>
 
-      <h2 id="resolution" className={ui.groupHeading}>Resolution</h2>
+      <h2 id="resolution" className={ui.groupHeading}>
+        Resolution
+      </h2>
       <div className={prose}>
         <p>
           Trading closes at the date shown on the market. When the decision is published, the market is settled on the
           outcome that happened, with a link to the evidence where there is one: each of its shares pays{' '}
-          <span className="font-mono">1 {REP}</span> into your cash, and every other outcome’s shares are worth
-          nothing.
+          <span className="font-mono">1 {REP}</span> into your cash, and every other outcome’s shares are worth nothing.
         </p>
       </div>
 
-      <h2 id="net-worth" className={ui.groupHeading}>Net worth and the leaderboard</h2>
+      <h2 id="net-worth" className={ui.groupHeading}>
+        Net worth and the leaderboard
+      </h2>
       <div className={prose}>
         <p>
           Your net worth is your cash plus what selling every holding right now would pay (<a href="#selling">§4</a>).

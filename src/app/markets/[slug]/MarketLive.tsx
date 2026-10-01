@@ -65,10 +65,14 @@ export function MarketLive({
     fallbackData: initial.market,
     refreshInterval: POLL_MS,
   });
-  const { data: tape = initial.tape, mutate: refreshTape } = useSWR<Tape>(`/api/v1/markets/${id}/orders?limit=${TAPE_LIMIT}`, publicJson, {
-    fallbackData: initial.tape,
-    refreshInterval: POLL_MS,
-  });
+  const { data: tape = initial.tape, mutate: refreshTape } = useSWR<Tape>(
+    `/api/v1/markets/${id}/orders?limit=${TAPE_LIMIT}`,
+    publicJson,
+    {
+      fallbackData: initial.tape,
+      refreshInterval: POLL_MS,
+    },
+  );
   const { data: portfolio, mutate: refreshPortfolio } = useSWR<Portfolio | null>(
     initial.viewer.signedIn ? '/api/v1/me/portfolio' : null,
     viewerJson,
@@ -92,7 +96,8 @@ export function MarketLive({
   const holdings = (portfolio?.holdings ?? []).filter((h) => h.marketId === id);
   const closed = usePassed(new Date(market.closesAt).getTime());
   const tradable = market.status === 'open' && !closed;
-  const sorted = market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
+  const sorted =
+    market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
   const lead = likelihoodClass(marketLikelihood(market)).text;
   // Three or four ordered outcomes (a paper: oral, spotlight, poster, reject)
   // while trading: the headline and the outcome bar, worst on the left.
@@ -122,11 +127,17 @@ export function MarketLive({
           <b className={lead}>{pct(headline)}</b> chance this paper gets accepted at {market.kind}.
         </h2>
       ) : embedded ? (
-        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">{market.question}</h2>
+        <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
+          {market.question}
+        </h2>
       ) : (
-        <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal narrow:text-2xl">{market.question}</h1>
+        <h1 className="mt-2 mb-1 text-center text-[30px] leading-tight font-normal narrow:text-2xl">
+          {market.question}
+        </h1>
       )}
-      {market.description && <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>}
+      {market.description && (
+        <div className="mx-auto max-w-[640px] text-center text-sm text-muted">{market.description}</div>
+      )}
 
       {barred && headline !== null ? (
         <div className="mx-auto my-7 max-w-[560px]">
@@ -168,9 +179,7 @@ export function MarketLive({
             </div>
           </>
         ) : (
-          <div className={`${ui.caption} py-4.5 text-center`}>
-            No trades yet.
-          </div>
+          <div className={`${ui.caption} py-4.5 text-center`}>No trades yet.</div>
         )}
       </div>
 
@@ -213,9 +222,7 @@ export function MarketLive({
               onFilled={onFilled}
               // A visitor's bet opens onboarding past the paper and bet steps.
               onChoose={
-                initial.viewer.signedIn
-                  ? undefined
-                  : (c) => router.push(welcomeBetHref({ marketId: id, ...c }))
+                initial.viewer.signedIn ? undefined : (c) => router.push(welcomeBetHref({ marketId: id, ...c }))
               }
             />
           ) : (

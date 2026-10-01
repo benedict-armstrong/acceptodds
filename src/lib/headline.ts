@@ -137,7 +137,10 @@ export function squareCounts(prices: readonly number[], squares = 10): number[] 
   const order = prices
     .map((_, i) => i)
     .filter((i) => eligible[i])
-    .sort((a, b) => quotas[b] - Math.floor(quotas[b]) - (quotas[a] - Math.floor(quotas[a])) || prices[b] - prices[a] || a - b);
+    .sort(
+      (a, b) =>
+        quotas[b] - Math.floor(quotas[b]) - (quotas[a] - Math.floor(quotas[a])) || prices[b] - prices[a] || a - b,
+    );
   for (let k = 0; k < left; k += 1) counts[order[k % order.length]] += 1;
   return counts;
 }
@@ -189,7 +192,12 @@ export function shareTitleParts(
  * `[0, total]`. Centres are in order, left to right. When the labels cannot
  * all fit, the right edge wins and the leftmost ones overlap.
  */
-export function placeLabels(centers: readonly number[], widths: readonly number[], total: number, gap: number): number[] {
+export function placeLabels(
+  centers: readonly number[],
+  widths: readonly number[],
+  total: number,
+  gap: number,
+): number[] {
   const left = centers.map((c, i) => c - widths[i] / 2);
   for (let i = 0; i < left.length; i++) {
     left[i] = Math.max(left[i], i === 0 ? 0 : left[i - 1] + widths[i - 1] + gap);
@@ -224,7 +232,13 @@ function bibEscape(text: string): string {
  * there only while the market is open or closed and has 2–4 outcomes.
  */
 export function shareText(s: ShareInput): string {
-  const key = decodeURIComponent(s.url.replace(/[?#].*$/, '').split('/').pop() ?? '') || 'market';
+  const key =
+    decodeURIComponent(
+      s.url
+        .replace(/[?#].*$/, '')
+        .split('/')
+        .pop() ?? '',
+    ) || 'market';
   const fields: [string, string][] = [
     ['title', bibEscape(shareTitleLine(s.title, s.kind, 120))],
     ['howpublished', `\\url{${s.url}}`],

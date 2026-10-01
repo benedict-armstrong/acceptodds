@@ -10,7 +10,8 @@ import { setPasswordPath, signInContinueHref } from '@/lib/links';
 import { clearPending, rememberPending } from '@/lib/pending-confirmation';
 import { authHref } from '@/lib/return-to';
 
-const field = 'w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base';
+const field =
+  'w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base';
 
 /**
  * The code from the confirmation mail, typed where the person already is.
@@ -82,7 +83,10 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
     if (!email.trim()) return;
     setBusy(true);
     setNote(null);
-    const { error } = await authClient.sendVerificationEmail({ email: email.trim(), callbackURL: signInContinueHref(next) });
+    const { error } = await authClient.sendVerificationEmail({
+      email: email.trim(),
+      callbackURL: signInContinueHref(next),
+    });
     setBusy(false);
     if (error) {
       setNote({ ok: false, text: error.message ?? 'Could not send a new code.' });
@@ -108,7 +112,14 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
       {!initialEmail && (
         <label className="mt-2.5 block font-sans text-[13px] text-muted">
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className={field} />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            className={field}
+          />
         </label>
       )}
       <div className="mt-2.5 text-center font-sans text-[13px] text-muted">Code</div>
@@ -127,7 +138,12 @@ export function ConfirmForm({ initialEmail, next, resent }: { initialEmail: stri
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
       <p className={`${ui.fine} mb-3`}>
         No mail? Check spam, or{' '}
-        <button type="button" className="cursor-pointer text-accent underline" onClick={resend} disabled={busy || !email.trim()}>
+        <button
+          type="button"
+          className="cursor-pointer text-accent underline"
+          onClick={resend}
+          disabled={busy || !email.trim()}
+        >
           send a new code
         </button>
         . Wrong address? <Link href={authHref('/signup', next)}>Sign up again</Link>.

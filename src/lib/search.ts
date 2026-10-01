@@ -17,7 +17,12 @@ export const SEARCH_MAX_LENGTH = 200;
  */
 export function normalizeSearch(q: string | null | undefined): string | null {
   if (q == null) return null;
-  const s = q.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SEARCH_MAX_LENGTH).trim();
+  const s = q
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, SEARCH_MAX_LENGTH)
+    .trim();
   return s === '' ? null : s;
 }
 

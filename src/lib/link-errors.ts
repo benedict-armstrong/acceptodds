@@ -16,7 +16,8 @@ const MESSAGES: Record<string, string> = {
   TOKEN_EXPIRED: 'That link has expired. Sign in, or email yourself a new sign-in link below.',
   EXPIRED_TOKEN: 'That link has expired. Sign in, or email yourself a new sign-in link below.',
   USER_NOT_FOUND: 'That link is for an address with no account. Sign up again for a new one.',
-  [LINK_USED]: 'That link was already used, so your address is confirmed. Sign in with your password, or email yourself a sign-in link below.',
+  [LINK_USED]:
+    'That link was already used, so your address is confirmed. Sign in with your password, or email yourself a sign-in link below.',
   EMAIL_DOMAIN_NOT_ALLOWED: 'That address is not at an institution on our list.',
 };
 

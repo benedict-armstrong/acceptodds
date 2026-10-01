@@ -140,7 +140,9 @@ export async function listComments(
   if (sort === 'relevance') {
     const all = await decorate(market, rows, viewerAccountId, database);
     // Stable sort: rows are newest first, so ties stay newest first.
-    all.sort((a, b) => (a.backing.totalMicro === b.backing.totalMicro ? 0 : a.backing.totalMicro > b.backing.totalMicro ? -1 : 1));
+    all.sort((a, b) =>
+      a.backing.totalMicro === b.backing.totalMicro ? 0 : a.backing.totalMicro > b.backing.totalMicro ? -1 : 1,
+    );
     return {
       comments: all.slice(0, q.limit),
       nextCursor: null,
@@ -259,7 +261,13 @@ async function decorate(
  * after settlement (1 per winning share, 0 otherwise); 0 on a void market.
  */
 function backingValuer(market: Market, board: (typeof outcomes.$inferSelect)[]) {
-  const p = board.length >= 2 ? prices(board.map((o) => microToFloat(o.sharesMicro)), market.b) : [];
+  const p =
+    board.length >= 2
+      ? prices(
+          board.map((o) => microToFloat(o.sharesMicro)),
+          market.b,
+        )
+      : [];
   const index = new Map(board.map((o, i) => [o.id, i]));
   return (outcomeId: string, sharesMicro: bigint): bigint => {
     if (sharesMicro === 0n) return 0n;
@@ -286,7 +294,9 @@ export async function viewerStake(
     })
     .from(positions)
     .innerJoin(outcomes, eq(outcomes.id, positions.outcomeId))
-    .where(and(eq(outcomes.marketId, marketId), eq(positions.accountId, viewerAccountId), gt(positions.sharesMicro, 0n)))
+    .where(
+      and(eq(outcomes.marketId, marketId), eq(positions.accountId, viewerAccountId), gt(positions.sharesMicro, 0n)),
+    )
     .orderBy(outcomes.ordinal);
   return {
     available: rows.map((r) => ({

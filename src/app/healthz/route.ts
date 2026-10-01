@@ -17,8 +17,5 @@ export async function GET() {
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  return NextResponse.json(
-    { status: 'ok' },
-    { headers: { 'Cache-Control': 'no-store' } },
-  );
+  return NextResponse.json({ status: 'ok' }, { headers: { 'Cache-Control': 'no-store' } });
 }

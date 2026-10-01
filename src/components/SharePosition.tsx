@@ -92,13 +92,12 @@ export function SharePositionModal({
         ) : (
           <>
             <p className="mb-2">
-              Making it public gives it a link to share and lists it on your public page, under your name: the
-              outcome, your shares, what they cost and how the position stands, kept up to date as you trade.
+              Making it public gives it a link to share and lists it on your public page, under your name: the outcome,
+              your shares, what they cost and how the position stands, kept up to date as you trade.
             </p>
             <p className="mb-2">
               <b>It links you to your comments on this market.</b> A comment shows its author’s stake, so anyone who
-              compares the two can tell which comments are yours. Your positions and comments elsewhere stay
-              private.
+              compares the two can tell which comments are yours. Your positions and comments elsewhere stay private.
             </p>
             <p className="mb-1 text-muted">You can make it private again at any time; the link then stops working.</p>
             <button className={ui.btn()} disabled={busy} onClick={() => change(true)}>

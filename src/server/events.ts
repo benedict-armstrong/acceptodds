@@ -72,10 +72,7 @@ export type EventKind =
   | 'signup.started'
   | 'password.set';
 
-export function log(
-  kind: EventKind,
-  ids: { accountId?: string | null; marketId?: string | null } = {},
-): void {
+export function log(kind: EventKind, ids: { accountId?: string | null; marketId?: string | null } = {}): void {
   try {
     void getPool()
       .query('insert into events (kind, account_id, market_id) values ($1, $2, $3)', [

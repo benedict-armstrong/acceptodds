@@ -20,7 +20,11 @@ export const dynamic = 'force-dynamic';
  * missing it goes straight on to `next`; with an onboarding bet waiting, to
  * `/welcome`'s last step, which places it.
  */
-export default async function SignInContinue({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
+export default async function SignInContinue({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string; error?: string }>;
+}) {
   const params = await searchParams;
   const next = safeReturnTo(params.next);
   if (params.error) redirect(authHref('/signin', next, { error: params.error }));

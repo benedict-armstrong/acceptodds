@@ -24,7 +24,10 @@ describe('comments', () => {
   it('are anonymous: a stake and a bot flag, never a handle or an account id', async () => {
     const t = await trader('secret-handle');
     await buy(t.token, fx.outcomeIds[0], '40000000');
-    const posted = await api('POST', `/markets/${fx.marketId}/comments`, { token: t.token, body: { body: '  I think so.  ' } });
+    const posted = await api('POST', `/markets/${fx.marketId}/comments`, {
+      token: t.token,
+      body: { body: '  I think so.  ' },
+    });
     expect(posted.status).toBe(201);
     expect(posted.body).toMatchObject({
       body: 'I think so.',
@@ -64,7 +67,9 @@ describe('comments', () => {
     const unverified = await trader('unverified', ['read', 'trade'], { verified: false });
     const ok = await trader('ok');
     expect((await api('POST', `/markets/${fx.marketId}/comments`, { body: { body: 'x' } })).status).toBe(401);
-    expect((await api('POST', `/markets/${fx.marketId}/comments`, { token: reader.token, body: { body: 'x' } })).status).toBe(403);
+    expect(
+      (await api('POST', `/markets/${fx.marketId}/comments`, { token: reader.token, body: { body: 'x' } })).status,
+    ).toBe(403);
     const nv = await api('POST', `/markets/${fx.marketId}/comments`, { token: unverified.token, body: { body: 'x' } });
     expect(nv.body.error.code).toBe('not_verified');
     for (const body of ['', '   ', 'x'.repeat(2001)]) {
@@ -114,7 +119,8 @@ describe('browsing markets', () => {
     await buy(t.token, a.outcomeIds[0], '50000000', a.marketId); // most volume
     await buy(t.token, b.outcomeIds[0], '5000000', b.marketId); // most recent
 
-    const slugs = async (q: Parameters<typeof browseListings>[0]) => (await browseListings(q)).rows.map((r) => r.market.slug);
+    const slugs = async (q: Parameters<typeof browseListings>[0]) =>
+      (await browseListings(q)).rows.map((r) => r.market.slug);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'closing' })).toEqual(['b', 'a']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'volume' })).toEqual(['a', 'b']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'activity' })).toEqual(['b', 'a']);

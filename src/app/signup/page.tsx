@@ -10,7 +10,11 @@ import { SignUpForm } from './SignUpForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SignUp({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function SignUp({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const next = safeReturnTo((await searchParams).next);
   // Already signed in: nothing to do here. On to where signing in would
   // have gone, or to the profile when that is nowhere in particular.

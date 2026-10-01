@@ -91,12 +91,7 @@ export function prices(shares: number[], b: number): number[] {
  * price (invariant §1.1). This function prices the whole size, slippage
  * included, and is the only honest answer.
  */
-export function costToTrade(
-  shares: number[],
-  outcomeIndex: number,
-  delta: number,
-  b: number,
-): number {
+export function costToTrade(shares: number[], outcomeIndex: number, delta: number, b: number): number {
   assertValid(shares, b);
   if (!Number.isInteger(outcomeIndex) || outcomeIndex < 0 || outcomeIndex >= shares.length) {
     throw new RangeError(`lmsr: outcomeIndex ${outcomeIndex} out of range`);

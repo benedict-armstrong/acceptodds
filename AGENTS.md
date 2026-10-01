@@ -11,6 +11,10 @@ Python/FastAPI scaffold until 2026-09-23; ignore anything that says otherwise.
 - **ESLint stays on 9** until `eslint-config-next`'s `eslint-plugin-react`
   supports 10; under 10 it crashes on load.
 
+- **Formatting is Prettier** (`.prettierrc.json`: single quotes, 120
+  columns). Run `npm run format` after editing and never hand-format;
+  `npm run format:check` is the check. Generated files are in
+  `.prettierignore`.
 - **Tests:** `npm test` (unit + property, no database). `npm run test:integration`
   needs the dev Postgres up and `TEST_DATABASE_URL` set; it truncates every
   table in that database. `npm run test:all` runs both.
@@ -120,7 +124,7 @@ balances never moves, and the maker can never go negative, which is
 
 **The platform knows nothing about papers.** No corpus, no scraper, no arXiv,
 no OpenReview, no model calls. A market is a question, outcomes, an id and a
-resolution rule. If a change needs to know *what* is being traded, it belongs
+resolution rule. If a change needs to know _what_ is being traded, it belongs
 in `../research`, which is just another API client.
 
 The venue never goes looking for outcomes either: settlement is an
@@ -189,7 +193,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   one. For the same reason the engine logs **after** the commit, never inside
   the transaction.
 - **`orders.created_at` defaults to `clock_timestamp()`, not `now()`.** `now()`
-  is the transaction *start* time, and a trade that queued on the market row
+  is the transaction _start_ time, and a trade that queued on the market row
   lock started before the trade that beat it to the lock — so a tape ordered by
   `now()` can be in an order the prices were never in.
 - **`usd_costs.amount_usd_micro` is `BIGINT` micro-USD**, not a `numeric`
@@ -201,8 +205,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Read Postgres error codes through `db/errors.ts`.** Drizzle wraps a failed
   query in a `DrizzleQueryError` whose `cause` holds the SQLSTATE; `err.code`
   on the wrapper is undefined. The engine's idempotency race check once looked
-  only at the top level, so a retry racing its original on a *different
-  market* (different row locks, so only the unique index can catch it) came
+  only at the top level, so a retry racing its original on a _different
+  market_ (different row locks, so only the unique index can catch it) came
   back as a 500 instead of the original fill. `isUniqueViolation()` walks the
   cause chain; use it, never `err.code === '23505'`.
 
@@ -226,14 +230,14 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   renaming one breaks bots. Engine codes map onto HTTP statuses there.
 - **Scopes do not imply each other.** `read` guards `/me*`, `trade` guards
   `POST …/orders`, `admin` guards create/close/settle. An admin bot that also
-  trades carries both. Public endpoints need no scope — but a token that *is*
+  trades carries both. Public endpoints need no scope — but a token that _is_
   sent must be valid (401 otherwise, never a silent downgrade to anonymous),
   and it is counted against its rate-limit bucket and attributed in `events`.
 - **Request → account resolution lives only in `server/auth.ts`.** A bearer
   API key or the Better Auth session cookie; both resolve to one `accounts`
   row. Token management (`/me/tokens*`) is session-only (`requireSession`) so
   a leaked token cannot mint its successor or hide its revocation.
-- **A reused `Idempotency-Key` for a *different* order is a 409
+- **A reused `Idempotency-Key` for a _different_ order is a 409
   `idempotency_key_reused`.** The engine returns the original fill for any
   reused key; answering "filled" to a request for a different order would tell
   the client an order went through that never did. Same order → the original
@@ -297,7 +301,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **API tokens are Better Auth `apiKey`-plugin keys** (`@better-auth/api-key`),
   not the M4 hand-rolled `api_tokens` table, which is gone. Format is still
   `pm_live_` + 32 random bytes (a custom key generator). The plugin stores the
-  SHA-256 and looks a presented key up *by that hash*, so there is no prefix
+  SHA-256 and looks a presented key up _by that hash_, so there is no prefix
   lookup or byte comparison to time; that replaces §7's "look up by prefix,
   compare in constant time". Scopes live in the plugin's `permissions` as
   `{ api: [...] }` and are checked by `server/auth.ts`, so a missing scope is a
@@ -329,7 +333,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   maps a domain to an institution name; subdomains match; matching never goes
   below two labels. Sign-up from any other domain is refused in Better Auth's
   `user.create.before` hook, before a user row exists or a mail is sent.
-  Confirming the address *is* the verification. This replaces §8's
+  Confirming the address _is_ the verification. This replaces §8's
   institutional code + ROR lookup, and ORCID sign-in is deferred too; both
   were built and then removed on the owner's call (git history has them).
   The list is generated, permissively on the owner's call (~55k domains):
@@ -472,7 +476,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   (`/email-otp/check-verification-otp`), going on to
   `/set-password?email=…&code=…`, which sets it with
   `/email-otp/reset-password`. Those two email-OTP routes are therefore on;
-  every route that *sends* a code stays off.
+  every route that _sends_ a code stays off.
 - **Better Auth's client IP header is `Cf-Connecting-Ip`**
   (`advanced.ipAddress`), via the exported `CLIENT_IP_HEADER`; its default is
   `X-Forwarded-For`. Its sign-in rate limiter uses in-memory storage, which is
@@ -533,7 +537,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   Server Actions; the trade widget and the comment form `fetch` `/api/v1`
   instead, so the UI gets the same validation, Origin check, trading gate,
   idempotency and rate limit as every other client, and §0's "the UI is one
-  client of the API" holds literally. Pages are Server Components that *read*
+  client of the API" holds literally. Pages are Server Components that _read_
   through `server/views.ts` and render the same JSON shapes the API serves
   (via `server/api/present.ts`), which the client then keeps live.
 - **Polling, 3 s, with SWR** (§9). Public reads go out with
@@ -558,7 +562,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   by `components/PaperName`, as in closed positions): `Bought @` (the average
   price paid, from `Holding.costBasisMicro`: average cost over the fills,
   `lib/cost-basis.ts`), `Payout` (shares, 1 each if it wins) and `Current
-  value`, the exit quote against the basis as % or `REP` (toggled in the
+value`, the exit quote against the basis as % or `REP` (toggled in the
   header) — never the mark (§1.1), so it is a little negative right after
   a buy. Selling is per row, in a
   `SellModal` (10/50/100% or a custom amount, capped at the holding),
@@ -591,6 +595,16 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   Figure 1 with that trader dashed and the viewer shaded, as the
   leaderboard's `?around=` draws them, then its own Table 1 of standing. House accounts 404. Every
   trader's name in a list links there; `/profile` has a button to it.
+- **A trader's standing is shareable** from `/people/<handle>` and
+  `/profile`: "share" (`components/ShareProfile`) copies the name, the
+  rank on the net-worth board and a plain-ASCII bar of the share of the
+  field below them (`lib/profile-share.ts`, rounded down like
+  "ahead of"), then the `/people/<handle>` link. That page's
+  `opengraph-image.tsx` (`og.profileImage`) draws the same rank and the
+  field snapshot's curve with them on it, shaded below, from the board's
+  own figure. Only what the page already shows; never a mark. Satori lays
+  out a fragment as a row, so a card's body is one column box
+  (`og.tsx` `BODY`), never `<>`.
 - **`/portfolio` lists closed positions** (#22, `accounts.closedPositions`):
   every outcome the viewer traded and now holds none of, one row over all
   its fills, newest first, 50 a page. Read from `orders` alone — positions
@@ -616,7 +630,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   pinned above is repeated, and the exclusion is in SQL so its pages count
   right.
 - **Comments are anonymous but for the author's stake.** Each shows the
-  author's *current* position in that market and a bot badge — no handle, no
+  author's _current_ position in that market and a bot badge — no handle, no
   id (`server/comments.ts`). Posting needs the `trade` scope and a
   trading-eligible account, so every comment has something behind it. The
   stake is read at display time, so it is empty after settlement. `comments`
@@ -701,7 +715,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   Never make a position public on the trader's behalf, and never list one
   they did not choose.
 - **One flag**: public means a link, `/positions/<id>` (page, OG image with
-  `@handle holds N <label>` under the title), *and* a row on
+  `@handle holds N <label>` under the title), _and_ a row on
   `/people/<handle>` (`GET /accounts/{handle}/positions`,
   `GET /positions/{id}`). Private again: the row is deleted and the link
   404s; public again is a new link.
@@ -717,7 +731,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   written by `server/follows.ts`, one statement, never the engine). A market
   with no listing has no star. No money, no market state; following needs a
   signed-in or token principal with `read` and no verification. `PUT`/`DELETE
-  /listings/{id}/follow` are idempotent and return `{ following, followers }`;
+/listings/{id}/follow` are idempotent and return `{ following, followers }`;
   `GET /me/follows` gives each followed listing's main-market **headline**
   (#11, below; `negated` says it is `1 − P(outcome)`) now and 24h ago. Listing
   responses carry a `followers` count, never who; `following` is not on the
@@ -731,7 +745,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   host cron at 07:00 Europe/Zurich (README). Recipients: non-bot, non-house,
   confirmed email, opted in, with a followed main market (`open` or `closed`)
   that moved ≥ `DIGEST_MIN_MOVE_PP` (default 5). **At most once per account
-  per `DIGEST_TIMEZONE` day**: the `digest_sends` row is inserted *before*
+  per `DIGEST_TIMEZONE` day**: the `digest_sends` row is inserted _before_
   the mail, so re-runs and concurrent runs send once; a visible send failure
   deletes the row for a retry, a crash between insert and send loses that
   day's mail rather than doubling it. The unsubscribe link is `/profile`, not
@@ -761,7 +775,7 @@ unpaginated, and 5 s for that search.
 - **`markets.is_main` is the row.** True for a visible standalone market and
   for a listing's main market (lowest rank, ties by age); never a draft. Set
   only by `engine.createMarket`, under a per-listing advisory lock taken
-  *before* the treasury lock (demoting the old main market locks its row,
+  _before_ the treasury lock (demoting the old main market locks its row,
   and markets lock before accounts); the new market's `created_at` is
   `clock_timestamp()` after that lock, so "ties by age" agrees with the flag.
   A unique partial index allows one per listing. It never changes after
@@ -790,7 +804,7 @@ unpaginated, and 5 s for that search.
   number reads it: likelihood colours, the acceptance sort (the engine's
   `markets.headline` cache, #12; its backfill in `drizzle/0006` is the same
   formula in SQL, exponents clamped because Postgres raises on `exp` over-
-  *and* underflow), sparklines, follows, the digest,
+  _and_ underflow), sparklines, follows, the digest,
   badges and previews. The UI calls it "accept" on a paper; elsewhere it is
   the first label, or "not <last label>". A market with more outcomes that
   are not ordered will get a meaningless headline: that is the convention's
@@ -844,7 +858,7 @@ unpaginated, and 5 s for that search.
 
 - **A rank is always a rank in the field.** `leaderboardStandings` ranks
   the whole board (after `institution`, which ranks one institution among
-  itself); a name search (`?q=`) then only *filters* it, so every row keeps
+  itself); a name search (`?q=`) then only _filters_ it, so every row keeps
   its real rank. `fieldSize` in the API is the denominator. The page's
   `?q=` also takes `institution:x` (`inst:`, `i:`, `-` or `!=` to
   exclude; `lib/trader-query.ts`), a case-insensitive substring of any of
@@ -857,7 +871,7 @@ unpaginated, and 5 s for that search.
   pager into the whole board (`?page=`, 50 a page). `lib/leaderboard.ts`
   merges windows that touch and never hides a single row behind "…". The
   viewer's row is highlighted, with "ahead of N% of traders" — the share of
-  the *others* scoring strictly lower, rounded down, so ties never flatter.
+  the _others_ scoring strictly lower, rounded down, so ties never flatter.
 - **People search is `views.searchPeople`**: substring (ILIKE, LIKE
   characters escaped) or `pg_trgm` word similarity (`<%`), over
   `handle || ' ' || display_name` — written exactly that way, since the
@@ -866,7 +880,7 @@ unpaginated, and 5 s for that search.
   above the papers when the query is only positive words (`peopleText`).
 - **The home search speaks a syntax** (`lib/query.ts`, modelled on
   vvzapi.ch): `key:value` filters (`title author venue status accept
-  volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
+volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `-` on a word, filter or group, `OR` and parentheses. A key that is not a
   field is text, so "BERT: pre-training" still searches; a bad value drops
   the term with a visible error. Never throws. Only the home page speaks
@@ -880,7 +894,7 @@ unpaginated, and 5 s for that search.
     AND's) drives the GIN-indexed hits join and the relevance rank, exactly
     as before. Text under `OR` or `-` is a per-row predicate over the
     stored vectors (`rowMatches`), unranked; relevance then falls back to
-    closing date. Text that only excludes means *no* document in the row
+    closing date. Text that only excludes means _no_ document in the row
     matches.
   - `venue:` or `status:` in a query makes the page's own filter of that
     kind step aside. `accept` compares the headline cache ×100 (a void

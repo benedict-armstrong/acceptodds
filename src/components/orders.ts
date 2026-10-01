@@ -33,7 +33,12 @@ export function useOrder(marketId: string, onFilled: () => void) {
   const [note, setNote] = useState<OrderResult | null>(null);
   const idempotencyKey = useRef<{ order: string; key: string } | null>(null);
 
-  async function send(outcomeId: string, label: string, sharesMicro: string, maxCostMicro: string): Promise<OrderResult> {
+  async function send(
+    outcomeId: string,
+    label: string,
+    sharesMicro: string,
+    maxCostMicro: string,
+  ): Promise<OrderResult> {
     setBusy(true);
     setNote(null);
     const order = `${outcomeId}:${sharesMicro}:${maxCostMicro}`;

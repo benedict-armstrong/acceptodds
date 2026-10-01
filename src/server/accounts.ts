@@ -96,10 +96,7 @@ export async function createAccount(
 }
 
 /** The house treasury. Markets are subsidised out of it (invariant §1.7). */
-export async function createHouse(
-  grantMicro: bigint,
-  database: Db = getDb(),
-): Promise<typeof accounts.$inferSelect> {
+export async function createHouse(grantMicro: bigint, database: Db = getDb()): Promise<typeof accounts.$inferSelect> {
   return createAccount(
     {
       handle: HOUSE_HANDLE,
@@ -196,10 +193,7 @@ export interface PortfolioSummary {
   realizedPnlMicro: bigint;
 }
 
-export async function getPortfolio(
-  accountId: string,
-  database: Db = getDb(),
-): Promise<Portfolio> {
+export async function getPortfolio(accountId: string, database: Db = getDb()): Promise<Portfolio> {
   const [account] = await database.select().from(accounts).where(eq(accounts.id, accountId));
   if (!account) throw new EngineError('not_found', `no account ${accountId}`);
 
@@ -519,7 +513,11 @@ export async function setDisplayName(
   const base = handleFrom(name);
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const handle =
-      !firstName || base === 'trader' ? account.handle : attempt === 0 ? base : `${base.slice(0, 25)}-${randomSuffix()}`;
+      !firstName || base === 'trader'
+        ? account.handle
+        : attempt === 0
+          ? base
+          : `${base.slice(0, 25)}-${randomSuffix()}`;
     try {
       const row = await database.transaction(async (tx) => {
         const [updated] = await tx

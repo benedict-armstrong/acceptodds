@@ -14,7 +14,6 @@ import type * as S from '@/server/api/schemas';
 
 type Holding = z.output<typeof S.Holding>;
 
-
 /** Exit value minus cost basis: what selling it all now would gain or lose. */
 function change(h: Holding): bigint {
   return BigInt(h.quotedExitMicro) - BigInt(h.costBasisMicro);
@@ -67,9 +66,7 @@ export function PositionsTable({
     <>
       <div className={ui.tableScroll}>
         <table className={ui.table}>
-          {caption && (
-            <caption className={ui.tableCaption}>{caption}</caption>
-          )}
+          {caption && <caption className={ui.tableCaption}>{caption}</caption>}
           <thead>
             <tr>
               {showMarket && <th className={ui.th()}>Paper</th>}
@@ -180,7 +177,11 @@ function Row({
             }}
           />
         )}
-        <SharePositionModal outcomeId={h.outcomeId} outcomeLabel={h.outcomeLabel} publicPositionId={h.publicPositionId} />
+        <SharePositionModal
+          outcomeId={h.outcomeId}
+          outcomeLabel={h.outcomeLabel}
+          publicPositionId={h.publicPositionId}
+        />
       </td>
     </tr>
   );

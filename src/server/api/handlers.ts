@@ -22,7 +22,13 @@ import { upsertListing } from '../listings';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
-import { clearPendingBet, newBrowserNonce, ONBOARDING_BROWSER_COOKIE, setFirstPassword, startOnboarding } from '../onboarding';
+import {
+  clearPendingBet,
+  newBrowserNonce,
+  ONBOARDING_BROWSER_COOKIE,
+  setFirstPassword,
+  startOnboarding,
+} from '../onboarding';
 import { claimSignUp, sendConfirmation } from '../signup';
 import { signInContinueHref } from '@/lib/links';
 import { safeReturnTo } from '@/lib/return-to';
@@ -502,7 +508,14 @@ export const postMyToken = route(async (req) => {
   events.log('token.minted', { accountId: principal.account.id });
   return respond(
     S.CreatedToken,
-    { id: record.id, name: record.name, start: record.start, scopes: record.scopes, createdAt: toIso(record.createdAt), token },
+    {
+      id: record.id,
+      name: record.name,
+      start: record.start,
+      scopes: record.scopes,
+      createdAt: toIso(record.createdAt),
+      token,
+    },
     { status: 201, principal },
   );
 });

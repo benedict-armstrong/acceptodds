@@ -76,7 +76,11 @@ export async function groupMembersOf(groupId: string, database: Database = getDb
 }
 
 /** `accountId`'s role in the group, or null when not a member. */
-export async function roleIn(group: Group, accountId: string | null, database: Database = getDb()): Promise<GroupRole | null> {
+export async function roleIn(
+  group: Group,
+  accountId: string | null,
+  database: Database = getDb(),
+): Promise<GroupRole | null> {
   if (accountId === null) return null;
   if (group.adminAccountId === accountId) return 'admin';
   const [row] = await database

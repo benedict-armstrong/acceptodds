@@ -63,7 +63,12 @@ export async function tradeFlows(
 ): Promise<Map<string, { openTradeMicro: bigint; realizedMicro: bigint; settledMarkets: number }>> {
   const out = new Map<string, { openTradeMicro: bigint; realizedMicro: bigint; settledMarkets: number }>();
   if (accountIds.length === 0) return out;
-  const result = await database.execute<{ account_id: string; open_trade: string; realized: string; settled: number }>(sql`
+  const result = await database.execute<{
+    account_id: string;
+    open_trade: string;
+    realized: string;
+    settled: number;
+  }>(sql`
     select le.account_id,
            coalesce(sum(le.delta_micro) filter (where m.status <> 'settled' and le.reason = 'trade'), 0)::text as open_trade,
            coalesce(sum(le.delta_micro) filter (where m.status = 'settled'), 0)::text as realized,

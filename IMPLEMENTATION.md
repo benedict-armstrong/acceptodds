@@ -1,7 +1,7 @@
 # papermarket platform — implementation plan
 
-*Written 2026-09-23. For an implementing agent. Read all of §0–§2 before writing
-any code; the milestones in §3 onward are ordered and each one is verifiable.*
+_Written 2026-09-23. For an implementing agent. Read all of §0–§2 before writing
+any code; the milestones in §3 onward are ordered and each one is verifiable._
 
 ---
 
@@ -21,7 +21,7 @@ onto the UI — the UI is one client of it.
 
 **The platform knows nothing about papers.** A market is a question, a set of
 outcomes, an id, and a resolution rule. No corpus, no scraper, no arXiv, no
-OpenReview client, no model calls. Anything that needs to know *what* is being
+OpenReview client, no model calls. Anything that needs to know _what_ is being
 traded belongs in `../research`, which creates markets and reports outcomes
 through the same public API every other client uses.
 
@@ -100,22 +100,22 @@ Traefik** in `~/proxy/` and **Cloudflare** in front of that. Read §11 before
 writing the compose file — the host has an established pattern and you must
 join it, not invent a second one.
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Runtime | Node 22, TypeScript strict | Matches `x402inference`'s base image |
-| Framework | Next.js 15, App Router, `output: 'standalone'` | Standalone output is not optional — see the disk budget in §11 |
-| Database | Postgres 16, own container, no published port | Never shared with the Supabase instances already on this host |
-| Data access | Drizzle ORM + drizzle-kit, `drizzle-orm/node-postgres` | Plain TCP `pg` driver. Real interactive transactions, so `SELECT … FOR UPDATE` just works |
-| Auth | **Better Auth**, in-app, tables in our own Postgres | §8. Self-hosted, no per-MAU billing, no extra container |
-| Email | Resend (external) | The one piece not to self-host — deliverability from a single origin IP is a losing battle |
-| Validation | Zod, one schema per boundary | |
-| UI | Tailwind v4 + shadcn/ui | |
-| Charts | Recharts | |
-| Live prices | SWR polling, 3s | §9 — SSE is now *available* but still not worth it for v1 |
-| Jobs + backups | `ops` sidecar: crond, curls the app, `pg_dump`s the database | §10 |
-| Tests | Vitest + fast-check; Postgres service container in CI | |
-| Errors | Sentry (self-hosted is overkill; the SaaS free tier is fine) | |
-| Edge | Cloudflare → Traefik → app | §11 |
+| Layer          | Choice                                                       | Notes                                                                                      |
+| -------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Runtime        | Node 22, TypeScript strict                                   | Matches `x402inference`'s base image                                                       |
+| Framework      | Next.js 15, App Router, `output: 'standalone'`               | Standalone output is not optional — see the disk budget in §11                             |
+| Database       | Postgres 16, own container, no published port                | Never shared with the Supabase instances already on this host                              |
+| Data access    | Drizzle ORM + drizzle-kit, `drizzle-orm/node-postgres`       | Plain TCP `pg` driver. Real interactive transactions, so `SELECT … FOR UPDATE` just works  |
+| Auth           | **Better Auth**, in-app, tables in our own Postgres          | §8. Self-hosted, no per-MAU billing, no extra container                                    |
+| Email          | Resend (external)                                            | The one piece not to self-host — deliverability from a single origin IP is a losing battle |
+| Validation     | Zod, one schema per boundary                                 |                                                                                            |
+| UI             | Tailwind v4 + shadcn/ui                                      |                                                                                            |
+| Charts         | Recharts                                                     |                                                                                            |
+| Live prices    | SWR polling, 3s                                              | §9 — SSE is now _available_ but still not worth it for v1                                  |
+| Jobs + backups | `ops` sidecar: crond, curls the app, `pg_dump`s the database | §10                                                                                        |
+| Tests          | Vitest + fast-check; Postgres service container in CI        |                                                                                            |
+| Errors         | Sentry (self-hosted is overkill; the SaaS free tier is fine) |                                                                                            |
+| Edge           | Cloudflare → Traefik → app                                   | §11                                                                                        |
 
 Cut deliberately: Redis, any queue, GraphQL, tRPC, a client state library, a
 second reverse proxy, and Kubernetes anything.
@@ -169,7 +169,7 @@ Also in this milestone:
   carrying §1.
 
 **Done when:** `npm run build` and `npm run test` both pass on an empty test
-suite, and `/healthz` returns `{"status":"ok"}` *after* checking the database.
+suite, and `/healthz` returns `{"status":"ok"}` _after_ checking the database.
 
 ---
 
@@ -346,7 +346,7 @@ Details that matter for a public API:
 - **Errors:** one shape everywhere — `{ error: { code, message, details? } }`
   with stable machine-readable `code` strings (`insufficient_balance`,
   `slippage_exceeded`, `market_closed`, `rate_limited`).
-- **Rate limits, in two layers.** Anonymous reads are limited at the *edge* —
+- **Rate limits, in two layers.** Anonymous reads are limited at the _edge_ —
   a Cloudflare rate-limiting rule, plus a Traefik middleware keyed on
   `Cf-Connecting-Ip` (§11). Per-token limits for authenticated trading are a
   token-bucket row in Postgres updated in the same request — cheaper than
@@ -424,7 +424,7 @@ management, admin market creation and settlement.
   call the same `engine.trade()` as the API.
 - **Poll, don't push — but the reason has changed.** SWR with a 3s interval on
   the board. In the hosted draft SSE was ruled out structurally (serverless
-  functions can't hold long-lived connections); self-hosted, we *do* have a
+  functions can't hold long-lived connections); self-hosted, we _do_ have a
   long-running Node server and Postgres `LISTEN/NOTIFY`, so SSE is now merely
   unnecessary rather than impossible. Keep polling for v1; if you do switch,
   note that Cloudflare will buffer a stream unless the response sets
@@ -486,8 +486,8 @@ is the closest working example and is worth reading in full before writing ours.
   Never run a second proxy, never publish 80/443 from this app.
 - Discovery is by **container label**, `exposedbydefault=false`, on the external
   Docker network **`web`**.
-- **Cloudflare-only is already enforced globally.** `cfonly@file` is a *default
-  middleware on both entrypoints*, so every router on this host inherits it.
+- **Cloudflare-only is already enforced globally.** `cfonly@file` is a _default
+  middleware on both entrypoints_, so every router on this host inherits it.
   **Do not add a per-router cfonly middleware** — `x402inference` has one for
   historical reasons and it is now redundant duplication.
 - **TLS is file-provider Cloudflare Origin CA. There is no ACME and there
@@ -512,9 +512,9 @@ is the closest working example and is worth reading in full before writing ours.
 name: papermarket
 
 services:
-  postgres:        # postgres:16, NO published port, healthcheck, pgdata volume
-  app:             # build: ., networks [default, web], traefik labels
-  ops:             # crond sidecar, networks [default], ~/backups bind mount
+  postgres: # postgres:16, NO published port, healthcheck, pgdata volume
+  app: # build: ., networks [default, web], traefik labels
+  ops: # crond sidecar, networks [default], ~/backups bind mount
 ```
 
 Non-negotiables, each one learned on this host:
@@ -532,27 +532,27 @@ Non-negotiables, each one learned on this host:
 Labels:
 
 ```yaml
-traefik.enable: "true"
-traefik.docker.network: "web"
-traefik.http.routers.papermarket.entrypoints: "websecure"
-traefik.http.routers.papermarket.rule: "Host(`papermarket.tld`)"
-traefik.http.routers.papermarket.tls: "true"        # no certresolver, see above
-traefik.http.services.papermarket.loadbalancer.server.port: "3000"
-traefik.http.middlewares.papermarket-ratelimit.ratelimit.average: "${RATE_LIMIT_AVERAGE:-30}"
-traefik.http.middlewares.papermarket-ratelimit.ratelimit.burst: "${RATE_LIMIT_BURST:-60}"
-traefik.http.middlewares.papermarket-ratelimit.ratelimit.period: "1s"
-traefik.http.middlewares.papermarket-ratelimit.ratelimit.sourcecriterion.requestheadername: "Cf-Connecting-Ip"
-traefik.http.middlewares.papermarket-headers.headers.stsseconds: "31536000"
-traefik.http.middlewares.papermarket-headers.headers.contenttypenosniff: "true"
-traefik.http.middlewares.papermarket-headers.headers.framedeny: "true"
-traefik.http.middlewares.papermarket-headers.headers.referrerpolicy: "strict-origin-when-cross-origin"
-traefik.http.routers.papermarket.middlewares: "papermarket-ratelimit,papermarket-headers"
+traefik.enable: 'true'
+traefik.docker.network: 'web'
+traefik.http.routers.papermarket.entrypoints: 'websecure'
+traefik.http.routers.papermarket.rule: 'Host(`papermarket.tld`)'
+traefik.http.routers.papermarket.tls: 'true' # no certresolver, see above
+traefik.http.services.papermarket.loadbalancer.server.port: '3000'
+traefik.http.middlewares.papermarket-ratelimit.ratelimit.average: '${RATE_LIMIT_AVERAGE:-30}'
+traefik.http.middlewares.papermarket-ratelimit.ratelimit.burst: '${RATE_LIMIT_BURST:-60}'
+traefik.http.middlewares.papermarket-ratelimit.ratelimit.period: '1s'
+traefik.http.middlewares.papermarket-ratelimit.ratelimit.sourcecriterion.requestheadername: 'Cf-Connecting-Ip'
+traefik.http.middlewares.papermarket-headers.headers.stsseconds: '31536000'
+traefik.http.middlewares.papermarket-headers.headers.contenttypenosniff: 'true'
+traefik.http.middlewares.papermarket-headers.headers.framedeny: 'true'
+traefik.http.middlewares.papermarket-headers.headers.referrerpolicy: 'strict-origin-when-cross-origin'
+traefik.http.routers.papermarket.middlewares: 'papermarket-ratelimit,papermarket-headers'
 ```
 
 Rate limiting **must** key on `Cf-Connecting-Ip`. Traefik's default source
 criterion is the remote address, and every request here arrives from a
 Cloudflare proxy IP — so the default gives one shared bucket for the entire
-internet, which is worse than no limit. Keying on the header is sound *only*
+internet, which is worse than no limit. Keying on the header is sound _only_
 because `cfonly` makes the edge unavoidable.
 
 ### Cloudflare settings

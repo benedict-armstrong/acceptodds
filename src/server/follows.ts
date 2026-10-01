@@ -129,12 +129,7 @@ export async function followedListings(
   );
 }
 
-async function withMoves(
-  ls: Listing[],
-  followedAt: Date[],
-  now: Date,
-  database: Database,
-): Promise<FollowedListing[]> {
+async function withMoves(ls: Listing[], followedAt: Date[], now: Date, database: Database): Promise<FollowedListing[]> {
   const views = await listingViews(ls, database);
   const mains = views.map((v) => v.markets[0] ?? null);
   const m = await moves(

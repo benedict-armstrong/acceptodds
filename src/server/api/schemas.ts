@@ -108,8 +108,7 @@ export const Market = z
     kind: z.string().meta({ description: 'Opaque to the venue; whatever the creating client groups by.' }),
     status: MarketStatus,
     b: z.number().positive().meta({
-      description:
-        'LMSR liquidity parameter, in micro-units. Computed once at creation and frozen: it never changes.',
+      description: 'LMSR liquidity parameter, in micro-units. Computed once at creation and frozen: it never changes.',
     }),
     outcomes: z.array(OutcomeOnBoard),
     volumeMicro: Micro.meta({ description: 'Sum of |cost| over every fill.' }),
@@ -129,15 +128,11 @@ export const Market = z
   .meta({ id: 'Market' });
 
 /** Free-text search, shared by the list endpoints. Blank is the same as absent. */
-export const SearchQuery = z
-  .string()
-  .max(SEARCH_MAX_LENGTH)
-  .optional()
-  .meta({
-    description:
-      'Free-text search (Postgres full text, English stemming). Web-search syntax: `"a phrase"`, `a OR b`, `-word`; without those, the last word also matches as a prefix. With `q`, results are ordered by relevance, best first, and `nextCursor` pages in that order (a cursor from an unsearched page is refused). Blank is ignored.',
-    example: 'transformer attention',
-  });
+export const SearchQuery = z.string().max(SEARCH_MAX_LENGTH).optional().meta({
+  description:
+    'Free-text search (Postgres full text, English stemming). Web-search syntax: `"a phrase"`, `a OR b`, `-word`; without those, the last word also matches as a prefix. With `q`, results are ordered by relevance, best first, and `nextCursor` pages in that order (a cursor from an unsearched page is refused). Blank is ignored.',
+  example: 'transformer attention',
+});
 
 export const MarketListQuery = PaginationQuery.extend({
   status: MarketStatus.optional().meta({
@@ -147,9 +142,7 @@ export const MarketListQuery = PaginationQuery.extend({
   q: SearchQuery,
 });
 
-export const MarketList = z
-  .object({ markets: z.array(Market), nextCursor: Cursor })
-  .meta({ id: 'MarketList' });
+export const MarketList = z.object({ markets: z.array(Market), nextCursor: Cursor }).meta({ id: 'MarketList' });
 
 // ---------------------------------------------------------------------------
 // listings — opaque subjects that group markets
@@ -199,9 +192,7 @@ export const ListingListQuery = PaginationQuery.extend({
   q: SearchQuery,
 });
 
-export const ListingList = z
-  .object({ listings: z.array(Listing), nextCursor: Cursor })
-  .meta({ id: 'ListingList' });
+export const ListingList = z.object({ listings: z.array(Listing), nextCursor: Cursor }).meta({ id: 'ListingList' });
 
 export const FollowState = z
   .object({
@@ -217,7 +208,8 @@ export const HeadlineMove = z
     outcomeId: Id,
     outcomeLabel: z.string(),
     negated: z.boolean().meta({
-      description: 'True when the headline is `1 − P(outcome)` (a market with more than two outcomes), false when it is `P(outcome)`.',
+      description:
+        'True when the headline is `1 − P(outcome)` (a market with more than two outcomes), false when it is `P(outcome)`.',
     }),
     price: Price.meta({ description: 'The headline now.' }),
     price24hAgo: Price.meta({
@@ -380,7 +372,9 @@ export const LEADERBOARD_BASIS_DESCRIPTION =
   'That cannot be inflated by the trader’s own price impact, because the exit quote walks back down the curve the buy walked up. ' +
   'Mark-based (mid-market) net worth can be, and is never a ranking basis.';
 
-export const LeaderboardBasis = z.enum(['settled_pnl', 'net_worth']).meta({ description: LEADERBOARD_BASIS_DESCRIPTION });
+export const LeaderboardBasis = z
+  .enum(['settled_pnl', 'net_worth'])
+  .meta({ description: LEADERBOARD_BASIS_DESCRIPTION });
 
 export const LeaderboardQuery = PaginationQuery.extend({
   basis: LeaderboardBasis.default('settled_pnl'),
@@ -390,17 +384,14 @@ export const LeaderboardQuery = PaginationQuery.extend({
     example: 'ETH Zurich',
   }),
   group: Id.optional().meta({
-    description: 'Only the members of this group (`GET /groups/{id}`), ranked among themselves. Combines with `institution`.',
+    description:
+      'Only the members of this group (`GET /groups/{id}`), ranked among themselves. Combines with `institution`.',
   }),
-  q: z
-    .string()
-    .max(SEARCH_MAX_LENGTH)
-    .optional()
-    .meta({
-      description:
-        'Only traders whose handle or display name matches, fuzzily: a case-insensitive substring, or a word close to one (trigram similarity). Each keeps their rank on the board. Blank is ignored.',
-      example: 'hinton',
-    }),
+  q: z.string().max(SEARCH_MAX_LENGTH).optional().meta({
+    description:
+      'Only traders whose handle or display name matches, fuzzily: a case-insensitive substring, or a word close to one (trigram similarity). Each keeps their rank on the board. Blank is ignored.',
+    example: 'hinton',
+  }),
 });
 
 export const Leaderboard = z
@@ -510,7 +501,8 @@ export const Me = z
       description: 'When the first of your current institutional email addresses was confirmed; null when none is.',
     }),
     canTrade: z.boolean().meta({
-      description: 'True for a verified account or a bot. Unverified accounts may browse and quote but not place orders.',
+      description:
+        'True for a verified account or a bot. Unverified accounts may browse and quote but not place orders.',
     }),
     balanceMicro: Micro,
     createdAt: Timestamp,
@@ -675,7 +667,9 @@ export const CreateTokenRequest = z
     scopes: z
       .array(z.enum(['read', 'trade']))
       .min(1)
-      .meta({ description: 'A signed-in user may mint `read` and `trade` tokens. `admin` is issued by an operator only.' }),
+      .meta({
+        description: 'A signed-in user may mint `read` and `trade` tokens. `admin` is issued by an operator only.',
+      }),
   })
   .meta({ id: 'CreateTokenRequest' });
 
@@ -708,8 +702,12 @@ export const Affiliation = z
     email: z.string(),
     institutionName: z.string().meta({ description: 'The allowlist’s name for the address’s domain.' }),
     primary: z.boolean().meta({ description: 'The address you signed up with. It cannot be removed.' }),
-    verifiedAt: Timestamp.nullable().meta({ description: 'When the address was confirmed; null while a code is outstanding.' }),
-    codeExpiresAt: Timestamp.nullable().meta({ description: 'When the outstanding code stops working, if there is one.' }),
+    verifiedAt: Timestamp.nullable().meta({
+      description: 'When the address was confirmed; null while a code is outstanding.',
+    }),
+    codeExpiresAt: Timestamp.nullable().meta({
+      description: 'When the outstanding code stops working, if there is one.',
+    }),
     createdAt: Timestamp,
   })
   .meta({ id: 'Affiliation' });
@@ -785,9 +783,7 @@ export const UpsertListingRequest = z
     description: 'Creates the listing, or replaces every field of the one with this slug. A field left out is cleared.',
   });
 
-export const UpsertedListing = z
-  .object({ listing: Listing, created: z.boolean() })
-  .meta({ id: 'UpsertedListing' });
+export const UpsertedListing = z.object({ listing: Listing, created: z.boolean() }).meta({ id: 'UpsertedListing' });
 
 export const CreatedMarket = z
   .object({
@@ -803,7 +799,11 @@ export const SettleRequest = z
   })
   .meta({ id: 'SettleRequest' });
 
-export const IdempotencyKey = z.string().min(1).max(255).regex(/^[\x21-\x7e]+$/, 'printable ASCII');
+export const IdempotencyKey = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[\x21-\x7e]+$/, 'printable ASCII');
 
 export const Handle = z.string().min(1).max(100).meta({ description: 'An account handle.', example: 'alice' });
 
@@ -832,7 +832,9 @@ export const CommentBacking = z
 export const Comment = z
   .object({
     id: Id,
-    body: z.string().meta({ description: 'Raw text, as posted. Clients render it as Markdown (GFM) with $…$ / $$…$$ TeX math.' }),
+    body: z
+      .string()
+      .meta({ description: 'Raw text, as posted. Clients render it as Markdown (GFM) with $…$ / $$…$$ TeX math.' }),
     createdAt: Timestamp,
     author: z
       .object({
@@ -871,13 +873,13 @@ export const CommentList = z
   .object({
     comments: z.array(Comment).meta({ description: 'In the requested `sort` order.' }),
     nextCursor: Cursor,
-    viewer: CommentViewer.nullable().meta({ description: 'The caller\'s stake available for backing. `null` when anonymous.' }),
+    viewer: CommentViewer.nullable().meta({
+      description: "The caller's stake available for backing. `null` when anonymous.",
+    }),
   })
   .meta({ id: 'CommentList' });
 
-export const CommentRequest = z
-  .object({ body: z.string().trim().min(1).max(2000) })
-  .meta({ id: 'CommentRequest' });
+export const CommentRequest = z.object({ body: z.string().trim().min(1).max(2000) }).meta({ id: 'CommentRequest' });
 
 export const CommentBackingRequest = z
   .object({
@@ -912,7 +914,8 @@ export const SignUpRequest = z
     email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
     name: z.string().trim().min(1).max(100),
     next: z.string().max(2000).optional().meta({
-      description: 'A path on this site to return to after confirming and choosing a password. Anything else means `/`.',
+      description:
+        'A path on this site to return to after confirming and choosing a password. Anything else means `/`.',
     }),
   })
   .strict()
