@@ -104,6 +104,7 @@ describe('backing a comment', () => {
     // The backer sees what is left to allocate.
     const mine = await list(bob.token);
     expect(mine.body.viewer).toEqual({
+      alias: null, // bob backs, but has not commented here
       available: [{ outcomeId: yes, outcomeLabel: 'YES', heldMicro: units(20), allocatedMicro: units(10) }],
     });
     // The author sees it too, but not as theirs.

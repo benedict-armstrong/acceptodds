@@ -562,6 +562,9 @@ export const Me = z
     digestOptIn: z.boolean().meta({
       description: 'Whether the daily email about followed papers whose price moved may be sent to you. On by default.',
     }),
+    mentionMailOptIn: z.boolean().meta({
+      description: 'Whether you are emailed when a comment `@`-mentions your alias. On by default.',
+    }),
     auth: z.object({
       method: z.enum(['token', 'session']),
       scopes: z.array(z.enum(TOKEN_SCOPES)),
@@ -707,6 +710,10 @@ export const MyOrders = z
 export const UpdateMeRequest = z
   .object({
     digestOptIn: z.boolean().optional().meta({ description: 'Turn the daily followed-papers email on or off.' }),
+    mentionMailOptIn: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Turn the email on or off that a comment mentioning you sends.' }),
     displayName: z.string().trim().min(1).max(100).optional().meta({
       description: 'The name shown for you on the leaderboard and your public page. Your handle does not change.',
     }),
@@ -923,21 +930,33 @@ export const Comment = z
     replyCount: z.number().int().min(0).meta({
       description: 'Direct replies to this comment. More than are loaded: fetch `GET /comments/{id}/replies`.',
     }),
+    mentions: z.array(z.string()).meta({
+      description:
+        'Aliases `@`-mentioned in `body` (`@k3xm`, case-insensitive) that belong to a commenter on this paper, lower case, in order of first mention.',
+    }),
     author: z
       .object({
+        alias: z.string().meta({
+          description:
+            "The author's pseudonym on this paper, OpenReview-style (shown as `Reviewer k3xm`): the same on all their comments on the paper's markets, unrelated to their alias on any other paper.",
+          example: 'k3xm',
+        }),
         isBot: z.boolean(),
         isYou: z.boolean().meta({ description: 'True when the authenticated caller wrote this comment.' }),
         stake: z
           .array(z.object({ outcomeId: Id, outcomeLabel: z.string(), sharesMicro: Micro }))
           .meta({ description: "The author's current holdings in this market. Empty once it settles." }),
       })
-      .meta({ description: 'Anonymous by design: no handle, no account id.' }),
+      .meta({ description: 'Pseudonymous by design: an alias per paper, never a handle or an account id.' }),
     backing: CommentBacking,
   })
   .meta({ id: 'Comment' });
 
 export const CommentViewer = z
   .object({
+    alias: z.string().nullable().meta({
+      description: "The caller's alias on this paper; `null` until they first comment on it.",
+    }),
     available: z
       .array(z.object({ outcomeId: Id, outcomeLabel: z.string(), heldMicro: Micro, allocatedMicro: Micro }))
       .meta({

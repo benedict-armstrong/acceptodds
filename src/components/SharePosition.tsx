@@ -23,8 +23,8 @@ async function setPublic(outcomeId: string, on: boolean): Promise<string | null>
 /**
  * A holding's share button, an icon (in the accent once public). A private position opens on what making it public
  * shows, and the warning that matters: comments show their author's stake,
- * so a public, named position of the same size tells readers which comments
- * on that market are yours. A public one opens on its link, to copy, and a
+ * so a public, named position of the same size tells readers which comment
+ * is yours, and its alias then names you on every comment on that paper. A public one opens on its link, to copy, and a
  * way to make it private again.
  */
 export function SharePositionModal({
@@ -96,8 +96,9 @@ export function SharePositionModal({
               your shares, what they cost and how the position stands, kept up to date as you trade.
             </p>
             <p className="mb-2">
-              <b>It links you to your comments on this market.</b> A comment shows its author’s stake, so anyone who
-              compares the two can tell which comments are yours. Your positions and comments elsewhere stay private.
+              <b>It links you to your comments on this paper.</b> A comment shows its author’s stake, so anyone who
+              compares the two can tell which reviewer id is yours, and so every comment you made on this paper. Your
+              positions and comments elsewhere stay private.
             </p>
             <p className="mb-1 text-muted">You can make it private again at any time; the link then stops working.</p>
             <button className={ui.btn()} disabled={busy} onClick={() => change(true)}>

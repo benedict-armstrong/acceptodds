@@ -79,6 +79,8 @@ export const accounts = pgTable(
     isHouse: boolean('is_house').notNull().default(false),
     /** Whether the daily digest of followed papers may be mailed (`server/digest.ts`). On by default. */
     digestOptIn: boolean('digest_opt_in').notNull().default(true),
+    /** Whether a `@` mention in a comment may be mailed (`server/mentions.ts`). On by default. */
+    mentionMailOptIn: boolean('mention_mail_opt_in').notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [
@@ -482,15 +484,14 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
  * Market discussion (M6). Not market state and not a source of truth for
  * anything: a comment is text attached to a market by an account.
  *
- * **Shown anonymously.** Readers see a comment's text, its time, whether the
- * author is a bot, and the author's *current* stake in that market — never a
- * handle or an account id (see `server/comments.ts`). `account_id` is here so
- * the stake can be computed and so moderation is possible, not for display.
+ * **Shown under a pseudonym.** Readers see a comment's text, its time,
+ * whether the author is a bot, the author's *current* stake in that market,
+ * and the author's alias on that paper (`comment_aliases`) — never a handle
+ * or an account id (see `server/comments.ts`). `account_id` is here so the
+ * stake and alias can be found and so moderation is possible, not for display.
  *
- * **Threads are one level deep.** `parent_id` is null on a top-level comment
- * and names a top-level comment on a reply, on the same market; a reply to a
- * reply joins its thread (`server/comments.ts`). Top-level comments page on
- * their own; each thread's replies page separately, oldest first.
+ * **Replies nest.** `parent_id` is null on a top-level comment and names the
+ * comment answered, on the same market, at any depth (`server/comments.ts`).
  */
 export const comments = pgTable(
   'comments',
@@ -511,6 +512,46 @@ export const comments = pgTable(
   (t) => [
     index('comments_market_created_idx').on(t.marketId, t.createdAt),
     index('comments_parent_created_idx').on(t.parentId, t.createdAt, t.id),
+  ],
+);
+
+/**
+ * A commenter's pseudonym on one paper, OpenReview-style: "Reviewer k3xm".
+ * The same account gets the same alias on every comment of a paper, so a
+ * reader can follow one voice through a discussion and `@k3xm` it, but a
+ * different, unrelated alias on every other paper.
+ *
+ * The scope is the listing, so every market of a paper shares one alias;
+ * a market with no listing is its own scope. Exactly one of `listing_id`
+ * and `market_id` is set. Made the first time an account comments in a
+ * scope, by `server/comments.ts` only, and never changed. Random, never
+ * derived from the account, so it reveals nothing about who it is.
+ */
+export const commentAliases = pgTable(
+  'comment_aliases',
+  {
+    listingId: uuid('listing_id').references(() => listings.id, { onDelete: 'cascade' }),
+    marketId: uuid('market_id').references(() => markets.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    alias: text('alias').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('comment_aliases_one_scope', sql`(${t.listingId} is null) <> (${t.marketId} is null)`),
+    uniqueIndex('comment_aliases_listing_account_key')
+      .on(t.listingId, t.accountId)
+      .where(sql`${t.listingId} is not null`),
+    uniqueIndex('comment_aliases_listing_alias_key')
+      .on(t.listingId, t.alias)
+      .where(sql`${t.listingId} is not null`),
+    uniqueIndex('comment_aliases_market_account_key')
+      .on(t.marketId, t.accountId)
+      .where(sql`${t.marketId} is not null`),
+    uniqueIndex('comment_aliases_market_alias_key')
+      .on(t.marketId, t.alias)
+      .where(sql`${t.marketId} is not null`),
   ],
 );
 

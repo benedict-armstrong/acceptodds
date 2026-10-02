@@ -172,6 +172,7 @@ export function presentMe(p: Principal): z.input<typeof S.Me> {
     balanceMicro: a.balanceMicro.toString(),
     createdAt: toIso(a.createdAt),
     digestOptIn: a.digestOptIn,
+    mentionMailOptIn: a.mentionMailOptIn,
     auth: { method: p.method, scopes: [...p.scopes] },
   };
 }
@@ -250,7 +251,9 @@ export function presentComment(c: CommentView): z.input<typeof S.Comment> {
     body: c.body,
     createdAt: toIso(c.createdAt),
     replyCount: c.replyCount,
+    mentions: c.mentions,
     author: {
+      alias: c.author.alias,
       isBot: c.author.isBot,
       isYou: c.author.isYou,
       stake: c.author.stake.map((s) => ({ ...s, sharesMicro: s.sharesMicro.toString() })),
@@ -282,6 +285,7 @@ export function presentComments(page: {
     total: page.total,
     viewer: page.viewer
       ? {
+          alias: page.viewer.alias,
           available: page.viewer.available.map((a) => ({
             ...a,
             heldMicro: a.heldMicro.toString(),

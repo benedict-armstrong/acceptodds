@@ -147,6 +147,16 @@ async function withMoves(ls: Listing[], followedAt: Date[], now: Date, database:
   }));
 }
 
+/** Set whether a comment's `@` mention may be mailed to this account. */
+export async function setMentionMailOptIn(accountId: string, optIn: boolean, database: Database = getDb()) {
+  const [row] = await database
+    .update(accounts)
+    .set({ mentionMailOptIn: optIn })
+    .where(eq(accounts.id, accountId))
+    .returning();
+  return row;
+}
+
 /** Set whether the daily digest may be mailed to this account. */
 export async function setDigestOptIn(accountId: string, optIn: boolean, database: Database = getDb()) {
   const [row] = await database

@@ -5,7 +5,8 @@ import * as engine from '../engine';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
 import { getComment, listComments, listReplies, postComment } from '../comments';
-import { follow, followedListings, setDigestOptIn, unfollow } from '../follows';
+import { mailMentions } from '../mentions';
+import { follow, followedListings, setDigestOptIn, setMentionMailOptIn, unfollow } from '../follows';
 import {
   createGroup,
   deleteGroup as deleteGroupRow,
@@ -325,6 +326,8 @@ export const postMarketComment = route(async (req, params) => {
     parentId: body.parentId,
   });
   events.log('comment.posted', { accountId: principal.account.id, marketId: market.id });
+  // After the commit and never awaited: a mail failure must not fail the post.
+  void mailMentions(created.id).catch((err) => console.error('[mentions] mail failed', err));
   const view = await getComment(created.id, principal.account.id);
   return respond(S.Comment, presentComment(view!), { status: 201, principal });
 });
@@ -366,7 +369,7 @@ export const getMe = route(async (req) => {
 });
 
 /**
- * Your settings. Only `digestOptIn` for now. `read` scope, like the rest of
+ * Your settings: the two mails' opt-ins and your name. `read` scope, like the rest of
  * `/me`: it moves no money and places no order.
  */
 export const patchMe = route(async (req) => {
@@ -374,6 +377,7 @@ export const patchMe = route(async (req) => {
   const body = await parseBody(req, S.UpdateMeRequest);
   let account = principal.account;
   if (body.digestOptIn !== undefined) account = await setDigestOptIn(account.id, body.digestOptIn);
+  if (body.mentionMailOptIn !== undefined) account = await setMentionMailOptIn(account.id, body.mentionMailOptIn);
   if (body.displayName !== undefined) account = await setDisplayName(account, body.displayName);
   events.log('me.updated', { accountId: account.id });
   return respond(S.Me, presentMe({ ...principal, account }), { principal });

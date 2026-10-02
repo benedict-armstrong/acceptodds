@@ -8,6 +8,7 @@ import { Markdown } from '@/components/Markdown';
 import { MARKDOWN_HINT, MarkdownEditor } from '@/components/MarkdownEditor';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { ui } from '@/components/ui';
+import { reviewerName } from '@/lib/aliases';
 import { ago, rep, REP, shares } from '@/lib/format';
 import { parseUnits } from '@/lib/money';
 import type * as S from '@/server/api/schemas';
@@ -36,9 +37,12 @@ async function errorText(res: Response, fallback: string): Promise<string> {
 }
 
 /**
- * The discussion under a market. Anonymous: each comment shows its author's
- * current stake here (and a bot badge), nothing else. Only accounts that can
- * trade may post, so every voice has something on the line.
+ * The discussion under a market. Pseudonymous, as OpenReview is: each comment
+ * shows its author's alias on this paper ("Reviewer k3xm", "(you)" on the
+ * viewer's own), their current stake here and a bot badge, nothing else. The
+ * alias is the same on all of one author's comments on the paper, so
+ * `@k3xm` mentions them. Only accounts that can trade may post, so every
+ * voice has something on the line.
  *
  * Traders can put shares they hold behind other people's comments. The
  * backing figure is those shares marked at the current price — a relevance
@@ -114,6 +118,9 @@ export function Comments({
     }))
     .filter((a) => a.freeMicro > 0n);
   const canBack = viewer.canTrade && tradable;
+  const you = first?.viewer?.alias ?? null;
+  // Every alias on the page: what a mention typed in the editor can be previewed against.
+  const aliases = new Set([...known.values()].map((c) => c.author.alias));
 
   const changed = () => {
     void mutate();
@@ -143,6 +150,8 @@ export function Comments({
         <CommentForm
           marketId={marketId}
           placeholder="Why is this price justified? Why not?"
+          you={you}
+          aliases={aliases}
           onPosted={() => void mutate()}
         />
       ) : (
@@ -172,6 +181,8 @@ export function Comments({
               canReply: viewer.canTrade,
               canBack,
               available,
+              you,
+              aliases,
               onChanged: changed,
               children: (id) => children.get(id) ?? [],
               loaded: (cs) => add(cs),
@@ -206,6 +217,9 @@ interface Tree {
   canReply: boolean;
   canBack: boolean;
   available: Available[];
+  /** The viewer's alias on this paper, null until they comment. */
+  you: string | null;
+  aliases: ReadonlySet<string>;
   onChanged: () => void;
   /** The loaded direct replies to a comment, oldest first. */
   children: (id: string) => Comment[];
@@ -247,6 +261,7 @@ function Thread({ c, tree }: { c: Comment; tree: Tree }) {
         outcomeIds={tree.outcomeIds}
         canBack={tree.canBack}
         available={tree.available}
+        you={tree.you}
         onChanged={tree.onChanged}
         onReply={tree.canReply ? () => setReplying(true) : undefined}
       />
@@ -271,7 +286,9 @@ function Thread({ c, tree }: { c: Comment; tree: Tree }) {
               <CommentForm
                 marketId={tree.marketId}
                 parentId={c.id}
-                placeholder="Reply"
+                placeholder={`Reply to ${reviewerName(c.author.alias)}`}
+                you={tree.you}
+                aliases={tree.aliases}
                 autoFocus
                 onPosted={(r) => {
                   tree.posted(r);
@@ -293,6 +310,8 @@ function CommentForm({
   marketId,
   parentId,
   placeholder,
+  you,
+  aliases,
   autoFocus,
   onPosted,
   onCancel,
@@ -300,6 +319,8 @@ function CommentForm({
   marketId: string;
   parentId?: string;
   placeholder: string;
+  you: string | null;
+  aliases: ReadonlySet<string>;
   autoFocus?: boolean;
   onPosted: (c: Comment) => void;
   onCancel?: () => void;
@@ -335,9 +356,14 @@ function CommentForm({
         preview={preview}
         placeholder={placeholder}
         autoFocus={autoFocus}
+        mentions={aliases}
+        you={you}
       />
       <div className="flex items-center justify-between gap-3">
-        <span className={ui.fine}>Shown anonymously, with your position in this market. {MARKDOWN_HINT}</span>
+        <span className={ui.fine}>
+          Shown as {you ? reviewerName(you) : 'a reviewer id of its own on this paper'}, with your position in this
+          market; @id mentions a reviewer and emails them. {MARKDOWN_HINT}
+        </span>
         <span className="flex gap-2">
           {onCancel && (
             <button className={ui.btn({ inline: true, ghost: true })} disabled={busy} onClick={onCancel}>
@@ -366,6 +392,7 @@ function CommentItem({
   outcomeIds,
   canBack,
   available,
+  you,
   onChanged,
   onReply,
 }: {
@@ -373,6 +400,7 @@ function CommentItem({
   outcomeIds: string[];
   canBack: boolean;
   available: Available[];
+  you: string | null;
   onChanged: () => void;
   /** Opens the thread's reply form; absent when the viewer cannot comment. */
   onReply?: () => void;
@@ -396,7 +424,10 @@ function CommentItem({
     <div className="py-2.5">
       {/* Headed as OpenReview heads a comment: who, what they hold, when. */}
       <div className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted">
-        <span className={ui.runIn}>{c.author.isYou ? 'Your comment' : 'Anonymous trader'}</span>
+        <span className={ui.runIn}>
+          {reviewerName(c.author.alias)}
+          {c.author.isYou && ' (you)'}
+        </span>
         {c.author.isBot && <span className={ui.badge}>bot</span>}
         <span>
           {c.author.stake.length === 0 ? (
@@ -417,7 +448,9 @@ function CommentItem({
         </span>
         <span suppressHydrationWarning>{ago(c.createdAt)} ago</span>
       </div>
-      <Markdown className="mt-1">{c.body}</Markdown>
+      <Markdown className="mt-1" mentions={new Set(c.mentions)} you={you}>
+        {c.body}
+      </Markdown>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 font-sans text-xs text-muted">
         {c.backing.backers > 0 && (
           <span

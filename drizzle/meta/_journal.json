@@ -162,6 +162,20 @@
       "when": 1790882256398,
       "tag": "0022_listing_views",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790932054264,
+      "tag": "0023_comment_aliases",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790932727765,
+      "tag": "0024_mention_mail_opt_in",
+      "breakpoints": true
     }
   ]
 }

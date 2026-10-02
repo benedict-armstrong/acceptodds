@@ -1,10 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ui } from '@/components/ui';
 
-/** The daily followed-papers email, on or off, through `PATCH /api/v1/me`. */
-export function DigestToggle({ optIn: initial, minMovePp }: { optIn: boolean; minMovePp: number }) {
+/** One of the optional mails, on or off, through `PATCH /api/v1/me`. */
+export function MailToggle({
+  field,
+  optIn: initial,
+  name,
+  hint,
+  children,
+}: {
+  field: 'digestOptIn' | 'mentionMailOptIn';
+  optIn: boolean;
+  /** For the saved note: "<name> on." */
+  name: string;
+  hint: string;
+  children: ReactNode;
+}) {
   const [optIn, setOptIn] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
@@ -16,12 +29,12 @@ export function DigestToggle({ optIn: initial, minMovePp }: { optIn: boolean; mi
       const res = await fetch('/api/v1/me', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ digestOptIn: next }),
+        body: JSON.stringify({ [field]: next }),
       });
       if (!res.ok) throw new Error(String(res.status));
       const body = await res.json();
-      setOptIn(body.digestOptIn);
-      setNote({ ok: true, text: body.digestOptIn ? 'Morning emails on.' : 'Morning emails off.' });
+      setOptIn(body[field]);
+      setNote({ ok: true, text: `${name} ${body[field] ? 'on' : 'off'}.` });
     } catch {
       setNote({ ok: false, text: 'Could not save. Try again.' });
     } finally {
@@ -40,9 +53,8 @@ export function DigestToggle({ optIn: initial, minMovePp }: { optIn: boolean; mi
           onChange={(e) => change(e.target.checked)}
         />
         <span>
-          Email me each morning when a paper I follow has moved by {minMovePp} percentage points or more over the last
-          day.
-          <span className="block text-xs text-muted">One email a day at most, only when something moved.</span>
+          {children}
+          <span className="block text-xs text-muted">{hint}</span>
         </span>
       </label>
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}

@@ -1,5 +1,11 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getDb } from '@/db';
+import { commentAliases } from '@/db/schema';
+import { postComment } from '@/server/comments';
 import { createMarket } from '@/server/engine';
+import { upsertListing } from '@/server/listings';
+import { clearDevOutbox, devOutbox } from '@/server/mail';
+import { MENTION_MAIL_BUDGET, mailMentions } from '@/server/mentions';
 import { browseListings, marketKinds, sparklines } from '@/server/views';
 import { api, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
@@ -37,6 +43,7 @@ describe('comments', () => {
     const list = await api('GET', `/markets/${fx.marketId}/comments`);
     expect(list.status).toBe(200);
     expect(list.body.comments[0].author).toEqual({
+      alias: posted.body.author.alias,
       isBot: false,
       isYou: false,
       stake: [{ outcomeId: fx.outcomeIds[0], outcomeLabel: 'YES', sharesMicro: '40000000' }],
@@ -95,6 +102,134 @@ describe('comments', () => {
       cursor = res.body.nextCursor;
     } while (cursor);
     expect(seen).toEqual(['c4', 'c3', 'c2', 'c1', 'c0']);
+  });
+});
+
+describe('aliases', () => {
+  const post = (token: string, body: string, marketId = fx.marketId) =>
+    api('POST', `/markets/${marketId}/comments`, { token, body: { body } });
+  const paperMarket = (listingId: string, slug: string, listingRank: number) =>
+    createMarket({
+      slug,
+      question: `${slug}?`,
+      outcomes: ['Accept', 'Reject'],
+      startingBalanceMicro: STARTING_MICRO,
+      expectedTraders: 10,
+      closesAt: new Date(Date.now() + 86_400_000),
+      listingId,
+      listingRank,
+    });
+
+  it('are one per author per paper, across its markets, and differ between authors', async () => {
+    const { listing } = await upsertListing({ slug: 'paper', title: 'Paper' });
+    const main = await paperMarket(listing.id, 'paper-main', 0);
+    const other = await paperMarket(listing.id, 'paper-oral', 1);
+    const a = await trader('alice');
+    const b = await trader('bob');
+
+    const a1 = (await post(a.token, 'one', main.marketId)).body.author.alias;
+    const a2 = (await post(a.token, 'two', other.marketId)).body.author.alias;
+    const b1 = (await post(b.token, 'three', main.marketId)).body.author.alias;
+    expect(a1).toMatch(/^[a-z2-9]{4}$/);
+    expect(a2).toBe(a1);
+    expect(b1).not.toBe(a1);
+
+    const list = await api('GET', `/markets/${main.marketId}/comments`, { token: a.token });
+    expect(list.body.comments.map((c: { author: { alias: string } }) => c.author.alias)).toEqual([b1, a1]);
+    expect(list.body.viewer.alias).toBe(a1);
+    // Before commenting on a paper, a viewer has no alias there.
+    const elsewhere = await api('GET', `/markets/${fx.marketId}/comments`, { token: a.token });
+    expect(elsewhere.body.viewer.alias).toBeNull();
+  });
+
+  it('are separate on another paper, and on a market with no listing', async () => {
+    const [p, q] = await Promise.all([
+      upsertListing({ slug: 'p', title: 'P' }),
+      upsertListing({ slug: 'q', title: 'Q' }),
+    ]);
+    const mp = await paperMarket(p.listing.id, 'mp', 0);
+    const mq = await paperMarket(q.listing.id, 'mq', 0);
+    const a = await trader('alice');
+    await post(a.token, 'on p', mp.marketId);
+    await post(a.token, 'on q', mq.marketId);
+    await post(a.token, 'unlisted', fx.marketId);
+    const rows = await getDb().select().from(commentAliases);
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((r) => r.marketId === fx.marketId && r.listingId === null)).toHaveLength(1);
+  });
+
+  it('are made once when an author posts twice at once', async () => {
+    const a = await trader('alice');
+    const posted = await Promise.all([1, 2, 3, 4].map((i) => post(a.token, `c${i}`)));
+    expect(new Set(posted.map((r) => r.body.author.alias)).size).toBe(1);
+    expect(await getDb().select().from(commentAliases)).toHaveLength(1);
+  });
+
+  it('resolve @mentions of commenters on the paper only', async () => {
+    const a = await trader('alice');
+    const b = await trader('bob');
+    const alias = (await post(a.token, 'first')).body.author.alias;
+    const upper = alias.toUpperCase();
+    const reply = await post(b.token, `@${upper} disagree; cc @zzzz and mail x@${alias}`);
+    expect(reply.body.mentions).toEqual([alias]);
+    const list = await api('GET', `/markets/${fx.marketId}/comments`);
+    expect(list.body.comments[0].mentions).toEqual([alias]);
+    expect(list.body.comments[1].mentions).toEqual([]);
+  });
+});
+
+describe('mention mails', () => {
+  const createComment = (accountId: string, body: string) => postComment({ marketId: fx.marketId, accountId, body });
+  const post = (token: string, body: string, parentId?: string) =>
+    api('POST', `/markets/${fx.marketId}/comments`, { token, body: { body, parentId } });
+  const mailsTo = (handle: string) => devOutbox().filter((m) => m.to === `${handle}@example.org`);
+
+  beforeEach(() => clearDevOutbox());
+
+  it('mail a mentioned commenter, naming both by alias only, with a link to the discussion', async () => {
+    const a = await trader('alice');
+    const b = await trader('bob');
+    const first = (await post(a.token, 'Strong ablations.')).body;
+    const reply = (await post(b.token, `@${first.author.alias} the ablations miss the baseline.`, first.id)).body;
+
+    await vi.waitFor(() => expect(mailsTo('alice')).toHaveLength(1));
+    const [mail] = mailsTo('alice');
+    expect(mail.subject).toContain(`Reviewer ${reply.author.alias} mentioned you`);
+    expect(mail.text).toContain(`(Reviewer ${first.author.alias})`);
+    expect(mail.text).toContain('> @');
+    expect(mail.text).toContain('/markets/concurrency');
+    expect(mail.text).not.toContain('bob');
+    expect(mailsTo('bob')).toHaveLength(0);
+  });
+
+  it('never mail the author, an unknown alias, a bot, or anyone who opted out', async () => {
+    const a = await trader('alice');
+    const bot = await trader('robo', ['read', 'trade'], { isBot: true });
+    const quiet = await trader('quiet');
+    const self = (await post(a.token, 'mine')).body.author.alias;
+    const botAlias = (await post(bot.token, 'beep')).body.author.alias;
+    const quietAlias = (await post(quiet.token, 'shh')).body.author.alias;
+    expect((await api('PATCH', '/me', { token: quiet.token, body: { mentionMailOptIn: false } })).body).toMatchObject({
+      mentionMailOptIn: false,
+      digestOptIn: true,
+    });
+
+    const c = await post(a.token, `@${self} @${botAlias} @${quietAlias} @zzzz`);
+    expect(await mailMentions(c.body.id)).toBe(0);
+    expect(devOutbox()).toHaveLength(0);
+  });
+
+  it('stop at the daily budget per recipient', async () => {
+    const a = await trader('alice');
+    const b = await trader('bob');
+    const alias = (await post(a.token, 'hello')).body.author.alias;
+    const ids: string[] = [];
+    for (let i = 0; i < MENTION_MAIL_BUDGET.burst + 2; i += 1) {
+      ids.push((await createComment(b.id, `@${alias} ${i}`)).id);
+    }
+    let sent = 0;
+    for (const id of ids) sent += await mailMentions(id);
+    expect(sent).toBe(MENTION_MAIL_BUDGET.burst);
   });
 });
 

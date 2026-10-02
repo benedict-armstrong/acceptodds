@@ -1,0 +1,1 @@
+ALTER TABLE "accounts" ADD COLUMN "mention_mail_opt_in" boolean DEFAULT true NOT NULL;

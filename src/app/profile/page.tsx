@@ -18,7 +18,7 @@ import { leaderboardStandings, standingOf } from '@/server/views';
 import { presentAffiliation } from '@/server/api/present';
 import { listAffiliations } from '@/server/affiliations';
 import { Affiliations } from './Affiliations';
-import { DigestToggle } from './DigestToggle';
+import { MailToggle } from './MailToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,7 +133,25 @@ export default async function ProfilePage() {
         <p className="mt-1 mb-2 text-[15px] text-subtle">
           What we may email you, besides sign-in and confirmation mails.
         </p>
-        <DigestToggle optIn={a.digestOptIn} minMovePp={minMovePp()} />
+        <MailToggle
+          field="digestOptIn"
+          optIn={a.digestOptIn}
+          name="Morning emails"
+          hint="One email a day at most, only when something moved."
+        >
+          Email me each morning when a paper I follow has moved by {minMovePp()} percentage points or more over the last
+          day.
+        </MailToggle>
+        <div className="mt-3">
+          <MailToggle
+            field="mentionMailOptIn"
+            optIn={a.mentionMailOptIn}
+            name="Mention emails"
+            hint="At most ten a day. The email names the commenter by reviewer id only, as the page does."
+          >
+            Email me when a comment mentions my reviewer id (@id) on a paper.
+          </MailToggle>
+        </div>
       </section>
 
       <hr className="my-10 border-rule-soft" />

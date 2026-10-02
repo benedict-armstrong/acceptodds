@@ -633,9 +633,22 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   searching or with `?following=1`. "All papers" below is the rest: nothing
   pinned above is repeated, and the exclusion is in SQL so its pages count
   right.
-- **Comments are anonymous but for the author's stake.** Each shows the
-  author's _current_ position in that market and a bot badge — no handle, no
-  id (`server/comments.ts`). Posting needs the `trade` scope and a
+- **Comments are pseudonymous, OpenReview-style.** Each shows the author's
+  alias on the paper ("Reviewer k3xm", "(you)" on the viewer's own), their
+  _current_ position in that market and a bot badge — no handle, no account
+  id (`server/comments.ts`). The alias (`comment_aliases`, `lib/aliases.ts`)
+  is random, made on an account's first comment on a paper, shared by all
+  the paper's markets (an unlisted market is its own scope) and unrelated
+  to its alias on any other paper; only `server/comments.ts` writes it.
+  `@k3xm` mentions one: a comment's `mentions` lists the aliases in its body
+  that are commenters on the paper, and the UI highlights only those.
+  **A mention mails the reviewer** (`server/mentions.ts`), after the
+  commit and never awaited by the request, so a mail failure cannot fail
+  the post: to the login address, naming both sides by alias only, never
+  to the author, a bot, an unconfirmed address or an account with
+  `mention_mail_opt_in` off (`PATCH /me { mentionMailOptIn }`, on
+  `/profile`), and at most 10 a day per recipient
+  (`mention-mail:<account>`), else `@k3xm` repeated fills an inbox. Posting needs the `trade` scope and a
   trading-eligible account, so every comment has something behind it. The
   stake is read at display time, so it is empty after settlement. `comments`
   has foreign keys (unlike `events`) because it is written in its own tiny
@@ -724,8 +737,8 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   `PUT`/`DELETE /me/positions/{outcomeId}/public`, idempotent, `trade`
   scope (not `read`: it discloses who holds what). Only a position held now
   can be made public (`409 insufficient_shares`).
-- **It unmasks the holder's comments on that market**, since a comment's
-  stake is its only mark. That is accepted, per position, and the Share
+- **It unmasks the holder's comments on that paper**, since a comment's
+  stake ties it to the position and its alias then ties every other. That is accepted, per position, and the Share
   modal (`components/SharePosition`) says so before the switch is made.
   Never make a position public on the trader's behalf, and never list one
   they did not choose.
@@ -790,8 +803,9 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **A move is a price, not a value** (§1.1): the price 24h ago is replayed
   exactly from the fills (share vector = Σ order shares up to the cutoff,
   `follows.moves()`), never sampled or estimated.
-- **`PATCH /me { digestOptIn }`** (`read` scope, like the rest of `/me`) is the
-  only setting; `accounts.digest_opt_in` defaults to true.
+- **`PATCH /me { digestOptIn }`** (`read` scope, like the rest of `/me`);
+  `accounts.digest_opt_in` defaults to true. `mentionMailOptIn` (comment mentions,
+  above) is the only other mail setting.
 - **The digest is a script, not a scheduler**: `npm run digest:send` from the
   host cron at 07:00 Europe/Zurich (README). Recipients: non-bot, non-house,
   confirmed email, opted in, with a followed main market (`open` or `closed`)

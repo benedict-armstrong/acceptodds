@@ -13,16 +13,27 @@ export function MarkdownEditor({
   preview,
   placeholder,
   autoFocus = false,
+  mentions,
+  you,
 }: {
   value: string;
   onChange: (v: string) => void;
   preview: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  /** Aliases a `@` mention may name, highlighted in the preview as they will be once posted. */
+  mentions?: ReadonlySet<string>;
+  you?: string | null;
 }) {
   return preview ? (
     <div className="min-h-[70px] border border-dashed border-rule bg-card p-2">
-      {value.trim() ? <Markdown>{value}</Markdown> : <span className="text-muted italic">Nothing to preview.</span>}
+      {value.trim() ? (
+        <Markdown mentions={mentions} you={you}>
+          {value}
+        </Markdown>
+      ) : (
+        <span className="text-muted italic">Nothing to preview.</span>
+      )}
     </div>
   ) : (
     <textarea

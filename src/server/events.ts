@@ -44,6 +44,7 @@ export type EventKind =
   | 'account.read'
   | 'comments.read'
   | 'comment.posted'
+  | 'comment.mention_mailed'
   | 'comment.backed'
   | 'comment.unbacked'
   | 'listing.list'

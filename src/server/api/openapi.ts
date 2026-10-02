@@ -402,7 +402,8 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/me',
       tags: ['me'],
       summary: 'Update your settings',
-      description: 'Currently only `digestOptIn`: the daily email about followed papers whose price moved.',
+      description:
+        '`digestOptIn` (the daily email about followed papers whose price moved), `mentionMailOptIn` (the email a comment mentioning you sends) and `displayName`.',
       scope: 'read',
       request: { body: { content: { 'application/json': { schema: S.UpdateMeRequest } } } },
       ok: { status: 200, schema: S.Me, description: 'The account, updated.' },

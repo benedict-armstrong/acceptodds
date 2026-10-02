@@ -2,7 +2,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import { gifUrl, safeUrl } from '@/lib/markdown';
+import { gifUrl, remarkMentions, safeUrl } from '@/lib/markdown';
 
 /**
  * User-written Markdown (GFM) with TeX math (`$…$`, `$$…$$`, via KaTeX; its
@@ -18,6 +18,10 @@ import { gifUrl, safeUrl } from '@/lib/markdown';
  *     friends are inert.
  *
  * Headings are downsized to body text: a comment is not a document.
+ *
+ * `mentions` are the reviewer aliases a comment's `@k3xm` may name
+ * (`lib/aliases.ts`); each is set in the accent, and a mention of `you` (the
+ * viewer's own alias) on a tint. Any other `@word` is left as written.
  */
 
 const components: Components = {
@@ -64,11 +68,27 @@ const prose = [
   '[&_.katex-display]:my-2 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden',
 ].join(' ');
 
-export function Markdown({ children, className = '' }: { children: string; className?: string }) {
+const mention = 'font-mono text-[13px] text-accent';
+
+export function Markdown({
+  children,
+  className = '',
+  mentions,
+  you = null,
+}: {
+  children: string;
+  className?: string;
+  mentions?: ReadonlySet<string>;
+  you?: string | null;
+}) {
   return (
     <div className={`${prose} ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[
+          remarkGfm,
+          remarkMath,
+          ...(mentions ? [remarkMentions(mentions, (a) => (a === you ? `${mention} bg-tint px-0.5` : mention))] : []),
+        ]}
         rehypePlugins={[rehypeKatex]}
         urlTransform={safeUrl}
         components={components}

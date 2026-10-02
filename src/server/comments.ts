@@ -1,6 +1,16 @@
-import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { accounts, commentBackings, comments, markets, outcomes, positions, type Market } from '@/db/schema';
+import {
+  accounts,
+  commentAliases,
+  commentBackings,
+  comments,
+  markets,
+  outcomes,
+  positions,
+  type Market,
+} from '@/db/schema';
+import { mentionedAliases, randomAlias } from '@/lib/aliases';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { ApiError } from './api/errors';
@@ -8,8 +18,16 @@ import { encodeCursor } from './views';
 
 /**
  * Market discussion, Polymarket-style: every comment shows the author's
- * **current stake in that market** and whether they are a bot, and nothing
- * else about them — no handle, no account id, no institution.
+ * **current stake in that market**, whether they are a bot, and their
+ * **alias on this paper**, and nothing else about them — no handle, no
+ * account id, no institution.
+ *
+ * The alias is OpenReview's "Reviewer k3xm": random, made the first time an
+ * account comments on a paper (`comment_aliases`), the same on every comment
+ * it makes on any of that paper's markets, and unrelated to its alias on any
+ * other paper. It lets a reader follow one voice through a discussion and
+ * mention it as `@k3xm`; each comment carries the mentions in its body that
+ * name a commenter on the paper (`mentions`), which the client highlights.
  *
  * The stake is read at display time from `positions`, so it moves as the
  * author trades and is empty once a market settles (settlement zeroes every
@@ -68,7 +86,11 @@ export interface CommentView {
   createdAt: Date;
   /** Direct replies to it. */
   replyCount: number;
+  /** Aliases `@`-mentioned in the body that belong to commenters on this paper, in order of first mention. */
+  mentions: string[];
   author: {
+    /** The author's pseudonym on this paper. */
+    alias: string;
     isBot: boolean;
     /** True when the viewer wrote it. Lets a client say "you" without revealing anyone else. */
     isYou: boolean;
@@ -79,6 +101,8 @@ export interface CommentView {
 
 /** What the viewer could still put behind a comment on this market, per held outcome. */
 export interface ViewerStake {
+  /** The viewer's alias on this paper; null until they first comment on it. */
+  alias: string | null;
   available: { outcomeId: string; outcomeLabel: string; heldMicro: bigint; allocatedMicro: bigint }[];
 }
 
@@ -91,6 +115,11 @@ export async function postComment(
   if (body.length === 0 || body.length > MAX_COMMENT_LENGTH) {
     throw new ApiError(400, 'validation_error', `a comment is 1–${MAX_COMMENT_LENGTH} characters`);
   }
+  const [market] = await database
+    .select({ id: markets.id, listingId: markets.listingId })
+    .from(markets)
+    .where(eq(markets.id, input.marketId));
+  if (!market) throw new ApiError(404, 'not_found', `no market ${input.marketId}`);
   const parentId = input.parentId ?? null;
   if (parentId) {
     const [parent] = await database
@@ -99,11 +128,45 @@ export async function postComment(
       .where(and(eq(comments.id, parentId), eq(comments.marketId, input.marketId)));
     if (!parent) throw new ApiError(404, 'not_found', `no comment ${parentId} on this market`);
   }
+  await ensureAlias(market, input.accountId, database);
   const [row] = await database
     .insert(comments)
     .values({ marketId: input.marketId, accountId: input.accountId, parentId, body })
     .returning({ id: comments.id, createdAt: comments.createdAt });
   return row;
+}
+
+type Scoped = Pick<Market, 'id' | 'listingId'>;
+
+/** The `comment_aliases` rows of this market's paper: its listing's, or the market's own when unlisted. */
+export function aliasScope(market: Scoped) {
+  return market.listingId ? eq(commentAliases.listingId, market.listingId) : eq(commentAliases.marketId, market.id);
+}
+
+/**
+ * The account's alias on this market's paper, made if it has none. Two
+ * clashes are possible and both are a unique index's to decide: the same
+ * account commenting twice at once (the first insert wins, the second reads
+ * it back) and another account holding the alias drawn (draw again).
+ */
+async function ensureAlias(market: Scoped, accountId: string, database: Database): Promise<string> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const [existing] = await database
+      .select({ alias: commentAliases.alias })
+      .from(commentAliases)
+      .where(and(aliasScope(market), eq(commentAliases.accountId, accountId)));
+    if (existing) return existing.alias;
+    await database
+      .insert(commentAliases)
+      .values({
+        listingId: market.listingId,
+        marketId: market.listingId ? null : market.id,
+        accountId,
+        alias: randomAlias(),
+      })
+      .onConflictDoNothing();
+  }
+  throw new Error(`could not draw a free comment alias for market ${market.id}`);
 }
 
 const PG_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
@@ -220,7 +283,7 @@ export async function listComments(
     replies: views.slice(page.length),
     nextCursor,
     total,
-    viewer: await viewerStake(market.id, viewerAccountId, database),
+    viewer: await viewerStake(market, viewerAccountId, database),
   };
 }
 
@@ -337,8 +400,9 @@ async function decorate(
   if (rows.length === 0) return [];
   const authorIds = [...new Set(rows.map((r) => r.accountId))];
   const commentIds = rows.map((r) => r.id);
+  const mentioned = [...new Set(rows.flatMap((r) => mentionedAliases(r.body)))];
 
-  const [board, stakes, backed] = await Promise.all([
+  const [board, stakes, backed, aliases] = await Promise.all([
     database.select().from(outcomes).where(eq(outcomes.marketId, market.id)).orderBy(asc(outcomes.ordinal)),
     database
       .select({
@@ -364,8 +428,22 @@ async function decorate(
       .from(commentBackings)
       .where(inArray(commentBackings.commentId, commentIds))
       .groupBy(commentBackings.commentId, commentBackings.accountId, commentBackings.outcomeId),
+    database
+      .select({ accountId: commentAliases.accountId, alias: commentAliases.alias })
+      .from(commentAliases)
+      .where(
+        and(
+          aliasScope(market),
+          or(
+            inArray(commentAliases.accountId, authorIds),
+            mentioned.length > 0 ? inArray(commentAliases.alias, mentioned) : undefined,
+          ),
+        ),
+      ),
   ]);
 
+  const aliasOf = new Map(aliases.map((a) => [a.accountId, a.alias]));
+  const known = new Set(aliases.map((a) => a.alias));
   const value = backingValuer(market, board);
 
   return rows.map((r) => {
@@ -382,7 +460,9 @@ async function decorate(
       body: r.body,
       createdAt: r.createdAt,
       replyCount: r.replyCount,
+      mentions: mentionedAliases(r.body).filter((a) => known.has(a)),
       author: {
+        alias: authorAlias(aliasOf, r.accountId),
         isBot: r.isBot,
         isYou: viewerAccountId === r.accountId,
         stake: stakes
@@ -406,6 +486,13 @@ async function decorate(
       },
     };
   });
+}
+
+/** Every comment's author has an alias: `postComment` makes it first, and `drizzle/0023` backfilled the rest. */
+function authorAlias(aliasOf: Map<string, string>, accountId: string): string {
+  const alias = aliasOf.get(accountId);
+  if (alias === undefined) throw new Error(`comment author ${accountId} has no alias on this paper`);
+  return alias;
 }
 
 /**
@@ -432,11 +519,15 @@ function backingValuer(market: Market, board: (typeof outcomes.$inferSelect)[]) 
 
 /** The viewer's held outcomes on this market with what is already backed. `null` when anonymous. */
 export async function viewerStake(
-  marketId: string,
+  market: Scoped,
   viewerAccountId: string | null,
   database: Database = getDb(),
 ): Promise<ViewerStake | null> {
   if (!viewerAccountId) return null;
+  const [alias] = await database
+    .select({ alias: commentAliases.alias })
+    .from(commentAliases)
+    .where(and(aliasScope(market), eq(commentAliases.accountId, viewerAccountId)));
   const rows = await database
     .select({
       outcomeId: outcomes.id,
@@ -448,10 +539,11 @@ export async function viewerStake(
     .from(positions)
     .innerJoin(outcomes, eq(outcomes.id, positions.outcomeId))
     .where(
-      and(eq(outcomes.marketId, marketId), eq(positions.accountId, viewerAccountId), gt(positions.sharesMicro, 0n)),
+      and(eq(outcomes.marketId, market.id), eq(positions.accountId, viewerAccountId), gt(positions.sharesMicro, 0n)),
     )
     .orderBy(outcomes.ordinal);
   return {
+    alias: alias?.alias ?? null,
     available: rows.map((r) => ({
       outcomeId: r.outcomeId,
       outcomeLabel: r.outcomeLabel,
