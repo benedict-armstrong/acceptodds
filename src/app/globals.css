@@ -22,6 +22,8 @@
   --color-up: #1a7f37;
   --color-down: #b31b1b;
   --color-card: #fff;
+  /* hyperref's default box round a URL (urlbordercolor, cyan). */
+  --color-hyperref: #0ff;
 
   /* Likelihood of a market's headline (lib/headline.ts; for a paper, accepted
      in any form): ≥65% accept, ≤35% reject, else toss-up (lib/likelihood.ts). Muted, so the maroon

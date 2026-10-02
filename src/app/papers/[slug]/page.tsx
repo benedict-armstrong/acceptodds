@@ -101,15 +101,14 @@ export default async function PaperPage({
         )}
         <div className="mt-2 flex items-center justify-center gap-4">
           <ViewCount listingId={listing.id} views={listing.viewCount} />
-          {viewer && (
-            <FollowStar
-              listingId={listing.id}
-              following={following}
-              followers={followers}
-              showCount
-              className="text-[15px]"
-            />
-          )}
+          <FollowStar
+            listingId={listing.id}
+            following={following}
+            followers={followers}
+            showCount
+            signUpNext={viewer ? undefined : `/papers/${listing.slug}`}
+            className="text-[15px]"
+          />
           {markets[0] && (
             <SharePanel
               title={listing.title}
@@ -186,7 +185,7 @@ export default async function PaperPage({
           href={reportHref(listing.title, `${siteUrl()}/papers/${encodeURIComponent(listing.slug)}`)}
           className="text-muted underline"
         >
-          Report a problem with this paper or page
+          Report a problem with this page
         </a>
       </footer>
     </main>

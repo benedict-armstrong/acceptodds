@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MathText } from '@/components/MathText';
 import { ui } from '@/components/ui';
 
@@ -14,11 +14,13 @@ const COLLAPSED_LINES = 3;
  * lines at the current width starts collapsed to them until clicked; a
  * shorter one has no toggle.
  *
- * `math` renders inline TeX (`$…$`), as a paper's abstract carries it. Only
+ * `math` renders inline TeX (`$…$`, `\textbf{…}`, …: `MathText`), as a paper's abstract carries it. Only
  * for text that means it: elsewhere a `$` is literal (`$rep`, twice in one
- * abstract, would read as math).
+ * abstract, would read as math). It applies only to a string: `text` may
+ * instead be markup (a link), set as it is. `full` always shows the whole
+ * text, with no toggle.
  */
-export function Abstract({ text, math = false }: { text: string; math?: boolean }) {
+export function Abstract({ text, math = false, full = false }: { text: ReactNode; math?: boolean; full?: boolean }) {
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const ref = useRef<HTMLParagraphElement>(null);
@@ -46,10 +48,10 @@ export function Abstract({ text, math = false }: { text: string; math?: boolean 
     <div className="mx-auto mt-5 max-w-[min(680px,85%)] text-center text-[14px] leading-[1.55]">
       <h2 className={`${ui.boxHeading} text-center`}>Abstract</h2>
       <div className="inline-block max-w-full text-left">
-        <p ref={ref} className={`whitespace-pre-line text-justify hyphens-auto ${open ? '' : 'line-clamp-3'}`}>
-          {math ? <MathText text={text} /> : text}
+        <p ref={ref} className={`whitespace-pre-line text-justify hyphens-auto ${open || full ? '' : 'line-clamp-3'}`}>
+          {math && typeof text === 'string' ? <MathText text={text} /> : text}
         </p>
-        {overflows && (
+        {overflows && !full && (
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}

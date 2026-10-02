@@ -1,26 +1,32 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { welcomeHref } from '@/lib/onboarding';
 import { track } from '@/lib/track';
 import { StarIcon } from './icons';
 
 /**
  * Follow (star) a listing. Writes through the public API like every other
  * client (`PUT`/`DELETE /api/v1/listings/{id}/follow`), as the signed-in
- * viewer; the server checks the Origin. Only rendered for a signed-in viewer.
+ * viewer; the server checks the Origin. A visitor (`signUpNext` given) sees
+ * the same star and count, linking to onboarding, which returns to `signUpNext`.
  */
 export function FollowStar({
   listingId,
   following: initial,
   followers: initialFollowers,
   showCount = false,
+  signUpNext,
   className = '',
 }: {
   listingId: string;
   following: boolean;
   followers?: number;
   showCount?: boolean;
+  /** For a visitor: the page to come back to after onboarding, instead of following. */
+  signUpNext?: string;
   className?: string;
 }) {
   const router = useRouter();
@@ -51,6 +57,24 @@ export function FollowStar({
   }
 
   const label = following ? 'Unfollow this paper' : 'Follow this paper: get a morning email when its price moves';
+  const count = showCount && followers > 0 && (
+    <span className="ml-1 text-[13px] text-muted">{followers.toLocaleString('en-US')}</span>
+  );
+
+  if (signUpNext !== undefined) {
+    return (
+      <Link
+        href={welcomeHref(signUpNext)}
+        aria-label={label}
+        title={label}
+        className={`inline-flex items-center font-sans leading-none text-faint hover:text-ink hover:no-underline ${className}`}
+      >
+        <StarIcon filled={false} />
+        {count}
+      </Link>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -64,12 +88,7 @@ export function FollowStar({
       } ${className}`}
     >
       <StarIcon filled={following} />
-      {showCount && (
-        <span className="ml-1 text-[13px] text-muted">
-          {following ? 'following' : 'follow'}
-          {followers > 0 ? ` ${followers}` : ''}
-        </span>
-      )}
+      {count}
     </button>
   );
 }

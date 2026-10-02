@@ -73,6 +73,9 @@ export const ui = {
   },
   note: (ok: boolean) => `mt-2 text-[13px] ${ok ? 'text-up' : 'text-down'}`,
   /** A button that reads as an accent link: an inline action, not a call to action. */
+  /** An external link boxed as hyperref boxes a `\url{}`: typewriter, ink, a cyan frame. */
+  hyperref:
+    'border border-hyperref px-px font-mono text-[0.9em] break-all text-ink box-decoration-clone hover:no-underline',
   linkBtn: 'cursor-pointer text-accent hover:underline disabled:cursor-default disabled:opacity-50',
   /** `inline`: sized to its label, not the full width. `flush`: no top margin, and flows in text (a table cell's action). */
   btn: ({ ghost = false, inline = false, flush = false } = {}) =>

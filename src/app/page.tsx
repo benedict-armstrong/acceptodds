@@ -12,6 +12,7 @@ import { ui } from '@/components/ui';
 import { defaultMarketKind } from '@/lib/venue';
 import { pct, rep, REP } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
+import { REPO_URL } from '@/lib/links';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { FIELD_HELP, parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
@@ -49,10 +50,18 @@ const POSITIONS_COOKIE = 'home_positions_open';
 const PEOPLE = 5;
 
 /** What the site is, above the search; hidden while searching. */
-const ABSTRACT =
-  'A prediction market on peer review. Each paper has a market on its decision (oral, spotlight, poster or reject), ' +
-  'priced by researchers who stake $rep, a play currency, on what they expect. Prices are probabilities, and ' +
-  'every market settles when the venue publishes its decisions.';
+const ABSTRACT = (
+  <>
+    A prediction market on peer review. Each paper has a market on its decision (oral, spotlight, poster or reject),
+    priced by researchers who stake $rep, a play currency, on what they expect. Prices are probabilities, and every
+    market settles when the venue publishes its decisions. acceptodds is an open source project, open to contributions,
+    at{' '}
+    <a href={REPO_URL} className={ui.hyperref}>
+      {REPO_URL.replace(/^https:\/\//, '')}
+    </a>
+    .
+  </>
+);
 
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
 const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
@@ -183,17 +192,12 @@ export default async function Home({
       <TitleBlock
         title={
           <>
-            accept<i className="text-accent not-italic">odds</i>
-            <sup className="text-[0.5em]">
-              <a href="#credit" className="text-accent hover:underline">
-                1
-              </a>
-            </sup>
-            : Which papers will get accepted
+            accept<i className="text-accent not-italic">odds</i>: Which papers will get accepted
             {kind ? ` at ${kind}` : ''}?
           </>
         }
         abstract={q ? null : ABSTRACT}
+        abstractFull
       />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
@@ -447,15 +451,6 @@ export default async function Home({
           <Pager page={all.page} pages={all.pages} href={pageHref('page', pinnedCount > 0 ? '#all' : '')} />
         </section>
       )}
-
-      {/* The footnote to the title's marker, set like a paper's. */}
-      <footer id="credit" className="mt-10 w-1/3 min-w-48 border-t border-rule pt-1.5 text-[13px] text-muted">
-        <sup>1</sup> created by{' '}
-        <a href="https://github.com/benedict-armstrong" className="text-accent hover:underline">
-          @benedict-armstrong
-        </a>{' '}
-        in Zürich
-      </footer>
     </main>
   );
 }

@@ -1,3 +1,6 @@
+/** The platform's source code, linked from the home page's abstract. */
+export const REPO_URL = 'https://github.com/benedict-armstrong/acceptodds';
+
 /**
  * Where a market is read: its paper's page with the market selected, or the
  * market's own page when it has no listing. Plain, so Server and Client
