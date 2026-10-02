@@ -6,6 +6,7 @@ import { Citations } from '@/components/Citations';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { TableNotes } from '@/components/TableNotes';
+import { RunningHead } from '@/components/RunningHead';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ViewCount } from '@/components/ViewCount';
 import { ui } from '@/components/ui';
@@ -82,8 +83,8 @@ export default async function PaperPage({
 
   return (
     <main className={ui.page}>
+      {listing.kind && <RunningHead>Under review as a conference paper at {listing.kind}</RunningHead>}
       <TitleBlock
-        above={listing.kind}
         title={<MathText text={listing.title} />}
         byline={listing.authors.length > 0 ? listing.authors.join(', ') : null}
         abstract={listing.summary}

@@ -528,7 +528,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `components/`: `CopyButton`, `DetailsTable` (label–value rows as a
   booktabs table), the paper's furniture — `TitleBlock` (venue line,
   title, author line, `Abstract`; papers, traders and `/how-it-works` open
-  with it), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
+  with it), `RunningHead` (the template's line over a rule at the top of a
+  paper's page: "Under review as a conference paper at <kind>"), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
   and `References`/`Cite` (numbered by hand, like tables) — and `Popover` (Radix, the primitive shadcn
   wraps, in our tokens) for anything that floats over the page, and
   `Modal` (Radix Dialog, likewise) for anything that takes it over, and
