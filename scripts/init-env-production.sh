@@ -73,8 +73,7 @@ init API_RATE_LIMIT_PER_SECOND 2
 init BETTER_AUTH_SECRET "$(secret)"
 init BETTER_AUTH_URL "$(current APP_URL)"
 
-# --- jobs / edge
-init CRON_SECRET "$(secret)"
+# --- edge
 init RATE_LIMIT_AVERAGE 30
 init RATE_LIMIT_BURST 60
 

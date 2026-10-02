@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { CopyButton } from '@/components/CopyButton';
 import { CopyField } from '@/components/CopyField';
 import { NewGroupButton } from '@/components/Groups';
-import { Modal, ModalClose, ModalContent } from '@/components/Modal';
+import { Modal, ModalContent } from '@/components/Modal';
 import { ShareButton } from '@/components/ShareButtons';
 import { FIRST_TRADE_EVENT, type FirstTradeDetail } from '@/components/orders';
 import { ui } from '@/components/ui';
