@@ -4,6 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState, type KeyboardEvent } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { ui } from '@/components/ui';
+import { clip } from '@/lib/format';
+
+/** Longest board name set in the title; the whole name is on hover and in the list. */
+const TITLE_MAX = 40;
 
 export interface BoardOption {
   key: string;
@@ -77,8 +81,11 @@ export function BoardPicker({
       }}
     >
       {/* In the title's own type, marked as a field the way the trade box's stake is: a dashed rule, solid on hover or focus. */}
-      <PopoverTrigger className="cursor-pointer border-0 border-b-2 border-dashed border-rule-strong text-accent outline-none hover:border-solid hover:border-accent focus-visible:border-solid focus-visible:border-accent data-[state=open]:border-solid data-[state=open]:border-accent">
-        {current.label}
+      <PopoverTrigger
+        title={current.label.length > TITLE_MAX ? current.label : undefined}
+        className="cursor-pointer border-0 border-b-2 border-dashed border-rule-strong text-accent outline-none hover:border-solid hover:border-accent focus-visible:border-solid focus-visible:border-accent data-[state=open]:border-solid data-[state=open]:border-accent"
+      >
+        {clip(current.label, TITLE_MAX)}
       </PopoverTrigger>
       <PopoverContent className="flex max-h-[60vh] flex-col text-[13px]">
         <input

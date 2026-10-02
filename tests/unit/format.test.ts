@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clock, day, dayMonth, payoutReturn, shares } from '@/lib/format';
+import { clip, clock, day, dayMonth, payoutReturn, shares } from '@/lib/format';
 
 describe('payoutReturn', () => {
   it('is a multiple once the payout at least doubles the cost', () => {
@@ -40,5 +40,25 @@ describe('shares', () => {
     expect(shares(12_050_000n, 1)).toBe('12');
     expect(shares(999_999n, 1)).toBe('0.9');
     expect(shares(-12_399_999n, 1)).toBe('−12.3');
+  });
+});
+
+describe('clip', () => {
+  it('leaves text that fits alone', () => {
+    expect(clip('ETH Zurich', 10)).toBe('ETH Zurich');
+  });
+
+  it('cuts at a word break near the limit, within the limit', () => {
+    const out = clip('Swiss Federal Institute of Technology in Zurich', 30);
+    expect(out).toBe('Swiss Federal Institute of…');
+    expect(Array.from(out).length).toBeLessThanOrEqual(30);
+  });
+
+  it('cuts mid-word when no break is near', () => {
+    expect(clip('Rechenzentrumsgesellschaft', 10)).toBe('Rechenzen…');
+  });
+
+  it('never splits a surrogate pair', () => {
+    expect(clip('😀😀😀😀', 3)).toBe('😀😀…');
   });
 });

@@ -94,3 +94,17 @@ export function ago(iso: string | Date, now = Date.now()): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
+
+/**
+ * `text` cut to at most `max` characters, at a word break when one is near,
+ * with an ellipsis; unchanged when it fits. Counts code points, so a cut
+ * never splits a surrogate pair.
+ */
+export function clip(text: string, max: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  const head = chars.slice(0, max - 1).join('');
+  const space = head.lastIndexOf(' ');
+  const cut = space >= head.length * 0.6 ? head.slice(0, space) : head;
+  return `${cut.trimEnd()}…`;
+}
