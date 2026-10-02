@@ -34,7 +34,9 @@ export type EventName =
   | 'order_refused'
   // small signals of interest
   | 'follow_toggled'
-  | 'share_copied';
+  | 'share_copied'
+  // a share button that opens another service's share page
+  | 'share_sent';
 
 export interface EventData {
   /** A refusal or failure: the error code, never its message. */
@@ -46,7 +48,7 @@ export interface EventData {
   needsName?: boolean;
   needsPassword?: boolean;
   following?: boolean;
-  /** What was copied: 'paper' | 'badge' | 'profile'. */
+  /** What was copied: 'paper' | 'badge' | 'profile'; or where it was sent: 'x' | 'whatsapp'. */
   target?: string;
 }
 

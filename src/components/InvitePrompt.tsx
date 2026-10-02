@@ -5,9 +5,10 @@ import { CopyButton } from '@/components/CopyButton';
 import { CopyField } from '@/components/CopyField';
 import { NewGroupButton } from '@/components/Groups';
 import { Modal, ModalClose, ModalContent } from '@/components/Modal';
-import { FIRST_TRADE_EVENT } from '@/components/orders';
+import { ShareButton } from '@/components/ShareButtons';
+import { FIRST_TRADE_EVENT, type FirstTradeDetail } from '@/components/orders';
 import { ui } from '@/components/ui';
-import { siteCitation } from '@/lib/invite';
+import { siteCitation, siteShareLinks } from '@/lib/invite';
 import { groupInvitePath } from '@/lib/links';
 
 interface MyGroup {
@@ -24,15 +25,20 @@ interface MyGroup {
  * and shares nothing by itself: the link is the site's, never the trader's
  * position (§1.1, #36).
  */
-export function InvitePrompt({ siteName }: { siteName: string }) {
+export function InvitePrompt({ siteName, defaultVenue }: { siteName: string; defaultVenue: string }) {
   const [open, setOpen] = useState(false);
+  // The traded market's venue, for the share message; the default one when it has none.
+  const [venue, setVenue] = useState(defaultVenue);
   const [groups, setGroups] = useState<MyGroup[]>([]);
 
   useEffect(() => {
-    const show = () => setOpen(true);
+    const show = (e: Event) => {
+      setVenue((e as CustomEvent<FirstTradeDetail>).detail?.kind ?? defaultVenue);
+      setOpen(true);
+    };
     window.addEventListener(FIRST_TRADE_EVENT, show);
     return () => window.removeEventListener(FIRST_TRADE_EVENT, show);
-  }, []);
+  }, [defaultVenue]);
 
   // Groups the viewer is already in, to invite to; read when the dialog opens.
   useEffect(() => {
@@ -44,10 +50,11 @@ export function InvitePrompt({ siteName }: { siteName: string }) {
   }, [open]);
 
   const origin = typeof window === 'undefined' ? '' : window.location.origin;
+  const links = siteShareLinks({ name: siteName, venue, url: origin });
 
   return (
     <Modal open={open} onOpenChange={setOpen}>
-      <ModalContent title="Congratulations on four first trade!" wide>
+      <ModalContent title="Congratulations on your first trade!" wide>
         <p className="mb-3 text-muted">
           acceptodds is better the more people trade.
           <br />
@@ -57,8 +64,12 @@ export function InvitePrompt({ siteName }: { siteName: string }) {
           multiline
           value={siteCitation({ name: siteName, url: origin, year: new Date().getFullYear() })}
           label={`BibTeX entry for ${siteName}`}
-          className="mb-3"
+          className="mb-2"
         />
+        <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+          <ShareButton service="x" href={links.x} />
+          <ShareButton service="whatsapp" href={links.whatsapp} />
+        </div>
         <div className="mb-1 text-muted">Or invite them to a group, a leaderboard of your own:</div>
         <ul className="mb-2">
           {groups.map((g) => (

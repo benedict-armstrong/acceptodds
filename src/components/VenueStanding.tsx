@@ -11,6 +11,9 @@ import type { VenueField } from '@/server/venue-field';
  * headlines (the chance of acceptance) with this paper's marked and the share
  * of papers below it shaded. Prices, never values (§1.1). The field is the
  * server's, a minute old at most; the marker is the live headline.
+ *
+ * Shares only, never how many papers: a bin's hover is its share of the
+ * venue, and the caption names no count.
  */
 export function VenueStanding({ field, headline }: { field: VenueField; headline: number }) {
   const percent = headline * 100;
@@ -25,9 +28,8 @@ export function VenueStanding({ field, headline }: { field: VenueField; headline
         kind={field.kind}
       />
       <div className={ui.caption}>
-        <b>Figure 2.</b> The chance of acceptance of the {field.size.toLocaleString('en')} papers trading at{' '}
-        {field.kind}, in bins of 5 points; this paper&rsquo;s bin is marked and the bins the market rates less likely
-        are shaded.
+        <b>Figure 2.</b> The chance of acceptance of the papers trading at {field.kind}, in bins of 5 points; this
+        paper&rsquo;s bin is marked and the bins the market rates less likely are shaded.
       </div>
     </section>
   );
@@ -55,6 +57,11 @@ function Bars({ bins, you, label, kind }: { bins: number[]; you: number; label: 
   const plotH = HEIGHT - PAD.top - PAD.bottom;
   const slot = plotW / n;
   const peak = Math.max(1, ...bins);
+  const total = bins.reduce((s, b) => s + b, 0);
+  const share = (count: number) => {
+    const p = (count / Math.max(1, total)) * 100;
+    return count > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`;
+  };
   const base = PAD.top + plotH;
   const mine = Math.min(n - 1, Math.floor((you / 100) * n));
   const x0 = (i: number) => PAD.left + i * slot;
@@ -119,10 +126,7 @@ function Bars({ bins, you, label, kind }: { bins: number[]; you: number; label: 
           style={x0(hover) > width / 2 ? { right: width - x0(hover) + 8 } : { left: x0(hover) + slot + 8 }}
         >
           <span className="font-mono">{range(hover)}</span>
-          <span className="text-muted">
-            {' '}
-            {bins[hover]} {bins[hover] === 1 ? 'paper' : 'papers'}
-          </span>
+          <span className="text-muted"> {share(bins[hover])} of papers</span>
         </div>
       )}
     </div>

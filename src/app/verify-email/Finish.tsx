@@ -69,7 +69,7 @@ export function Finish({
   const [passwordSet, setPasswordSet] = useState(!needsPassword);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { send } = useOrder(bet?.market.id ?? '', () => {});
+  const { send } = useOrder(bet?.market.id ?? '', () => {}, bet?.market.kind);
   const label = bet?.market.outcomes.find((o) => o.id === bet.outcomeId)?.label ?? '';
   const unmoved =
     bet !== null && bet.choseHere && bet.seenOrderCount !== null && bet.market.orderCount === bet.seenOrderCount;

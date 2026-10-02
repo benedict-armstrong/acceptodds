@@ -19,8 +19,6 @@ import { markets, type Market } from '@/db/schema';
 
 export interface VenueField {
   kind: string;
-  /** How many papers. */
-  size: number;
   /** Papers per `BINS` equal-width bins across 0–100%, the last closed at 100. */
   bins: number[];
   /** At most `SAMPLE` headlines in percent, ascending, evenly spaced through the field's order. For hover and percentiles. */
@@ -63,7 +61,7 @@ export async function venueField(market: Market, database: Database = getDb()): 
       percents.length > SAMPLE
         ? Array.from({ length: SAMPLE }, (_, i) => percents[Math.round((i * (percents.length - 1)) / (SAMPLE - 1))])
         : percents;
-    field = { kind: market.kind, size: percents.length, bins, values };
+    field = { kind: market.kind, bins, values };
   }
   cache.set(market.kind, { at: Date.now(), field });
   return field;

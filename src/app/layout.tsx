@@ -8,6 +8,7 @@ import { InvitePrompt } from '@/components/InvitePrompt';
 import { LogoMark } from '@/components/Logo';
 import { NavWorth, type NavStanding } from '@/components/NavWorth';
 import { rep, REP } from '@/lib/format';
+import { defaultMarketKind } from '@/lib/venue';
 import { microToFloat } from '@/lib/money';
 import { viewerFromHeaders } from '@/server/auth';
 import { siteName, siteUrl } from '@/server/share';
@@ -95,7 +96,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         </header>
         <ConfirmBanner signedIn={viewer !== null} />
         {children}
-        {viewer && <InvitePrompt siteName={siteName()} />}
+        {viewer && <InvitePrompt siteName={siteName()} defaultVenue={defaultMarketKind()} />}
         {tracker && <Analytics {...tracker} />}
       </body>
     </html>

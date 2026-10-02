@@ -17,8 +17,13 @@ export const MESSAGES: Record<string, string> = {
   rate_limited: 'Too many requests. Wait a moment.',
 };
 
-/** Fired on `window` after an account's first order fills; `InvitePrompt` (mounted in the layout) listens. */
+/**
+ * Fired on `window` after an account's first order fills, with the market's
+ * `kind` as `detail` (`FirstTradeDetail`); `InvitePrompt` (mounted in the
+ * layout) listens.
+ */
 export const FIRST_TRADE_EVENT = 'acceptodds:first-trade';
+export type FirstTradeDetail = { kind: string | null };
 
 export type OrderResult = { ok: boolean; text: string };
 
@@ -28,10 +33,12 @@ export type OrderResult = { ok: boolean; text: string };
  * carries the quote its sender showed as `maxCostMicro`, so it fills at the
  * shown price or better, or not at all (§6, §9).
  *
+ * `kind` is the market's, passed on with the first-trade event.
+ *
  * One `Idempotency-Key` per order: the same order retried after a network
  * error keeps it, so it cannot fill twice; any other order gets a new one.
  */
-export function useOrder(marketId: string, onFilled: () => void) {
+export function useOrder(marketId: string, onFilled: () => void, kind: string | null = null) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<OrderResult | null>(null);
@@ -66,7 +73,8 @@ export function useOrder(marketId: string, onFilled: () => void) {
         };
         idempotencyKey.current = null;
         track('order_placed', { side: sell ? 'sell' : 'buy', first: !!body.firstTrade });
-        if (body.firstTrade) window.dispatchEvent(new Event(FIRST_TRADE_EVENT));
+        if (body.firstTrade)
+          window.dispatchEvent(new CustomEvent<FirstTradeDetail>(FIRST_TRADE_EVENT, { detail: { kind } }));
         onFilled();
         router.refresh(); // the balance in the header
       } else {

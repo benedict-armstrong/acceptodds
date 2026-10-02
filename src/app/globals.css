@@ -42,6 +42,10 @@
   --color-tier-3: #3d7a4f;
   --color-tier-4: #3f6a9a;
 
+  /* Other services' own colours, for their share buttons (components/ShareButtons). */
+  --color-brand-x: #000;
+  --color-brand-whatsapp: #25d366;
+
   --font-serif: Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-sans: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
