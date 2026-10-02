@@ -15,8 +15,10 @@ import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListings } from '@/server/follows';
 import { leaderboardStandings, standingOf } from '@/server/views';
-import { presentAffiliation } from '@/server/api/present';
+import { presentAffiliation, presentToken } from '@/server/api/present';
 import { listAffiliations } from '@/server/affiliations';
+import { listTokens } from '@/server/tokens';
+import { ApiKeys } from './ApiKeys';
 import { Affiliations } from './Affiliations';
 import { MailToggle } from './MailToggle';
 
@@ -31,8 +33,10 @@ export default async function ProfilePage() {
   const field = await leaderboardStandings({ basis: 'net_worth' });
   const standing = field.some((r) => r.accountId === a.id) ? standingOf(field, a.id, 'net_worth') : null;
   const affiliations = (await listAffiliations(a.id)).map(presentAffiliation);
-  // Tables are numbered by hand in page order: affiliations (not for bots), then follows.
+  const apiKeys = a.userId ? (await listTokens(a.userId)).map(presentToken) : [];
+  // Tables are numbered by hand in page order: affiliations (not for bots), follows (when any), then API keys.
   const followsTable = 1 + (a.isBot ? 0 : 1);
+  const keysTable = followsTable + (follows.length > 0 ? 1 : 0);
   events.log('me.read', { accountId: a.id });
 
   return (
@@ -126,6 +130,19 @@ export default async function ProfilePage() {
             <Link href="/?following=1&kind=all&status=all">followed papers on the home page →</Link>
           </div>
         )}
+      </section>
+
+      <section id="api-keys">
+        <h2 className={ui.groupHeading}>API keys</h2>
+        <p className="mt-1 mb-2 text-[15px] text-subtle">
+          For a script or a bot that trades as you. Send the key as{' '}
+          <code className={ui.mono}>Authorization: Bearer</code>; the endpoints are in the{' '}
+          <a className="underline" href="/docs">
+            API reference
+          </a>
+          .
+        </p>
+        <ApiKeys initial={apiKeys} n={keysTable} canTrade={a.isBot || a.verifiedAt !== null} />
       </section>
 
       <section id="email">

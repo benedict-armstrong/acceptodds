@@ -329,6 +329,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   email is in the comma-separated `ADMIN_EMAILS` env var also gets `admin`.
   No role column, no admin UI; change the list and restart. `POST /me/tokens`
   still mints only `read`/`trade`; admin tokens come from `npm run token:mint`.
+  People make and revoke their own keys under "API keys" on `/profile`
+  (`profile/ApiKeys.tsx`), which shows the secret once and never lists
+  revoked keys.
 - **Cookie-authenticated writes must carry our Origin.** `SameSite=Lax`
   already stops a cross-site POST carrying the cookie; `assertSameOrigin` in
   `server/auth.ts` is the second lock and does not depend on the browser.
@@ -778,14 +781,21 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 ### Views
 
 - **A paper's views are unique viewers per day, summed** (`listings.view_count`,
-  `listing_views`, written only by `server/view-counter.ts`). A visitor is an
-  HMAC of the UTC day, IP (`clientIp()`) and user agent under
-  `BETTER_AUTH_SECRET`: no address is stored, and the day inside the hash means
-  nobody can be followed from one day to the next. One statement inserts the
-  row and bumps the cache only when the row was new. Only the last two days'
-  rows are kept. Like `events`, no foreign keys and not a source of truth.
+  `listing_views`, written only by `server/view-counter.ts`). A visitor is
+  the signed-in account (session or key), else the client's network: its
+  IPv4 address or IPv6 /64 (`lib/ip-network.ts`, from `clientIp()`).
+  **Never the user agent**: the client chooses it, so with it in one machine
+  was any number of visitors. Anonymous readers behind one NAT count once.
+  Stored is an HMAC of the UTC day and that identity under
+  `BETTER_AUTH_SECRET`: no address or account id, and the day inside the
+  hash means nobody can be followed from one day to the next. One statement
+  inserts the row and bumps the cache only when the row was new. Only the
+  last two days' rows are kept. Like `events`, no foreign keys and not a
+  source of truth. Cloudflare rate-limits the beacon, 10 per 10 s per IP
+  (a zone rule in the dashboard, and the Free plan's only rate-limit rule).
 - **Counted by a beacon, not on render**: `components/ViewCount` POSTs
-  `/api/v1/listings/{id}/view` (anonymous, `credentials: 'omit'`), so a page
+  `/api/v1/listings/{id}/view` (`credentials: 'same-origin'`, one unit of a
+  signed-in viewer's bucket), so a page
   Cloudflare cached still counts and a crawler without JS does not. Shown on
   the paper page and as `views` on the listing. Unlisted markets have no count.
 

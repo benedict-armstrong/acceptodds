@@ -163,13 +163,14 @@ export const getListing = route(async (req, params) => {
 
 /**
  * Count the caller as having viewed a listing today (unique per visitor per
- * day, `server/view-counter.ts`). Public and anonymous, sent by the paper page
- * from the browser; nothing about the visitor is stored but a daily hash.
+ * day, `server/view-counter.ts`). Public, sent by the paper page from the
+ * browser: a signed-in viewer is counted by account, anyone else by network.
+ * Nothing about the visitor is stored but a daily hash.
  */
 export const postListingView = route(async (req, params) => {
   const principal = await authenticate(req);
   const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
-  const views = await countView(listing.id, clientIp(req), req.headers.get('user-agent'));
+  const views = await countView(listing.id, { accountId: principal?.account.id, ip: clientIp(req) });
   if (views === null) throw new ApiError(404, 'not_found', `no listing ${listing.id}`);
   return respond(S.ViewState, { listingId: listing.id, views }, { principal });
 });

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { ui } from '@/components/ui';
 import { stepIndexAt } from '@/lib/chart';
-import { clock, dayMonth, pct } from '@/lib/format';
+import { clock, day, dayMonth, pct } from '@/lib/format';
 import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, TIER_HEX } from '@/lib/headline';
 
 export interface ChartPoint {
@@ -82,10 +82,12 @@ export function PriceChart({
       .join('') + `H${width - pad.r}`;
 
   const ticks = [0.25, 0.5, 0.75].filter((v) => v > lo && v < hi);
-  // Days for a long history, clock times for one that fits in a day.
+  // Days for a long history, clock times for one that fits in a day — with the
+  // day too when it is not today, else 16:52 yesterday reads as before 11:05 today.
   const short = t1 - t0 < 86_400_000;
-  const date = (ms: number) => (short ? `${clock(ms)} UTC` : dayMonth(ms));
+  const today = day(new Date());
   const when = (ms: number) => `${dayMonth(ms)}, ${clock(ms)} UTC`;
+  const date = (ms: number) => (!short ? dayMonth(ms) : day(new Date(ms)) === today ? `${clock(ms)} UTC` : when(ms));
 
   // Even: the pointer snaps to the nearest fill. Linear: it reads the price in force.
   const [hoverPx, setHoverPx] = useState<number | null>(null);
