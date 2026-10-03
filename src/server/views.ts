@@ -1321,7 +1321,7 @@ export async function tradingMarketIds(ids: string[], database: Database = getDb
 
 /**
  * Whether `orderId` is the earliest order its account ever placed: the first
- * trade, which the UI marks with a prompt to bring a friend. Read from
+ * trade, which the UI follows with the first-trade page. Read from
  * `orders`, so a retry of that first order (same fill, replayed) still is.
  */
 export async function isFirstOrder(accountId: string, orderId: string, database: Database = getDb()): Promise<boolean> {
@@ -1332,6 +1332,78 @@ export async function isFirstOrder(accountId: string, orderId: string, database:
     .orderBy(asc(orders.createdAt), asc(orders.id))
     .limit(1);
   return row?.id === orderId;
+}
+
+/**
+ * The earliest order an account ever placed, for the first-trade page: what
+ * it staked, on which outcome of which market, and how it moved that
+ * outcome's price. A first order is always a buy: there is nothing to sell
+ * yet. `null` before any trade.
+ *
+ * The prices are replayed from the fills (the opening vector plus every
+ * order before this one, in tape order), like `priceHistory`: `orders` keeps only
+ * the price after, and what it was before depends on the whole vector.
+ */
+export async function firstFill(accountId: string, database: Database = getDb()) {
+  const [row] = await database
+    .select({
+      id: orders.id,
+      costMicro: orders.costMicro,
+      sharesMicro: orders.sharesMicro,
+      marketId: orders.marketId,
+      outcomeId: orders.outcomeId,
+      label: outcomes.label,
+      kind: markets.kind,
+      question: markets.question,
+      b: markets.b,
+      marketSlug: markets.slug,
+      listingTitle: listings.title,
+      listingSlug: listings.slug,
+    })
+    .from(orders)
+    .innerJoin(markets, eq(markets.id, orders.marketId))
+    .innerJoin(outcomes, eq(outcomes.id, orders.outcomeId))
+    .leftJoin(listings, eq(listings.id, markets.listingId))
+    .where(eq(orders.accountId, accountId))
+    .orderBy(asc(orders.createdAt), asc(orders.id))
+    .limit(1);
+  if (!row) return null;
+
+  const outcomeRows = await database
+    .select({ id: outcomes.id, openingSharesMicro: outcomes.openingSharesMicro })
+    .from(outcomes)
+    .where(eq(outcomes.marketId, row.marketId))
+    .orderBy(asc(outcomes.ordinal));
+  // Compared in SQL, at the timestamps' own microseconds.
+  const before = await database
+    .select({ outcomeId: orders.outcomeId, total: sql<string>`sum(${orders.sharesMicro})::text` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.marketId, row.marketId),
+        sql`(${orders.createdAt}, ${orders.id}) < (select o.created_at, o.id from orders o where o.id = ${row.id})`,
+      ),
+    )
+    .groupBy(orders.outcomeId);
+  const traded = new Map(before.map((r) => [r.outcomeId, BigInt(r.total)]));
+  const shares = outcomeRows.map((o) => o.openingSharesMicro + (traded.get(o.id) ?? 0n));
+  const i = outcomeRows.findIndex((o) => o.id === row.outcomeId);
+  const priceBefore = prices(shares.map(microToFloat), row.b)[i];
+  shares[i] += row.sharesMicro;
+  const priceAfter = prices(shares.map(microToFloat), row.b)[i];
+
+  return {
+    costMicro: row.costMicro,
+    marketId: row.marketId,
+    label: row.label,
+    kind: row.kind,
+    question: row.question,
+    marketSlug: row.marketSlug,
+    listingTitle: row.listingTitle,
+    listingSlug: row.listingSlug,
+    priceBefore,
+    priceAfter,
+  };
 }
 
 export async function traderCount(marketId: string, database: Database = getDb()): Promise<number> {

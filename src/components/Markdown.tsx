@@ -65,7 +65,9 @@ const prose = [
   '[&_hr]:my-3 [&_hr]:border-rule',
   '[&_table]:my-2 [&_table]:border-collapse [&_:is(th,td)]:border [&_:is(th,td)]:border-rule [&_:is(th,td)]:px-2 [&_:is(th,td)]:py-0.5 [&_th]:font-semibold',
   '[&_del]:text-muted',
-  '[&_.katex-display]:my-2 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden',
+  // Scrolling sideways needs overflow-y hidden, which clips at the padding box,
+  // and big operators (∫, ∑) ink a little past KaTeX's metrics: the padding is their room.
+  '[&_.katex-display]:my-2 [&_.katex-display]:py-[0.2em] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden',
 ].join(' ');
 
 const mention = 'font-mono text-[13px] text-accent';

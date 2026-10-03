@@ -28,7 +28,7 @@ export function SharePanel({
 }: {
   title: string;
   kind: string | null;
-  /** Absolute `/s/<slug>` URL. */
+  /** Absolute `/s/<n>` URL. */
   shareUrl: string;
   /** Absolute `/badge/<slug>.svg` URL. */
   badgeUrl: string;

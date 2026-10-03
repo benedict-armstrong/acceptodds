@@ -16,6 +16,10 @@ describe('institution allowlist', () => {
     expect(institutionForEmail('ada@oxford.uk')).toBeNull();
     expect(institutionForEmail('not-an-email')).toBeNull();
   });
+
+  it('refuses a +tag on a listed domain: one inbox, one account', () => {
+    expect(institutionForEmail('ada+x@ethz.ch')).toBeNull();
+  });
 });
 
 describe('handleFrom', () => {

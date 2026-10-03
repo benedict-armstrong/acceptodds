@@ -118,7 +118,7 @@ export async function addAffiliation(
     throw new ApiError(
       422,
       'email_domain_not_allowed',
-      'affiliations are open to approved institutional email domains only',
+      'affiliations are open to approved institutional email domains only, without a +tag',
     );
   }
   const budget = await consume(`affiliation-mail:${input.account.id}`, MAIL_BUDGET);

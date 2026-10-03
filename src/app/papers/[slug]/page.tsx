@@ -12,6 +12,7 @@ import { ViewCount } from '@/components/ViewCount';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { marketHeadline, shareTitleLine } from '@/lib/headline';
+import { shortPath } from '@/lib/links';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type { z } from 'zod';
 import { ApiError } from '@/server/api/errors';
@@ -113,7 +114,7 @@ export default async function PaperPage({
             <SharePanel
               title={listing.title}
               kind={listing.kind ?? markets[0].market.kind}
-              shareUrl={`${siteUrl()}/s/${encodeURIComponent(listing.slug)}`}
+              shareUrl={`${siteUrl()}${shortPath(listing.shortId)}`}
               badgeUrl={`${siteUrl()}/badge/${encodeURIComponent(listing.slug)}.svg`}
               initial={presentMarket(markets[0]) as z.output<typeof S.Market>}
             />

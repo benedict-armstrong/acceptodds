@@ -9,6 +9,7 @@ import {
   index,
   integer,
   pgEnum,
+  pgSequence,
   pgTable,
   primaryKey,
   text,
@@ -94,6 +95,9 @@ export const accounts = pgTable(
   ],
 );
 
+/** Numbers for `/s/<n>` short links, shared by `listings` and `markets`. */
+export const shortIds = pgSequence('short_ids');
+
 /**
  * A listing: an **opaque subject** that one or more markets are about.
  *
@@ -110,6 +114,13 @@ export const listings = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull(),
+    /**
+     * The short share link's number, `/s/<short_id>`: drawn from `short_ids`,
+     * one sequence for listings and markets, so a number names exactly one.
+     */
+    shortId: bigint('short_id', { mode: 'number' })
+      .notNull()
+      .default(sql`nextval('short_ids')`),
     title: text('title').notNull(),
     summary: text('summary'),
     authors: text('authors')
@@ -129,6 +140,7 @@ export const listings = pgTable(
   },
   (t) => [
     uniqueIndex('listings_slug_key').on(t.slug),
+    uniqueIndex('listings_short_id_key').on(t.shortId),
     // Full-text search (`views.ts`). `search_vector` is a stored generated
     // column, `listing_search_vector(title, authors, summary)`, added by
     // drizzle/0006 and deliberately left out of this schema, so that no row
@@ -197,6 +209,13 @@ export const markets = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull(),
+    /**
+     * The short share link's number, `/s/<short_id>`: drawn from `short_ids`,
+     * one sequence for listings and markets, so a number names exactly one.
+     */
+    shortId: bigint('short_id', { mode: 'number' })
+      .notNull()
+      .default(sql`nextval('short_ids')`),
     question: text('question').notNull(),
     description: text('description'),
     /**
@@ -267,6 +286,7 @@ export const markets = pgTable(
   },
   (t) => [
     uniqueIndex('markets_slug_key').on(t.slug),
+    uniqueIndex('markets_short_id_key').on(t.shortId),
     index('markets_status_idx').on(t.status),
     index('markets_listing_id_idx').on(t.listingId),
     index('markets_created_idx').on(t.createdAt, t.id),

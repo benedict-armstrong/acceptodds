@@ -176,6 +176,13 @@
       "when": 1790932727765,
       "tag": "0024_mention_mail_opt_in",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791026383026,
+      "tag": "0025_short_ids",
+      "breakpoints": true
     }
   ]
 }

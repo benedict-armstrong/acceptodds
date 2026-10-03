@@ -27,6 +27,10 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  // The code was used up (too many guesses) or expired. Better Auth then
+  // forgets it, so a later guess, even the right one, reads as merely wrong.
+  const [spent, setSpent] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(
     resent ? { ok: true, text: 'We sent you a new code.' } : null,
   );
@@ -34,6 +38,12 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
   useEffect(() => {
     if (initialEmail) rememberPending({ email: initialEmail, next });
   }, [initialEmail, next]);
+
+  // The input is disabled while a code is checked, which drops its focus:
+  // give it back after a refusal, so the next code can be typed straight in.
+  useEffect(() => {
+    if (!busy && note && !note.ok) input.current?.focus();
+  }, [busy, note]);
 
   async function confirm(e: React.FormEvent) {
     e.preventDefault();
@@ -43,16 +53,17 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
     const { error } = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp: code });
     if (error) {
       track('code_failed', { reason: String(error.code ?? error.status) });
+      const dead = spent || error.code === 'TOO_MANY_ATTEMPTS' || error.code === 'OTP_EXPIRED';
+      setSpent(dead);
       setBusy(false);
       setCode(''); // ready for the next attempt, typed or pasted
       setNote({
         ok: false,
-        text:
-          error.code === 'TOO_MANY_ATTEMPTS' || error.code === 'OTP_EXPIRED'
-            ? 'That code no longer works. Send a new one below.'
-            : error.code === 'INVALID_OTP'
-              ? 'That code is not right. Check the newest mail.'
-              : (error.message ?? 'Could not confirm.'),
+        text: dead
+          ? 'That code no longer works. Send a new one below.'
+          : error.code === 'INVALID_OTP'
+            ? 'That code is not right. Check the newest mail.'
+            : (error.message ?? 'Could not confirm.'),
       });
       return;
     }
@@ -76,6 +87,7 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
     }
     track('code_resent');
     rememberPending({ email: email.trim(), next });
+    setSpent(false);
     setCode('');
     setNote({ ok: true, text: 'Sent. Only the newest code works.' });
   }
@@ -85,8 +97,8 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
       <p className="my-4">
         {initialEmail ? (
           <>
-            We sent a 6-digit code and a link to <b>{initialEmail}</b>. Enter the code here, or open the link. Your
-            account and starting balance are created when you confirm.
+            We sent a 6-digit code and a link to <b>{initialEmail}</b>. Enter the code here, or open the link. If you
+            have no account yet, it and your starting balance are created when you confirm.
           </>
         ) : (
           <>Enter your email and the 6-digit code from the confirmation mail.</>
@@ -108,6 +120,7 @@ export function CodeForm({ initialEmail, next, resent }: { initialEmail: string;
       <div className="mt-2.5 text-center font-sans text-[13px] text-muted">Code</div>
       {/* A pasted or autofilled code confirms by itself; typed, the last digit does too. */}
       <CodeInput
+        ref={input}
         value={code}
         onChange={setCode}
         onComplete={() => form.current?.requestSubmit()}

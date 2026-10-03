@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { hasSubaddress } from '@/lib/email-address';
 
 /**
  * Who may sign up: an allowlist of institutional email domains.
@@ -57,10 +58,14 @@ function normalise(domain: string): string {
   return domain.trim().toLowerCase().replace(/\.$/, '');
 }
 
-/** The institution an email address belongs to, or `null` if its domain is not on the list. */
+/**
+ * The institution an email address belongs to, or `null` if its domain is
+ * not on the list — or if the address has a `+tag` (`hasSubaddress`): one
+ * inbox, one account.
+ */
 export function institutionForEmail(email: string): Institution | null {
   const at = email.lastIndexOf('@');
-  if (at < 0) return null;
+  if (at < 0 || hasSubaddress(email)) return null;
   const labels = normalise(email.slice(at + 1)).split('.');
   const list = domains();
   for (let i = 0; labels.length - i >= 2; i += 1) {

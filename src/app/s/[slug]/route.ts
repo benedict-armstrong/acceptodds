@@ -5,8 +5,9 @@ import { shareSubject, siteUrl } from '@/server/share';
 export const dynamic = 'force-dynamic';
 
 /**
- * The short share link, `/s/<slug>` (issue #11): a paper's slug, or an
- * unlisted market's, redirects to its page. A 307 rather than a 308, so the
+ * The short share link, `/s/<n>` (issue #11): a paper's `short_id`, or an
+ * unlisted market's, redirects to its page. A slug still resolves, so a link
+ * shared before short ids keeps working. A 307 rather than a 308, so the
  * target can move without browsers having cached the old one for good.
  * Crawlers follow it and read the page's own preview metadata. Each open is
  * logged (no payload, no account: the visitor is usually anonymous), which is

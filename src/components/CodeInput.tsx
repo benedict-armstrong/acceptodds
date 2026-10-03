@@ -17,6 +17,7 @@ export function CodeInput({
   length = 6,
   autoFocus,
   disabled,
+  ref,
   'aria-label': ariaLabel = 'Code',
 }: {
   value: string;
@@ -26,10 +27,13 @@ export function CodeInput({
   length?: number;
   autoFocus?: boolean;
   disabled?: boolean;
+  /** The real input, to focus it again. */
+  ref?: React.Ref<HTMLInputElement>;
   'aria-label'?: string;
 }) {
   return (
     <OTPInput
+      ref={ref}
       value={value}
       onChange={onChange}
       onComplete={onComplete}

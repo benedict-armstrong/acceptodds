@@ -82,6 +82,33 @@ const DISABLED_OTP_PATHS = [
   '/email-otp/change-email',
 ];
 
+/**
+ * Marks a sign-in link as onboarding's, for an address that already has an
+ * account (`mailExistingAccount`). Random per process and never sent to a
+ * client, so `/sign-in/magic-link`'s client-supplied `metadata` cannot forge it.
+ */
+const EXISTING_ACCOUNT = randomBytes(16).toString('hex');
+
+/**
+ * Onboarding with an address that already has a confirmed account: one mail
+ * that says so, with a sign-in link and a code, both landing on
+ * `/verify-email`. The answer to the request is the same as for a new
+ * address; only the inbox learns. Over a mail budget nothing is sent and
+ * the answer is unchanged: a 429 would tell anyone which addresses have
+ * accounts.
+ */
+export async function mailExistingAccount(email: string, callbackURL: string): Promise<void> {
+  try {
+    await getAuth().api.signInMagicLink({
+      body: { email, callbackURL, errorCallbackURL: callbackURL, metadata: { existingAccount: EXISTING_ACCOUNT } },
+      headers: new Headers(),
+    });
+  } catch (err) {
+    if (err instanceof APIError && err.statusCode === 429) return;
+    throw err;
+  }
+}
+
 /** Whether the user can sign in with a password yet. */
 export async function hasPassword(userId: string, database: Database = getDb()): Promise<boolean> {
   const [row] = await database
@@ -124,8 +151,8 @@ export async function resetTokenEmail(token: string, database: Database = getDb(
 }
 
 /**
- * Auth mail per address — confirmations, resets and "already registered"
- * notes together: 10, refilling over a day. Every route that sends one is
+ * Auth mail per address — confirmations, resets and onboarding's "already
+ * registered" codes together: 10, refilling over a day. Every route that sends one is
  * anonymous, and Better Auth's own limiter is per IP; this caps what any
  * number of IPs can send one inbox, and how many fresh codes (3 guesses
  * each) anyone can have minted for it. `false` means send nothing.
@@ -207,14 +234,20 @@ export function createAuth(database: Database) {
       // account, grants the starting balance and sets `verified_at`, once.
       // `server/auth.ts` repeats this lazily, so a failure here costs a retry.
       //
-      // First it drops every password and session the user had before the
+      // Before that it drops every password and session the user had before the
       // address was proven. Whoever set them may not be whoever owns the inbox:
       // otherwise someone could sign up with your address and their password,
       // and wait for you to confirm it. Better Auth does this itself for a
       // sign-in link, but not for confirmation. Runs before the confirmation's
       // own session is made, so that one survives.
+      //
+      // Only for an address not yet proven: the code in an existing account's
+      // onboarding mail (`mailExistingAccount`) goes through here too, and
+      // its password was set after its address was proven.
+      beforeEmailVerification: async (user) => {
+        if (!user.emailVerified) await revokeUnprovenAccess(user.id, database);
+      },
       afterEmailVerification: async (user) => {
-        await revokeUnprovenAccess(user.id, database);
         await ensureAccountForUser({ id: user.id, name: user.name, email: user.email }, database);
       },
     },
@@ -237,7 +270,7 @@ export function createAuth(database: Database) {
             if (!institutionForEmail(user.email)) {
               throw new APIError('UNPROCESSABLE_ENTITY', {
                 code: EMAIL_DOMAIN_NOT_ALLOWED,
-                message: 'sign-up is open to approved institutional email domains only',
+                message: 'sign-up is open to approved institutional email domains only, without a +tag',
               });
             }
           },
@@ -269,12 +302,12 @@ export function createAuth(database: Database) {
       // account; only the inbox learns.
       magicLink({
         expiresIn: MAGIC_LINK_TTL_SECONDS,
-        sendMagicLink: async ({ email, url }) => {
+        sendMagicLink: async ({ email, url, metadata }) => {
           const address = email.trim().toLowerCase();
           if (!institutionForEmail(address)) {
             throw new APIError('UNPROCESSABLE_ENTITY', {
               code: EMAIL_DOMAIN_NOT_ALLOWED,
-              message: 'sign-in is open to approved institutional email domains only',
+              message: 'sign-in is open to approved institutional email domains only, without a +tag',
             });
           }
           const budget = await consume(`magic-link-mail:${address}`, MAGIC_LINK_MAIL_BUDGET);
@@ -283,6 +316,24 @@ export function createAuth(database: Database) {
               code: 'RATE_LIMITED',
               message: 'too many sign-in links to this address; try again later',
             });
+          }
+          if (metadata?.existingAccount === EXISTING_ACCOUNT && (await authMailBudget(address))) {
+            // Onboarding with an address that has an account: say so, and add
+            // a code for the page the person is on (`/verify-email`'s
+            // `CodeForm`). For a confirmed address that code signs in.
+            const code = await auth.api.createVerificationOTP({
+              body: { email: address, type: 'email-verification' },
+            });
+            await sendMail({
+              to: address,
+              subject: `${code} is your acceptodds sign-in code`,
+              text:
+                `This address already has an acceptodds account, so we did not make a new one. ` +
+                `Your sign-in code is ${code}. Enter it on the page you were on, or open this link to sign in:\n\n${url}\n\n` +
+                `Your bet is waiting there. The code works for an hour, the link once, for 15 minutes. ` +
+                `If you did not ask for this, ignore it; nothing has changed.`,
+            });
+            return;
           }
           await sendMail({
             to: address,

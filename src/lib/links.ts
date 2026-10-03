@@ -1,6 +1,9 @@
 /** The platform's source code, linked from the home page's abstract. */
 export const REPO_URL = 'https://github.com/benedict-armstrong/acceptodds';
 
+/** Where an account goes after its first trade (`Fill.firstTrade`): what it bought, and a link to share. */
+export const FIRST_TRADE_PATH = '/first-trade';
+
 /**
  * Where a market is read: its paper's page with the market selected, or the
  * market's own page when it has no listing. Plain, so Server and Client
@@ -10,6 +13,11 @@ export function marketHref(m: { marketSlug: string; listingSlug: string | null }
   return m.listingSlug
     ? `/papers/${m.listingSlug}?market=${encodeURIComponent(m.marketSlug)}`
     : `/markets/${m.marketSlug}`;
+}
+
+/** The short share link (#11): a listing's or an unlisted market's `short_id`, which `/s/` redirects to its page. */
+export function shortPath(shortId: number): string {
+  return `/s/${shortId}`;
 }
 
 /**

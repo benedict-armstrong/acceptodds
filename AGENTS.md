@@ -347,6 +347,10 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   maps a domain to an institution name; subdomains match; matching never goes
   below two labels. Sign-up from any other domain is refused in Better Auth's
   `user.create.before` hook, before a user row exists or a mail is sent.
+  **An address with a `+tag` is refused everywhere the list is checked**
+  (`institutionForEmail`, `lib/email-address.ts`), on the owner's call:
+  most servers deliver every tag to one inbox, so they would let one person
+  confirm any number of funded accounts. The forms say so before sending.
   Confirming the address _is_ the verification. This replaces §8's
   institutional code + ROR lookup, and ORCID sign-in is deferred too; both
   were built and then removed on the owner's call (git history has them).
@@ -411,7 +415,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   mail carries both (`sendVerificationEmail` mints the code with the
   email-OTP plugin's server-only `createVerificationOTP`, hashed, rotated on
   every send, an hour like the link). `POST /email-otp/verify-email` runs
-  the same `afterEmailVerification` as the link and signs in. Every other
+  the same `beforeEmailVerification`/`afterEmailVerification` as the link
+  and signs in. Every other
   email-OTP route is in `disabledPaths` — sign-in by code would also sign up
   past the password, and password codes are not used — so the only code
   there is is the confirmation one, and the only resend is
@@ -895,8 +900,12 @@ unpaginated, and 5 s for that search.
   get no bar.
 - **Share surfaces are reads** (`server/share.ts`), never writes, and show
   prices, never values (§1.1):
-  - `/s/<slug>` — a paper's slug or an unlisted market's — 307s to its page
-    and logs `share.opened` (no payload, no account).
+  - `/s/<n>` — a paper's `short_id` or an unlisted market's — 307s to its
+    page and logs `share.opened` (no payload, no account). Every link we
+    hand out is this one (`links.shortPath`). `short_id` comes from one
+    sequence, `short_ids`, shared by `listings` and `markets`, so a number
+    names one row; all digits is a short id, anything else is still read
+    as a slug (old links, and the badge's `/badge/<slug>.svg`).
   - `opengraph-image.tsx` on `/papers/[slug]` and `/markets/[slug]`
     (`server/og.tsx`): the question, `<title> @ <kind>?` (`shareTitleLine`,
     ~120 characters, `@ <kind>?` in the accent), and the outcome bar with
@@ -1069,10 +1078,11 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `POST /onboarding` makes a Better Auth user **with no credential** and
   mails the usual link and code, landing on `/verify-email`. Confirming
   creates the account and grant; there is still no account or reputation
-  before it. `Finish` (on `/verify-email`) then asks for a name (`PATCH /me`) and a password
-  (`POST /me/password`, Better Auth's server-only `setPassword`) and places the bet as an
+  before it. `Finish` (on `/verify-email`) then places the bet as an
   ordinary order: **the stake is kept, not the share count**, sized on the
-  board then and bounded by its quote. Then `DELETE /me/pending-bet`.
+  board then and bounded by its quote. Then `DELETE /me/pending-bet`, and
+  only then a name (`PATCH /me`) and a password (`POST /me/password`,
+  Better Auth's server-only `setPassword`).
   Another onboarding with the same unconfirmed address may replace it, so
   it is placed unasked only in the browser that chose it (below).
 - **An unmoved bet is placed without asking** (`pending_bets.seen_order_count`,
@@ -1080,7 +1090,7 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   board the bet was chosen from. Prices move only by fills, so while it is
   unchanged the same stake buys the same shares at the price the person
   saw; `Finish` places it on arrival (checking the count again on the fresh
-  board, once, guarded against a double mount), then asks for the password.
+  board, once, guarded against a double mount), then asks for the rest.
   A moved market, or a bet stored before the column (null), is shown at the
   price now to place or skip. The count is client-supplied, so this is also
   gated on the browser: `POST /onboarding` sets an `onboarding_browser`
@@ -1090,16 +1100,43 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   anywhere else — another device, or a bet someone else planted with your
   unconfirmed address — it is shown, saying so.
 - **Same answer whether or not the address is taken**: a confirmed
-  address is mailed a sign-in link (the magic link, to `/verify-email`) and
-  the bet is stored for that account, to be placed on arrival: unasked only
+  address is mailed that it already has an account, with a sign-in link
+  (the magic link, to `/verify-email`) and a code for the `CodeForm` the
+  page is showing (`better-auth.mailExistingAccount`), and the bet is
+  stored for that account, to be placed on arrival: unasked only
   where `choseHere`, else shown to place or skip, so a bet planted with
   someone's address is never placed unseen. A new address confirms, then
-  `Finish` asks for a name and a password and places it. A returning
-  person's way in is the link, not a code: sign-in by code stays off. Five
+  `Finish` asks for a name and a password and places it. That code is
+  the confirmation one (`createVerificationOTP`, `email-verification`), so
+  `/email-otp/verify-email` signs a confirmed user in with it; it is minted
+  only here and in confirmation mails, never on a client's say (the magic
+  link's `metadata` marker is a per-process secret), and
+  `beforeEmailVerification` revokes passwords only for an address not yet
+  proven. `/sign-in/email-otp` stays off. Five
   mails per address a day (`signup-mail:<email>`), since the route is
   anonymous.
+- **An account's first trade ends on `/first-trade`** (`Fill.firstTrade`):
+  the trade as `orders` has it (`views.firstFill`), that market to share
+  (its BibTeX entry, as the paper's share button copies; never the stake)
+  or a group, then on to its paper. It opens with confetti from the sides
+  (`components/Confetti`, none under reduced motion), and "Continue" is a
+  ghost button until something is copied or shared. `useOrder` goes there instead of
+  `onFilled`. A sign-up's bet comes first in `Finish`, before the name and
+  password: placed, the pending bet is dropped and a first trade goes to
+  `/first-trade`, whose "Continue" goes back to `/verify-email` while a
+  name or password is still owed.
 - **`/welcome` comes first, once per browser.** `/signin` redirects to it
   (keeping `?next=`) until the `welcomed` cookie is set, which `/welcome`
   sets when shown; its intro links back to sign-in. The cookie is
   a preference, not a credential, and is not `localStorage` because the
   server has to read it to redirect.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { ui } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
+import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
 import { rememberPending } from '@/lib/pending-confirmation';
 import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
@@ -32,9 +33,10 @@ export function SignInForm({ next }: { next: string }) {
     // Only the address is needed: check that field alone, not the password.
     if (!emailField.current?.reportValidity()) return;
     const address = email.trim();
+    setLinkSent(null);
+    if (hasSubaddress(address)) return setError(SUBADDRESS_REFUSED);
     setBusy(true);
     setError(null);
-    setLinkSent(null);
     const continueTo = authHref(VERIFY_EMAIL, next);
     const { error } = await authClient.signIn.magicLink({
       email: address,

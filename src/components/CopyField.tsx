@@ -15,12 +15,15 @@ export function CopyField({
   label,
   multiline = false,
   className = '',
+  onCopied,
 }: {
   value: string;
   label: string;
   /** Show `value`'s lines as they are (a BibTeX entry) rather than one truncated line. */
   multiline?: boolean;
   className?: string;
+  /** Called after each successful copy. */
+  onCopied?: () => void;
 }) {
   const [done, setDone] = useState(false);
   return (
@@ -30,6 +33,7 @@ export function CopyField({
         e.currentTarget.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')?.select();
         if (await copyText(value)) {
           setDone(true);
+          onCopied?.();
           setTimeout(() => setDone(false), 1500);
         }
       }}

@@ -27,6 +27,7 @@
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-popover": "^1.1.23",
     "better-auth": "^1.7.6",
+    "canvas-confetti": "^1.9.4",
     "drizzle-orm": "^0.45.3",
     "input-otp": "^1.5.0",
     "katex": "^0.18.9",
@@ -45,6 +46,7 @@
   "devDependencies": {
     "@readme/openapi-parser": "^9.0.0",
     "@tailwindcss/postcss": "^4",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^26.6.3",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
@@ -60,5 +62,8 @@
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "katex": "$katex"
   }
 }

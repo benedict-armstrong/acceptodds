@@ -1,13 +1,14 @@
+import { eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import type { Listing } from '@/db/schema';
+import { listings, markets, type Listing } from '@/db/schema';
 import { shares } from '@/lib/format';
-import { publicPositionPath } from '@/lib/links';
+import { publicPositionPath, shortPath } from '@/lib/links';
 import type { PublicPositionView } from './public-positions';
 import { listingView, marketView, resolveListing, resolveMarket, type MarketView } from './views';
 import { ApiError } from './api/errors';
 
 /**
- * What the share surfaces read (issue #11): the short link `/s/<slug>`, the
+ * What the share surfaces read (issue #11): the short link `/s/<n>`, the
  * preview images, the badge and the text share. **Reads only**, through
  * `views.ts`; prices, never values (§1.1).
  */
@@ -31,16 +32,25 @@ export interface ShareSubject {
   kind: string | null;
   /** The page, e.g. `/papers/<slug>`. */
   path: string;
-  /** The short link, e.g. `/s/<slug>`. */
+  /** The short link, `/s/<n>`. */
   sharePath: string;
 }
 
 /**
- * A slug (or id) as something to share: a listing first, else a market with
- * no listing. `null` when neither exists, or the market is a draft — a
- * listed market is shared as its listing.
+ * A short id, slug or id as something to share: a listing first, else a
+ * market with no listing. `null` when neither exists, or the market is a
+ * draft — a listed market is shared as its listing. All digits is a short id
+ * (`listings.short_id` and `markets.short_id` share one sequence, so it names
+ * one of them); anything else is a slug or uuid, which the badge's URL uses.
  */
 export async function shareSubject(ref: string, database: Database = getDb()): Promise<ShareSubject | null> {
+  if (/^\d{1,15}$/.test(ref)) {
+    const id = Number(ref);
+    const [l] = await database.select({ id: listings.id }).from(listings).where(eq(listings.shortId, id));
+    if (l) return shareSubject(l.id, database);
+    const [m] = await database.select({ id: markets.id }).from(markets).where(eq(markets.shortId, id));
+    return m ? shareSubject(m.id, database) : null;
+  }
   const listing = await resolveListing(ref, database).catch(notFoundAsNull);
   if (listing) {
     const view = await listingView(listing, database);
@@ -50,14 +60,14 @@ export async function shareSubject(ref: string, database: Database = getDb()): P
       title: listing.title,
       kind: listing.kind ?? view.markets[0]?.market.kind ?? null,
       path: `/papers/${encodeURIComponent(listing.slug)}`,
-      sharePath: `/s/${encodeURIComponent(listing.slug)}`,
+      sharePath: shortPath(listing.shortId),
     };
   }
   const market = await resolveMarket(ref, database).catch(notFoundAsNull);
   if (!market || market.status === 'draft') return null;
   if (market.listingId) {
     const parent = await resolveListing(market.listingId, database);
-    return shareSubject(parent.slug, database);
+    return shareSubject(parent.id, database);
   }
   return {
     listing: null,
@@ -65,7 +75,7 @@ export async function shareSubject(ref: string, database: Database = getDb()): P
     title: market.question,
     kind: market.kind,
     path: `/markets/${encodeURIComponent(market.slug)}`,
-    sharePath: `/s/${encodeURIComponent(market.slug)}`,
+    sharePath: shortPath(market.shortId),
   };
 }
 

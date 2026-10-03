@@ -9,7 +9,7 @@ import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
 import { browseListings, listingViews, marketView, resolveListing, resolveMarket } from '@/server/views';
-import { Welcome, type Chosen, type Step } from './Welcome';
+import { Welcome, type Chosen } from './Welcome';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,6 @@ export default async function WelcomePage({
   searchParams,
 }: {
   searchParams: Promise<{
-    step?: string;
     next?: string;
     market?: string;
     outcome?: string;
@@ -52,7 +51,6 @@ export default async function WelcomePage({
       next={safeReturnTo(params.next)}
       suggestions={suggestions}
       chosen={chosen}
-      initialStep={(params.step ?? null) as Step | null}
       viewer={
         viewer
           ? {

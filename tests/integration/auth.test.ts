@@ -199,7 +199,7 @@ describe('sign-up', () => {
     expect((await confirmWithCode('twice@example.org', otp)).status).toBe(200);
   });
 
-  it('signing up again with a confirmed address mails its owner a sign-in link, and changes nothing', async () => {
+  it('signing up again with a confirmed address mails its owner that it has an account, and changes nothing', async () => {
     await signUp('taken@example.org', 'Taken');
     clearDevOutbox();
     const again = await signUpUnconfirmed('taken@example.org');
@@ -207,8 +207,8 @@ describe('sign-up', () => {
     expect(devOutbox()).toEqual([
       expect.objectContaining({
         to: 'taken@example.org',
-        subject: expect.stringContaining('sign-in link'),
-        text: expect.stringContaining('magic-link'),
+        subject: expect.stringContaining('sign-in code'),
+        text: expect.stringMatching(/already has an acceptodds account[\s\S]*magic-link/),
       }),
     ]);
     const [row] = await db.select().from(user).where(eq(user.email, 'taken@example.org'));

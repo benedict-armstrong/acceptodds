@@ -6,7 +6,7 @@ import { accounts, pendingBets } from '@/db/schema';
 import { VERIFY_EMAIL } from '@/lib/return-to';
 import { getAuth } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
-import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor } from '@/server/onboarding';
+import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor, pendingBetOrderKey } from '@/server/onboarding';
 import { api, authCall, cookieFrom, signUp } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -85,6 +85,14 @@ describe('onboarding', () => {
     expect(devOutbox()).toEqual([]);
   });
 
+  it('refuses a +tag on a listed domain before creating anything', async () => {
+    const res = await start('ada+again@example.org');
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('email_domain_not_allowed');
+    expect(await userRow('ada+again@example.org')).toBeUndefined();
+    expect(devOutbox()).toEqual([]);
+  });
+
   it('refuses a stake above the starting balance', async () => {
     const res = await start('ada@example.org', { stakeMicro: (STARTING_MICRO + 1n).toString() });
     expect(res.status).toBe(400);
@@ -118,7 +126,7 @@ describe('onboarding', () => {
     expect(await db.select().from(pendingBets).where(eq(pendingBets.userId, u.id))).toEqual([]);
   });
 
-  it('answers the same for a confirmed address, mails a sign-in link, and stores the bet for it', async () => {
+  it('answers the same for a confirmed address, mails that it has an account with a link and a code, and stores the bet for it', async () => {
     await signUp('ada@example.org', 'Ada');
     clearDevOutbox();
 
@@ -128,12 +136,36 @@ describe('onboarding', () => {
     const u = await userRow('ada@example.org');
     expect((await pendingBetFor(u.id))?.stakeMicro).toBe(STAKE);
     const [mail] = devOutbox();
-    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('sign-in link') });
+    expect(mail).toMatchObject({ to: 'ada@example.org', subject: expect.stringContaining('sign-in code') });
+    expect(mail.text).toContain('already has an acceptodds account');
+    const code = /sign-in code is (\d{6})/.exec(mail.text)![1];
 
     // Opening it signs in, and lands where the bet is placed.
     const { location, cookie } = await clickLink('ada@example.org');
     expect(cookie).toContain('session');
     expect(location).toContain(VERIFY_EMAIL);
+
+    // So does the code, typed on `/verify-email`; and it leaves the password be.
+    const typed = await authCall('POST', '/email-otp/verify-email', { body: { email: 'ada@example.org', otp: code } });
+    expect(typed.status).toBe(200);
+    expect(cookieFrom(typed)).toContain('session_token');
+    const signIn = await authCall('POST', '/sign-in/email', {
+      body: { email: 'ada@example.org', password: 'correct horse battery' },
+    });
+    expect(signIn.status).toBe(200);
+    expect(await db.select().from(accounts).where(eq(accounts.userId, u.id))).toHaveLength(1);
+  });
+
+  it('never mails a code for a sign-in link a client asked for, whatever metadata it sends', async () => {
+    await signUp('ada@example.org', 'Ada');
+    clearDevOutbox();
+    const res = await authCall('POST', '/sign-in/magic-link', {
+      body: { email: 'ada@example.org', callbackURL: VERIFY_EMAIL, metadata: { existingAccount: true } },
+    });
+    expect(res.status).toBe(200);
+    const [mail] = devOutbox();
+    expect(mail.subject).toContain('sign-in link');
+    expect(mail.text).not.toMatch(/\b\d{6}\b/);
   });
 
   it('a password-reset mail to an account with no password yet sets its first one, then signs in', async () => {
@@ -166,6 +198,35 @@ describe('onboarding', () => {
     expect(
       (await authCall('POST', '/reset-password', { body: { newPassword: 'another horse battery', token } })).status,
     ).toBe(400);
+  });
+
+  it('a pending bet has one order key, so two tabs placing it fill it once', async () => {
+    await start('ada@example.org');
+    const { cookie } = await clickLink('ada@example.org');
+    const u = await userRow('ada@example.org');
+    const key = pendingBetOrderKey((await pendingBetFor(u.id))!);
+    expect(key).toBe(pendingBetOrderKey((await pendingBetFor(u.id))!));
+
+    const order = (sharesMicro: string) =>
+      api('POST', `/markets/${fx.marketId}/orders`, {
+        cookie,
+        headers: { 'Idempotency-Key': key },
+        body: { outcomeId: fx.outcomeIds[0], sharesMicro, maxCostMicro: STAKE.toString() },
+      });
+    const first = await order('50000000');
+    expect(first.status).toBe(201);
+    // The other tab, sized on the same board: the original fill.
+    const same = await order('50000000');
+    expect(same.status).toBe(201);
+    expect(same.body.orderId).toBe(first.body.orderId);
+    // Sized on a board that has moved since: refused, never a second fill.
+    const moved = await order('40000000');
+    expect(moved.status).toBe(409);
+    expect(moved.body.error.code).toBe('idempotency_key_reused');
+
+    // A replaced bet is a new bet, with a new key.
+    await start('ada@example.org', { outcomeId: fx.outcomeIds[1] });
+    expect(pendingBetOrderKey((await pendingBetFor(u.id))!)).not.toBe(key);
   });
 
   it("names the browser the bet was chosen in, and a replaced bet is no longer that browser's", async () => {

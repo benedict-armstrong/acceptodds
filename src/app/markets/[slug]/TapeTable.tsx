@@ -45,7 +45,7 @@ export function TapeTable({ market, tape, n }: { market: Market; tape: Tape; n: 
                   {ago(o.createdAt)}
                 </td>
                 <td className={`${ui.td} ${sell ? 'text-down' : 'text-up'}`}>{sell ? 'sell' : 'buy'}</td>
-                <td className={`${ui.td} text-right`}>{shares(sell ? o.sharesMicro.slice(1) : o.sharesMicro)}</td>
+                <td className={`${ui.td} text-right`}>{shares(sell ? o.sharesMicro.slice(1) : o.sharesMicro, 2)}</td>
                 <td className={ui.td}>
                   <OutcomeSwatch ordinal={i} outcomes={count} />
                   {market.outcomes[i]?.label ?? '?'}

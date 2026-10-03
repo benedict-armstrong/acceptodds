@@ -24,14 +24,26 @@ export type ShareService = keyof typeof SERVICES;
  * loaded, and nothing is posted until the person does it there. Counted as
  * `share_sent`.
  */
-export function ShareButton({ service, href }: { service: ShareService; href: string }) {
+export function ShareButton({
+  service,
+  href,
+  onShared,
+}: {
+  service: ShareService;
+  href: string;
+  /** Called when the button is pressed, after it is counted. */
+  onShared?: () => void;
+}) {
   const s = SERVICES[service];
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => track('share_sent', { target: service })}
+      onClick={() => {
+        track('share_sent', { target: service });
+        onShared?.();
+      }}
       className={`inline-flex items-center gap-2 px-4 py-1.5 font-sans text-sm leading-[normal] font-semibold hover:no-underline hover:opacity-90 ${s.className}`}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4 fill-current">

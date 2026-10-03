@@ -686,7 +686,7 @@ export function buildRegistry(): OpenAPIRegistry {
       ok: { status: 201, schema: S.Affiliation, description: 'The pending affiliation.' },
       errors: {
         409: `already_affiliated: the address is already one of yours | too_many_pending: at most 5 unconfirmed at once.`,
-        422: 'email_domain_not_allowed: the domain is not on the institution allowlist.',
+        422: 'email_domain_not_allowed: the domain is not on the institution allowlist, or the address has a +tag.',
         429: 'rate_limited: your bucket is empty, or you have used your 10 affiliation emails (one back every 2.4 hours). See Retry-After.',
       },
     }),
@@ -768,7 +768,7 @@ export function buildRegistry(): OpenAPIRegistry {
       errors: {
         404: 'not_found: no such market or outcome.',
         409: 'market_not_open | market_closed',
-        422: 'email_domain_not_allowed: the domain is not on the institution allowlist.',
+        422: 'email_domain_not_allowed: the domain is not on the institution allowlist, or the address has a +tag.',
         429: 'rate_limited: too many sign-up mails to this address. See Retry-After.',
       },
     }),

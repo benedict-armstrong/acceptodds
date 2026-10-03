@@ -66,6 +66,18 @@ describe('/s/<slug>', () => {
       res = await go('concurrency');
       expect(res.headers.get('location')).toBe('https://share.example/markets/concurrency');
       expect((await go('nope')).status).toBe(404);
+
+      // The links we hand out are the short ids, one sequence for both tables.
+      const [m] = await db.select().from(markets).where(eq(markets.id, fx.marketId));
+      const ps = await shareSubject('p');
+      expect(ps!.sharePath).toBe(`/s/${p.listing.shortId}`);
+      expect((await shareSubject('concurrency'))!.sharePath).toBe(`/s/${m.shortId}`);
+      expect(p.listing.shortId).not.toBe(m.shortId);
+      res = await go(String(p.listing.shortId));
+      expect(res.headers.get('location')).toBe('https://share.example/papers/p');
+      res = await go(String(m.shortId));
+      expect(res.headers.get('location')).toBe('https://share.example/markets/concurrency');
+      expect((await go('999999999')).status).toBe(404);
     } finally {
       if (saved === undefined) delete process.env.APP_URL;
       else process.env.APP_URL = saved;
@@ -76,7 +88,7 @@ describe('/s/<slug>', () => {
       .select()
       .from(events)
       .where(and(eq(events.kind, 'share.opened'), eq(events.marketId, p.marketId)));
-    expect(logged).toHaveLength(2);
+    expect(logged).toHaveLength(3);
   });
 
   it('hides a draft market', async () => {

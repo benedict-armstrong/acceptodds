@@ -1,5 +1,4 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { APIError } from 'better-auth/api';
 import { and, eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { user } from '@/db/auth-schema';
@@ -9,7 +8,7 @@ import { VERIFY_EMAIL } from '@/lib/return-to';
 import { normalizeEmail } from './affiliations';
 import { ApiError } from './api/errors';
 import { startingBalanceMicro } from './accounts';
-import { getAuth } from './better-auth';
+import { getAuth, mailExistingAccount } from './better-auth';
 import { institutionForEmail } from './institution-domains';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 
@@ -28,8 +27,8 @@ import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
  * Auth's own `/sign-up/email` is off).
  *
  * Answers the same whether or not the address is taken: a confirmed one gets
- * a sign-in link and the bet is stored for it, to be placed when the link is
- * opened; an unconfirmed one gets a fresh confirmation mail and its bet
+ * a mail saying it has an account, with a sign-in link and a code, and the
+ * bet is stored for it, to be placed when they sign in; an unconfirmed one gets a fresh confirmation mail and its bet
  * replaced. Either way that is harmless only because a stored bet is never
  * placed unseen: it is placed without asking only in the browser that chose
  * it (`choseHere`), and anywhere else shown first, to place or skip.
@@ -70,7 +69,11 @@ export async function startOnboarding(
 
   const email = normalizeEmail(input.email);
   if (!institutionForEmail(email)) {
-    throw new ApiError(422, 'email_domain_not_allowed', 'sign-up is open to approved institutional email domains only');
+    throw new ApiError(
+      422,
+      'email_domain_not_allowed',
+      'sign-up is open to approved institutional email domains only, without a +tag',
+    );
   }
   const budget = await consume(`signup-mail:${email}`, MAIL_BUDGET);
   if (!budget.allowed) {
@@ -96,7 +99,7 @@ export async function startOnboarding(
     .values({ userId: person.id, ...bet })
     .onConflictDoUpdate({ target: pendingBets.userId, set: { ...bet, createdAt: new Date() } });
   // Either way the mail lands on `/verify-email`, which places the bet.
-  if (person.emailVerified) await sendSignInLink(email);
+  if (person.emailVerified) await mailExistingAccount(email, VERIFY_EMAIL);
   else await getAuth().api.sendVerificationEmail({ body: { email, callbackURL: VERIFY_EMAIL } });
 }
 
@@ -126,23 +129,6 @@ async function userForEmail(email: string, database: Database): Promise<{ id: st
 }
 
 /**
- * A sign-in link for an existing account, landing on `/verify-email`, which
- * places the bet. Over its mail budget nothing is sent and the answer is
- * unchanged: a 429 would tell anyone which addresses have accounts.
- */
-async function sendSignInLink(email: string): Promise<void> {
-  try {
-    await getAuth().api.signInMagicLink({
-      body: { email, callbackURL: VERIFY_EMAIL, errorCallbackURL: VERIFY_EMAIL },
-      headers: new Headers(),
-    });
-  } catch (err) {
-    if (err instanceof APIError && err.statusCode === 429) return;
-    throw err;
-  }
-}
-
-/**
  * The cookie naming the browser a pending bet was chosen in. Anyone may
  * onboard with an unconfirmed address and replace its pending bet, so a
  * bet is placed without asking only in the browser that chose it (its hash
@@ -164,6 +150,17 @@ export function choseHere(bet: PendingBet, nonce: string | undefined): boolean {
   const a = Buffer.from(bet.browserHash, 'hex');
   const b = Buffer.from(browserHash(nonce), 'hex');
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * The `Idempotency-Key` that places this pending bet: the same in every tab
+ * and every attempt, so the engine fills it at most once (a second attempt
+ * gets the original fill back, or a 409 if it was sized on another board).
+ * A replaced bet is a new bet, with a new key.
+ */
+export function pendingBetOrderKey(bet: PendingBet): string {
+  const id = createHash('sha256').update(`${bet.userId}\n${bet.createdAt.toISOString()}`).digest('hex');
+  return `pending-bet:${id.slice(0, 32)}`;
 }
 
 /** The user's pending bet, or `null`. */

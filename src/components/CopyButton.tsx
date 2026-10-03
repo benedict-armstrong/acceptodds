@@ -27,6 +27,7 @@ export function CopyButton({
   title,
   onFail,
   shareTarget,
+  onCopied,
 }: {
   value: string;
   label: ReactNode;
@@ -36,6 +37,8 @@ export function CopyButton({
   onFail?: () => void;
   /** Counts a successful copy as a share of this kind (`share_copied`); a plain value, so Server Components can pass it. */
   shareTarget?: EventData['target'];
+  /** Called after each successful copy. */
+  onCopied?: () => void;
 }) {
   const [done, setDone] = useState(false);
   return (
@@ -47,6 +50,7 @@ export function CopyButton({
         if (await copyText(value)) {
           setDone(true);
           if (shareTarget) track('share_copied', { target: shareTarget });
+          onCopied?.();
           setTimeout(() => setDone(false), 1500);
         } else {
           onFail?.();

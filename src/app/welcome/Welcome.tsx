@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
@@ -12,6 +12,7 @@ import { MESSAGES } from '@/components/orders';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
+import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
 import { rememberPending } from '@/lib/pending-confirmation';
@@ -78,7 +79,6 @@ export function Welcome({
   next,
   suggestions,
   chosen,
-  initialStep,
   viewer,
 }: {
   kind: string;
@@ -86,7 +86,6 @@ export function Welcome({
   next: string;
   suggestions: Listing[];
   chosen: Chosen | null;
-  initialStep: Step | null;
   viewer: { signedIn: boolean; canTrade: boolean; cashMicro: string };
 }) {
   const router = useRouter();
@@ -100,10 +99,12 @@ export function Welcome({
     return s;
   }
 
-  const [step, setStep] = useState<Step>(() => reachable(initialStep === null ? null : initialStep));
+  // The step is the URL's, so back and forward move through the steps.
+  // Next.js keeps `useSearchParams` in step with `pushState` and history
+  // traversal alike; a `popstate` listener of our own lost to its router.
+  const step = reachable(useSearchParams().get('step') as Step | null);
 
   function go(s: Step) {
-    setStep(s);
     window.history.pushState(null, '', s === steps[0] ? '/welcome' : `/welcome?step=${s}`);
   }
 
@@ -111,12 +112,6 @@ export function Welcome({
   useEffect(() => {
     document.cookie = `${WELCOMED_COOKIE}=1; path=/; max-age=31536000; samesite=lax`;
   }, []);
-
-  useEffect(() => {
-    const onPop = () => setStep(reachable(new URLSearchParams(window.location.search).get('step') as Step | null));
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  });
 
   const card = (title: React.ReactNode, body: React.ReactNode) => {
     const at = steps.indexOf(step);
@@ -309,9 +304,10 @@ function EmailStep({
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        const address = email.trim();
+        if (hasSubaddress(address)) return setError(SUBADDRESS_REFUSED);
         setBusy(true);
         setError(null);
-        const address = email.trim();
         const res = await fetch('/api/v1/onboarding', {
           method: 'POST',
           // Not 'omit': the answer sets the cookie that names this browser as
@@ -337,7 +333,10 @@ function EmailStep({
         setError(
           code === 'email_domain_not_allowed'
             ? 'That address is not at an institution on our list.'
-            : (MESSAGES[code] ?? body?.error?.message ?? 'Something went wrong.'),
+            : code === 'rate_limited'
+              ? // The budget is per address and refills over a day (`server/onboarding.ts`), not in a moment.
+                'We have sent this address too many mails today. Open the link in the newest one, or try again in a few hours.'
+              : (MESSAGES[code] ?? body?.error?.message ?? 'Something went wrong.'),
         );
       }}
     >

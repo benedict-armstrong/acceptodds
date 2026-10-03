@@ -8,10 +8,13 @@ import type { ReactNode } from 'react';
  */
 export function OnboardingCard({
   title,
+  eyebrow,
   onBack,
   children,
 }: {
   title: ReactNode;
+  /** A small, light line above the question, naming the flow it belongs to. */
+  eyebrow?: ReactNode;
   /** Shown as "back" when there is a step to go back to. */
   onBack?: () => void;
   children: ReactNode;
@@ -32,6 +35,7 @@ export function OnboardingCard({
           </button>
         )}
       </div>
+      {eyebrow && <div className="mb-1 font-sans text-sm text-muted">{eyebrow}</div>}
       <h1 className="mb-4 text-[26px] leading-tight font-normal narrow:text-[22px]">{title}</h1>
       {children}
     </main>

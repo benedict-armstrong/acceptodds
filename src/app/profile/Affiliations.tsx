@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ui } from '@/components/ui';
+import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
 import { day } from '@/lib/format';
 
 /** `GET /api/v1/me/affiliations`'s rows, as the API serves them. */
@@ -85,6 +86,7 @@ export function Affiliations({ initial, n }: { initial: AffiliationRow[]; n: num
     fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
   async function add(address: string, fromForm = false) {
+    if (hasSubaddress(address)) return setNote({ ok: false, text: SUBADDRESS_REFUSED });
     const sent = await run(
       `add:${address}`,
       () => post('/api/v1/me/affiliations', { email: address }),
