@@ -82,6 +82,10 @@ function presentCited(c: CitedListing): z.input<typeof S.CitedListing> {
   };
 }
 
+export function presentRelated(related: CitedListing[]): z.input<typeof S.ListingRelated> {
+  return { related: related.map(presentCited) };
+}
+
 export function presentCitations(c: ListingCitations): z.input<typeof S.ListingCitations> {
   return {
     references: c.references.map(({ reference: r, cited }) => ({

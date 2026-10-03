@@ -216,6 +216,32 @@ export const listingReferences = pgTable(
 );
 
 /**
+ * A listing's related listings: precomputed by a separate similarity service
+ * (it may need a GPU) and supplied whole through `PUT /listings/{id}/related`,
+ * never computed here. Written only by `server/listings.ts`, in a transaction
+ * of its own, apart from the listing upsert so the service that embeds papers
+ * and the one that lists them do not overwrite each other.
+ *
+ * `related_slug` is matched against `listings.slug` when read, never by a
+ * foreign key, so an entry for a paper listed later links up by itself.
+ * Directional: A listing B says nothing about B listing A. `position` is the
+ * supplied order, best first; `score` is the service's own similarity and is
+ * not interpreted here.
+ */
+export const listingRelated = pgTable(
+  'listing_related',
+  {
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    relatedSlug: text('related_slug').notNull(),
+    score: doublePrecision('score').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.listingId, t.position] }), index('listing_related_slug_idx').on(t.relatedSlug)],
+);
+
+/**
  * A market is a question, a set of outcomes, an id and a resolution rule.
  *
  * It is not a paper. There is no arXiv id, no venue client and no corpus

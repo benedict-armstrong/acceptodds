@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { Citations } from '@/components/Citations';
+import { RelatedPapers } from '@/components/RelatedPapers';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { TableNotes } from '@/components/TableNotes';
@@ -15,6 +16,7 @@ import { marketHeadline, shareTitleLine } from '@/lib/headline';
 import { shortPath } from '@/lib/links';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type { z } from 'zod';
+import type { Listing } from '@/db/schema';
 import { ApiError } from '@/server/api/errors';
 import { presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
@@ -22,7 +24,7 @@ import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
-import { listingCitations, listingView, resolveListing, type MarketView } from '@/server/views';
+import { listingCitations, listingRelatedTo, listingView, resolveListing, type MarketView } from '@/server/views';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
 import { SharePanel } from './SharePanel';
@@ -50,6 +52,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
+/** schema.org description of the paper itself: only what `../research` supplied, no prices. */
+function paperJsonLd(l: Listing) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ScholarlyArticle',
+    name: l.title,
+    url: `${siteUrl()}/papers/${encodeURIComponent(l.slug)}`,
+    ...(l.summary ? { abstract: l.summary } : {}),
+    ...(l.authors.length > 0 ? { author: l.authors.map((name) => ({ '@type': 'Person', name })) } : {}),
+    ...(l.keywords.length > 0 ? { keywords: l.keywords.join(', ') } : {}),
+    ...(l.primaryArea ? { about: l.primaryArea } : {}),
+    sameAs: l.links.map((x) => x.url),
+  };
+}
+
 /**
  * A listing's page. The platform calls it a listing and knows nothing about
  * what it is; the UI calls it a paper, because that is what `../research`
@@ -73,7 +90,11 @@ export default async function PaperPage({
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
-  const [{ markets, followers }, citations] = await Promise.all([listingView(listing), listingCitations(listing)]);
+  const [{ markets, followers }, citations, related] = await Promise.all([
+    listingView(listing),
+    listingCitations(listing),
+    listingRelatedTo(listing),
+  ]);
   const wanted = Array.isArray(sp.market) ? sp.market[0] : sp.market;
   const selected = markets.find((m) => m.market.slug === wanted) ?? markets[0];
 
@@ -84,6 +105,11 @@ export default async function PaperPage({
 
   return (
     <main className={ui.page}>
+      <script
+        type="application/ld+json"
+        // `<` escaped so a title can never close the tag.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(paperJsonLd(listing)).replace(/</g, '\\u003c') }}
+      />
       {listing.kind && <RunningHead>Under review as a conference paper at {listing.kind}</RunningHead>}
       <TitleBlock
         title={<MathText text={listing.title} />}
@@ -178,6 +204,8 @@ export default async function PaperPage({
       {initial && (
         <MarketLive key={initial.market.id} initial={initial} embedded firstTable={markets.length > 1 ? 2 : 1} />
       )}
+
+      <RelatedPapers related={related} />
 
       <Citations citations={citations} />
 

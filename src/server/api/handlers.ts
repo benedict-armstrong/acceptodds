@@ -19,7 +19,7 @@ import {
   rotateInvite,
   updateGroup,
 } from '../groups';
-import { upsertListing } from '../listings';
+import { setRelated, upsertListing } from '../listings';
 import { countView } from '../view-counter';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
@@ -37,6 +37,7 @@ import {
   leaderboard as leaderboardView,
   listListings as listListingsView,
   listingCitations,
+  listingRelatedTo,
   listMarkets as listMarketsView,
   listingView,
   marketTape,
@@ -54,6 +55,7 @@ import {
   presentGroup,
   presentGroupSummary,
   presentCitations,
+  presentRelated,
   presentListing,
   presentMarket,
   presentAffiliation,
@@ -180,6 +182,22 @@ export const getListingCitations = route(async (req, params) => {
   const principal = await authenticate(req);
   const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
   return respond(S.ListingCitations, presentCitations(await listingCitations(listing)), { principal });
+});
+
+/** The listings a similarity service named as related to this one. */
+export const getListingRelated = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  return respond(S.ListingRelated, presentRelated(await listingRelatedTo(listing)), { principal });
+});
+
+/** Replace a listing's related list. Written by `listings.ts`; not market state. */
+export const putListingRelated = route(async (req, params) => {
+  const principal = await requireAuth(req, 'admin');
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const body = await parseBody(req, S.SetRelatedRequest);
+  const count = await setRelated(listing, body.related);
+  return respond(S.SetRelatedResult, { listingId: listing.id, count }, { principal });
 });
 
 export const getLeaderboard = route(async (req) => {

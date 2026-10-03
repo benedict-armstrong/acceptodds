@@ -343,3 +343,51 @@ describe('browsing listings', () => {
     expect(marketHeadline({ ...m.market, outcomes: m.outcomes })).toBeCloseTo(1 - m.outcomes[2].price, 12);
   });
 });
+
+describe('related listings', () => {
+  const post = (body: Record<string, unknown>) => api('POST', '/listings', { token: admin.token, body });
+  const put = (ref: string, related: unknown, token = admin.token) =>
+    api('PUT', `/listings/${ref}/related`, { token, body: { related } });
+  const related = (ref: string) => api('GET', `/listings/${ref}/related`);
+
+  it('keeps the supplied order, matches slugs when read and skips unlisted ones', async () => {
+    for (const slug of ['a', 'b', 'c']) await post({ slug, title: `Paper ${slug}` });
+    expect((await market('c-accept', { listingSlug: 'c' })).status).toBe(201);
+
+    const res = await put('a', [
+      { slug: 'c', score: 0.9 },
+      { slug: 'not-yet', score: 0.8 },
+      { slug: 'a', score: 0.7 },
+      { slug: 'b', score: 0.6 },
+      { slug: 'c', score: 0.5 },
+    ]);
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(3);
+
+    const got = await related('a');
+    expect(got.body.related.map((r: any) => r.slug)).toEqual(['c', 'b']);
+    expect(got.body.related[0].market).not.toBeNull();
+    expect(got.body.related[1].market).toBeNull();
+
+    await post({ slug: 'not-yet', title: 'Later' });
+    expect((await related('a')).body.related.map((r: any) => r.slug)).toEqual(['c', 'not-yet', 'b']);
+  });
+
+  it('is replaced whole, survives a listing upsert and is directional', async () => {
+    for (const slug of ['a', 'b']) await post({ slug, title: slug });
+    await put('a', [{ slug: 'b', score: 1 }]);
+    await post({ slug: 'a', title: 'a, retitled' });
+    expect((await related('a')).body.related).toHaveLength(1);
+    expect((await related('b')).body.related).toEqual([]);
+    await put('a', []);
+    expect((await related('a')).body.related).toEqual([]);
+  });
+
+  it('needs the admin scope and an existing listing', async () => {
+    await post({ slug: 'a', title: 'a' });
+    const reader = await trader('reader', ['read']);
+    expect((await put('a', [], reader.token)).status).toBe(403);
+    expect((await put('nope', [])).status).toBe(404);
+    expect((await related('nope')).status).toBe(404);
+  });
+});

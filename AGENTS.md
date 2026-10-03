@@ -784,6 +784,35 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - The feed (papers sharing citations with what a trader follows or holds)
   is not built yet.
 
+### Related papers
+
+- **A listing's related list is supplied, never computed.** A separate
+  similarity service (it embeds papers, maybe on a GPU) sends
+  `PUT /listings/{id}/related` (`admin`), `[{ slug, score }]` best first,
+  replaced whole. Its own call, apart from `POST /listings`, so the
+  service that embeds and the one that lists never overwrite each other.
+  Stored in `listing_related`, written only by `server/listings.ts`
+  (`setRelated`) in its own transaction. `score` is stored and never
+  interpreted; the order is the supplied one.
+- **Slugs are matched when read**, as citations' are: an unlisted slug is
+  skipped until it is listed. Self and repeated slugs are dropped at write.
+  Directional: A naming B says nothing about B.
+- `GET /listings/{id}/related` and the paper page's "Related papers"
+  (`components/RelatedPapers`, before Citations) show each with its main
+  market's odds, in the service's order, not alphabetical. Prices, never
+  values.
+
+### Crawlers and agents
+
+- **Private pages are one list**, `lib/private-paths.ts`: disallowed in
+  `app/robots.ts` _and_ sent `X-Robots-Tag: noindex` by `next.config.ts`
+  (robots.txt stops a crawl, not an index entry). A new personal or auth
+  page goes there. `robots.ts` also closes `/api/` except `openapi.json`.
+- `sitemap.ts`, `llms.txt` and the paper page's JSON-LD
+  (`ScholarlyArticle`) read only public data (`server/seo.ts`), and
+  `llms.txt` shows no value (§1.1). The sitemap has no `lastModified`: a
+  listing has no `updated_at`.
+
 ### Views
 
 - **A paper's views are unique viewers per day, summed** (`listings.view_count`,

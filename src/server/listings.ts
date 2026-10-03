@@ -1,6 +1,6 @@
 import { eq, getTableColumns, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { listingReferences, listings, type Listing, type ListingLink } from '@/db/schema';
+import { listingReferences, listingRelated, listings, type Listing, type ListingLink } from '@/db/schema';
 
 /**
  * Writing listings. A listing is an **opaque subject** that markets can be
@@ -28,6 +28,13 @@ export interface UpsertListingInput {
   kind?: string | null;
   /** The bibliography, in order (#38). Replaced whole, like every other field. */
   references?: ReferenceInput[];
+}
+
+export interface RelatedInput {
+  /** The related work's listing slug. Matched when read, so it need not exist yet. */
+  slug: string;
+  /** The similarity service's own score. Not interpreted. */
+  score: number;
 }
 
 export interface ReferenceInput {
@@ -85,4 +92,28 @@ export async function upsertListing(
     }
     return { listing, created };
   });
+}
+
+/**
+ * Replace a listing's related listings with this list, in order (best first).
+ * Whole-list replacement, like the bibliography, but a call of its own: the
+ * similarity service writes this, `../research` writes the listing. A listing
+ * relating to itself is dropped, and so is a repeated slug (the first wins).
+ */
+export async function setRelated(
+  listing: Pick<Listing, 'id' | 'slug'>,
+  related: RelatedInput[],
+  database: Database = getDb(),
+): Promise<number> {
+  const seen = new Set<string>([listing.slug]);
+  const kept = related.filter((r) => !seen.has(r.slug) && seen.add(r.slug));
+  await database.transaction(async (tx) => {
+    await tx.delete(listingRelated).where(eq(listingRelated.listingId, listing.id));
+    if (kept.length > 0) {
+      await tx
+        .insert(listingRelated)
+        .values(kept.map((r, position) => ({ listingId: listing.id, position, relatedSlug: r.slug, score: r.score })));
+    }
+  });
+  return kept.length;
 }

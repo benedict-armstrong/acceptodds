@@ -5,6 +5,7 @@ import {
   groupMembers,
   listingFollows,
   listingReferences,
+  listingRelated,
   listings,
   markets,
   orders,
@@ -526,6 +527,28 @@ export async function listingCitations(listing: Listing, database: Database = ge
     citedBy: citingRows.map((r) => cited(r.listing)),
     citedByTotal: citingRows[0]?.total ?? 0,
   };
+}
+
+/**
+ * The listings the similarity service named as related to this one, in its
+ * order, best first. Matched by slug when read; a slug with no listing here
+ * (yet) is skipped, so the list is whatever can be shown.
+ */
+export async function listingRelatedTo(listing: Listing, database: Database = getDb()): Promise<CitedListing[]> {
+  const rows = await database
+    .select({ listing: listings })
+    .from(listingRelated)
+    .innerJoin(listings, eq(listings.slug, listingRelated.relatedSlug))
+    .where(eq(listingRelated.listingId, listing.id))
+    .orderBy(asc(listingRelated.position));
+  const views = await listingViews(
+    rows.map((r) => r.listing),
+    database,
+  );
+  return rows.map(({ listing: l }) => ({
+    listing: l,
+    main: views.find((v) => v.listing.id === l.id)?.markets[0] ?? null,
+  }));
 }
 
 /** Listings, newest first; or, with a non-blank `q`, by search rank (`searchListings`). */

@@ -21,6 +21,7 @@ export const ANALYTICS_PARAMS: ReadonlySet<string> = new Set([
   'market',
   'basis',
   'following',
+  'tldr',
   'around',
   'institution',
   'resent',

@@ -12,7 +12,11 @@ import { siteName } from '@/server/share';
 // The starting balance is read from the environment at request time.
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = { title: 'How it works | acceptodds' };
+export const metadata: Metadata = {
+  title: 'How it works | acceptodds',
+  description: 'How the markets price papers: the LMSR market maker, reputation, selling, and settlement.',
+  alternates: { canonical: '/how-it-works' },
+};
 
 const prose = 'mt-2 space-y-3 leading-relaxed';
 

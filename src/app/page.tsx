@@ -61,7 +61,24 @@ const ABSTRACT = (
       {REPO_URL.replace(/^https:\/\//, '')}
     </a>
     .
+    <sup>
+      <a href="#footnote-1" id="footnote-1-ref" className="text-accent">
+        1
+      </a>
+    </sup>
   </>
+);
+
+/** The abstract's footnote, set at the foot of the page as a paper's is. */
+const FOOTNOTE = (
+  <div id="footnote-1" className="mt-10 text-sm leading-normal text-subtle">
+    <hr className="mb-2 w-1/3 border-rule" />
+    <sup className="text-accent">1</sup> If this project is interesting to you, reach out at{' '}
+    <a href="mailto:hello@acceptodds.com" className={ui.hyperref}>
+      hello@acceptodds.com
+    </a>
+    .
+  </div>
 );
 
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
@@ -139,6 +156,8 @@ export default async function Home({
   // ?following=1: only papers the signed-in viewer follows.
   const onlyFollowed = viewer !== null && one(sp.following) === '1';
   const me = viewer?.account.id ?? null;
+  // ?tldr=1: each paper's TLDR under its authors.
+  const showTldr = one(sp.tldr) === '1';
   // Papers the viewer follows, then papers they hold shares in, are pinned
   // above the list: same venue, status and sort, each paged on its own, and
   // none repeated. A paper both followed and held is under My positions. Not while searching, nor when the list is already
@@ -177,6 +196,7 @@ export default async function Home({
       sort,
       ...(q ? { q } : {}),
       ...(onlyFollowed ? { following: '1' } : {}),
+      ...(showTldr ? { tldr: '1' } : {}),
       ...patch,
     });
     if (!params.get('q')) {
@@ -184,6 +204,7 @@ export default async function Home({
       if (params.get('sort') === 'relevance') params.delete('sort');
     }
     if (params.get('following') === '0') params.delete('following');
+    if (params.get('tldr') === '0') params.delete('tldr');
     for (const key of ['page', 'fpage', 'hpage']) if (params.get(key) === '1') params.delete(key);
     return `/?${params}`;
   };
@@ -194,7 +215,9 @@ export default async function Home({
   const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
   // Shown on the ⋯ trigger when not the defaults.
-  const activeFilters = [status !== 'open' && status, onlyFollowed && '★'].filter(Boolean).join(', ');
+  const activeFilters = [status !== 'open' && status, onlyFollowed && '★', showTldr && 'tldr']
+    .filter(Boolean)
+    .join(', ');
   // With one venue, "all venues" is the same list again.
   const allVenues = kinds.length > 1;
 
@@ -215,6 +238,7 @@ export default async function Home({
         <input type="hidden" name="kind" value={kind ?? 'all'} />
         <input type="hidden" name="status" value={status} />
         {onlyFollowed && <input type="hidden" name="following" value="1" />}
+        {showTldr && <input type="hidden" name="tldr" value="1" />}
         <input
           type="search"
           name="q"
@@ -293,6 +317,11 @@ export default async function Home({
                 </Link>
               </PopoverClose>
             )}
+            <PopoverClose asChild>
+              <Link href={href({ tldr: showTldr ? '0' : '1' })} className={showTldr ? ON : ''}>
+                show TLDRs
+              </Link>
+            </PopoverClose>
             <details className="border-t border-rule pt-2.5">
               <summary className={`${ui.runIn} cursor-pointer`}>Search syntax</summary>
               <div className="mt-2 text-xs leading-normal text-muted">
@@ -368,7 +397,7 @@ export default async function Home({
           {/* Not a flex box: an icon alone gives a flex item no text baseline, and the row aligns on
               baselines. Inline, `align-middle` centres the dots on the text's x-height. */}
           <PopoverTrigger
-            title="More filters: status, following"
+            title="More filters: status, following, TLDRs"
             className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent"
           >
             {activeFilters}
@@ -392,6 +421,14 @@ export default async function Home({
                 </Link>
               </PopoverClose>
             )}
+            <PopoverClose asChild>
+              <Link
+                href={href({ tldr: showTldr ? '0' : '1' })}
+                className={`${viewer ? '' : 'mt-1 border-t border-rule pt-1.5 '}${showTldr ? ON : ''}`}
+              >
+                show TLDRs
+              </Link>
+            </PopoverClose>
           </PopoverContent>
         </Popover>
       </div>
@@ -422,7 +459,7 @@ export default async function Home({
           }
         >
           {followed.rows.map((r) => (
-            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} tldr={showTldr} />
           ))}
           <Pager page={followed.page} pages={followed.pages} href={pageHref('fpage', '#following')} />
         </Collapsible>
@@ -441,7 +478,7 @@ export default async function Home({
           }
         >
           {held.rows.map((r) => (
-            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} tldr={showTldr} />
           ))}
           <Pager page={held.page} pages={held.pages} href={pageHref('hpage', '#positions')} />
         </Collapsible>
@@ -457,11 +494,13 @@ export default async function Home({
             <div className="h-3.5" />
           )}
           {all.rows.map((r) => (
-            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} />
+            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} tldr={showTldr} />
           ))}
           <Pager page={all.page} pages={all.pages} href={pageHref('page', pinnedCount > 0 ? '#all' : '')} />
         </section>
       )}
+
+      {!q && FOOTNOTE}
     </main>
   );
 }
@@ -527,7 +566,7 @@ function SearchSyntax() {
  * is itself a link could not hold the paper's own PDF link, which sits above
  * the stretched one, in a column of its own at the left so titles align.
  */
-function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
+function Row({ r, spark, tldr }: { r: BrowseRow; spark: number[]; tldr: boolean }) {
   const look = likelihoodClass(marketLikelihood({ ...r.market, outcomes: r.outcomes }));
   const pdf = r.listing?.links.find((l) => l.label.toLowerCase() === 'pdf');
   const names = r.listing && r.listing.authors.length > 0 ? authors(r.listing.authors) : null;
@@ -551,6 +590,11 @@ function Row({ r, spark }: { r: BrowseRow; spark: number[] }) {
           <MathText text={r.listing ? r.listing.title : r.market.question} />
         </Link>
         {names && <span className="block font-sans text-xs text-muted">{names}</span>}
+        {tldr && r.listing?.tldr && (
+          <span className="mt-0.5 block text-[13px] leading-snug text-muted">
+            <MathText text={r.listing.tldr} />
+          </span>
+        )}
       </span>
       <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
         {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} ${REP}` : ''}

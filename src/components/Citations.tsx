@@ -61,7 +61,7 @@ export function Citations({ citations }: { citations: ListingCitations }) {
 }
 
 /** "Title. Authors. <i>Venue</i>, year." — "Title. Authors. year." with no venue. */
-function Entry({
+export function Entry({
   authors,
   title,
   year,

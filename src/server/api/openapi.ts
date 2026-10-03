@@ -197,6 +197,38 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'get',
+      path: '/listings/{id}/related',
+      tags: ['listings'],
+      summary: 'Listings related to this one',
+      description:
+        'Named by a separate similarity service, best first, each with its main market. The venue computes no similarity itself.',
+      request: { params: z.object({ id: S.ListingRef }) },
+      ok: { status: 200, schema: S.ListingRelated, description: 'The related listings.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'put',
+      path: '/listings/{id}/related',
+      tags: ['listings'],
+      summary: 'Set a listing’s related listings',
+      description:
+        'Replaces the whole list; empty clears it. Slugs are matched when read, so one need not be listed yet. A listing relating to itself and repeated slugs are dropped.',
+      scope: 'admin',
+      request: {
+        params: z.object({ id: S.ListingRef }),
+        body: { content: { 'application/json': { schema: S.SetRelatedRequest } } },
+      },
+      ok: { status: 200, schema: S.SetRelatedResult, description: 'How many were kept.' },
+      errors: { 400: 'validation_error', 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',

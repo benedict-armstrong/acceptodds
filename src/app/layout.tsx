@@ -9,7 +9,7 @@ import { NavWorth, type NavStanding } from '@/components/NavWorth';
 import { rep, REP } from '@/lib/format';
 import { microToFloat } from '@/lib/money';
 import { viewerFromHeaders } from '@/server/auth';
-import { siteUrl } from '@/server/share';
+import { siteName, siteUrl } from '@/server/share';
 import { valuation } from '@/server/valuation';
 import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
 import 'katex/dist/katex.min.css';
@@ -21,6 +21,11 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(siteUrl()),
     title: 'acceptodds',
     description: 'A prediction market on the fate of research papers, traded in reputation.',
+    applicationName: siteName(),
+    openGraph: { siteName: siteName(), type: 'website' },
+    twitter: { card: 'summary_large_image' },
+    // Agents find the machine-readable docs from any page.
+    alternates: { types: { 'application/json': '/api/v1/openapi.json' } },
   };
 }
 

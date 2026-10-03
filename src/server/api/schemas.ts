@@ -238,6 +238,21 @@ export const ListingCitations = z
       'Supplied by the creating client with the listing; the venue extracts nothing. A listing citing itself is left out.',
   });
 
+export const ListingRelated = z
+  .object({
+    related: z
+      .array(CitedListing)
+      .meta({ description: 'Best match first. Entries with no listing here are left out.' }),
+  })
+  .meta({
+    id: 'ListingRelated',
+    description: 'Listings a separate similarity service named as related. The venue computes no similarity.',
+  });
+
+export const SetRelatedResult = z
+  .object({ listingId: Id, count: z.number().int().min(0) })
+  .meta({ id: 'SetRelatedResult' });
+
 export const ListingListQuery = PaginationQuery.extend({
   kind: z.string().max(100).optional().meta({ description: 'Filter by the opaque `kind` string.' }),
   q: SearchQuery,
@@ -888,6 +903,20 @@ export const UpsertListingRequest = z
     id: 'UpsertListingRequest',
     description: 'Creates the listing, or replaces every field of the one with this slug. A field left out is cleared.',
   });
+
+export const SetRelatedRequest = z
+  .object({
+    related: z
+      .array(
+        z.object({
+          slug: Slug,
+          score: z.number().finite().meta({ description: 'The service’s own similarity. Not interpreted.' }),
+        }),
+      )
+      .max(200)
+      .meta({ description: 'Best match first. Replaced whole; empty clears it.' }),
+  })
+  .meta({ id: 'SetRelatedRequest' });
 
 export const UpsertedListing = z.object({ listing: Listing, created: z.boolean() }).meta({ id: 'UpsertedListing' });
 
