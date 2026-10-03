@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Claude Code local state and worktrees
 .claude/
+
+# local copy of the research database (seed input)
+/data/

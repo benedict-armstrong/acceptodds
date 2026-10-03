@@ -161,3 +161,17 @@ function closingBrace(input: string, open: number): number {
   }
   return -1;
 }
+
+/**
+ * Hard-wrapped text unwrapped: a single line break (a sentence per line, or
+ * a source wrapped at 80 columns) is a space, as TeX and HTML read it; a
+ * blank line stays a paragraph break. Carriage returns are dropped.
+ */
+export function unwrapLines(input: string): string {
+  return input
+    .replace(/\r\n?/g, '\n')
+    .split(/\n[ \t]*\n+/)
+    .map((para) => para.replace(/\s*\n\s*/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n\n');
+}

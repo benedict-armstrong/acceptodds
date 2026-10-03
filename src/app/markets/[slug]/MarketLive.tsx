@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
 import { Markdown } from '@/components/Markdown';
+import { Modal, ModalContent, ModalTrigger } from '@/components/Modal';
 import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
@@ -254,18 +255,21 @@ export function MarketLive({
               )}
             </div>
           )}
-          <Link href="/how-it-works" className="mt-1.5 block text-xs text-faint hover:text-muted">
-            How do these markets work?
-          </Link>
+          <div className="mt-1.5 flex justify-between gap-3 text-xs text-faint">
+            <Link href="/how-it-works" className="hover:underline">
+              How do these markets work?
+            </Link>
+            {market.contract && (
+              <Modal>
+                <ModalTrigger className="cursor-pointer hover:underline">Contract</ModalTrigger>
+                <ModalContent title="Contract" wide>
+                  <Markdown className="text-sm">{market.contract}</Markdown>
+                </ModalContent>
+              </Modal>
+            )}
+          </div>
         </div>
       </div>
-
-      {market.contract && (
-        <details className="my-6 border-t border-rule pt-2.5">
-          <summary className={`${ui.section} cursor-pointer`}>Contract</summary>
-          <Markdown className="mt-2 text-sm">{market.contract}</Markdown>
-        </details>
-      )}
 
       {/* Only once it has traded: before that, its price is the opening one, not a belief. */}
       {initial.venue && headline !== null && !untraded && market.status !== 'settled' && (

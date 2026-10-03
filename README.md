@@ -45,7 +45,7 @@ src/
   lib/                 other pure helpers: formatting, search syntax, headline, links
   db/schema.ts         Drizzle tables (db/auth-schema.ts is Better Auth's, generated)
   db/migrate.ts        migration runner
-  db/seed.ts           dev data: invented ICLR papers traded by seed bots
+  db/seed.ts           loads the real ICLR 2027 submissions (data/iclr2027.sqlite)
   server/engine.ts     quote / trade / settle — the only writer of market state
   server/views.ts      read models for pages and the API (never writes)
   server/auth.ts       request -> account: API key or session cookie, scopes, trading gate
@@ -87,7 +87,7 @@ Then:
 
 ```sh
 npm run db:migrate          # apply migrations to $DATABASE_URL
-npm run db:seed             # wipes the database, then invented ICLR papers traded by seed bots
+npm run db:seed             # wipes the database, then loads data/iclr2027.sqlite (copy it from ../research)
 npm run dev                 # http://localhost:3000, /healthz checks the database
 ```
 

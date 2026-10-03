@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Amount } from './Amount';
 import { MiniCurve } from './MiniCurve';
@@ -21,6 +22,7 @@ export interface NavStanding {
  * hover) opens a panel below with net worth at liquidation value, cash and lifetime P&L (unrealized plus realized).
  * Without a field to draw, the net worth itself.
  *
+ * A mouse click goes to `/profile` while the navbar has that link.
  * On a phone the navbar has no `profile` link: it is at the foot of this
  * panel, which a tap opens. A panel opened by hover is only a tooltip and
  * lets the pointer through; a click pins it open, and then it takes clicks.
@@ -37,6 +39,7 @@ export function NavWorth({
   pnlMicro: string;
   standing: NavStanding | null;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState<'hover' | 'pinned' | null>(null);
   const label = `Net worth ${worth}`;
   return (
@@ -47,6 +50,15 @@ export function NavWorth({
         onPointerEnter={(e) => e.pointerType === 'mouse' && setOpen((s) => s ?? 'hover')}
         onPointerLeave={(e) => e.pointerType === 'mouse' && setOpen((s) => (s === 'hover' ? null : s))}
         onClick={(e) => {
+          // With a mouse, where `profile` is in the navbar, the figure is its link.
+          // On a phone `profile` is in the panel, so a click opens that instead.
+          const mouse = (e.nativeEvent as PointerEvent).pointerType === 'mouse';
+          if (mouse && !window.matchMedia('(max-width: 720px)').matches) {
+            e.preventDefault();
+            setOpen(null);
+            router.push('/profile');
+            return;
+          }
           // Clicking a panel hover opened pins it, rather than Radix's toggle closing it.
           if (open !== 'hover') return;
           e.preventDefault();

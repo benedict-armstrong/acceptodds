@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MathText } from '@/components/MathText';
+import { unwrapLines } from '@/lib/math-text';
 import { ui } from '@/components/ui';
 
 /** Collapsed, the abstract shows this many lines. */
@@ -14,7 +15,7 @@ const COLLAPSED_LINES = 3;
  * lines at the current width starts collapsed to them until clicked; a
  * shorter one has no toggle.
  *
- * `math` renders inline TeX (`$…$`, `\textbf{…}`, …: `MathText`), as a paper's abstract carries it. Only
+ * `math` also unwraps hard line breaks (a blank line stays a paragraph) and renders inline TeX (`$…$`, `\textbf{…}`, …: `MathText`), as a paper's abstract carries it. Only
  * for text that means it: elsewhere a `$` is literal (`$rep`, twice in one
  * abstract, would read as math). It applies only to a string: `text` may
  * instead be markup (a link), set as it is. `full` always shows the whole
@@ -49,7 +50,7 @@ export function Abstract({ text, math = false, full = false }: { text: ReactNode
       <h2 className={`${ui.boxHeading} text-center`}>Abstract</h2>
       <div className="inline-block max-w-full text-left">
         <p ref={ref} className={`whitespace-pre-line text-justify hyphens-auto ${open || full ? '' : 'line-clamp-3'}`}>
-          {math && typeof text === 'string' ? <MathText text={text} /> : text}
+          {math && typeof text === 'string' ? <MathText text={unwrapLines(text)} /> : text}
         </p>
         {overflows && !full && (
           <button

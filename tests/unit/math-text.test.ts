@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTex } from '@/lib/math-text';
+import { parseTex, unwrapLines } from '@/lib/math-text';
 
 describe('parseTex', () => {
   it('splits inline and display math, both inline', () => {
@@ -51,5 +51,11 @@ describe('parseTex', () => {
     expect(parseTex('\\foo bar')).toEqual(['\\foo bar']);
     expect(parseTex('\\textbf{open')).toEqual(['\\textbf{open']);
     expect(parseTex('a { b')).toEqual(['a { b']);
+  });
+});
+
+describe('unwrapLines', () => {
+  it('joins single line breaks and keeps paragraph breaks', () => {
+    expect(unwrapLines('One.\nTwo.\r\nThree.\n\nNew para.\n')).toBe('One. Two. Three.\n\nNew para.');
   });
 });

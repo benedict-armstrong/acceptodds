@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
@@ -53,9 +54,9 @@ const PEOPLE = 5;
 const ABSTRACT = (
   <>
     A prediction market on peer review. Each paper has a market on its decision (oral, spotlight, poster or reject),
-    priced by researchers who stake $rep, a play currency, on what they expect. Prices are probabilities, and every
-    market settles when the venue publishes its decisions. acceptodds is an open source project, open to contributions,
-    at{' '}
+    priced by researchers who stake $rep, an in app currency, on what they expect. Prices are probabilities, and every
+    market settles when the venue publishes its decisions. It is a game made for fun, and has no connection to ICLR,
+    OpenReview or any other organisation. acceptodds is an open source project, open to contributions, at{' '}
     <a href={REPO_URL} className={ui.hyperref}>
       {REPO_URL.replace(/^https:\/\//, '')}
     </a>
@@ -90,6 +91,21 @@ async function pageOf(
   return { ...result, page: pages, pages };
 }
 
+/** The venue the list shows: `?kind=` if given (`all` is none), else the default venue if it has markets. */
+function selectedKind(wanted: string | undefined, kinds: { kind: string }[]): string | null {
+  if (wanted === 'all') return null;
+  return wanted ?? (kinds.some((k) => k.kind === defaultMarketKind()) ? defaultMarketKind() : null);
+}
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<Metadata> {
+  const kind = selectedKind(one((await searchParams).kind), await marketKinds());
+  return { title: `acceptodds: Which papers will get accepted${kind ? ` at ${kind}` : ''}?` };
+}
+
 export default async function Home({
   searchParams,
 }: {
@@ -98,12 +114,7 @@ export default async function Home({
   const sp = await searchParams;
   const kinds = await marketKinds();
   const wanted = one(sp.kind);
-  // ?kind=all shows every venue; otherwise the requested one, else the default
-  // venue if it has markets, else everything.
-  const kind =
-    wanted === 'all'
-      ? null
-      : (wanted ?? (kinds.some((k) => k.kind === defaultMarketKind()) ? defaultMarketKind() : null));
+  const kind = selectedKind(wanted, kinds);
   const status: Status = (STATUSES as readonly string[]).includes(one(sp.status) ?? '')
     ? (one(sp.status) as Status)
     : 'open';
