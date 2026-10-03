@@ -171,7 +171,13 @@ const ListingFields = {
   slug: z.string(),
   title: z.string(),
   summary: z.string().nullable(),
+  tldr: z.string().nullable().meta({ description: 'A one-line summary.' }),
   authors: z.array(z.string()),
+  authorIds: z.array(z.string()).meta({
+    description: 'One opaque id per name in `authors`, in the same order, or empty. Never resolved by the venue.',
+  }),
+  keywords: z.array(z.string()),
+  primaryArea: z.string().nullable().meta({ description: 'Opaque.' }),
   links: z.array(ListingLink),
   kind: z.string().nullable().meta({ description: 'Opaque to the venue; whatever the creating client groups by.' }),
   createdAt: Timestamp,
@@ -861,12 +867,22 @@ export const UpsertListingRequest = z
     slug: Slug,
     title: z.string().trim().min(1).max(500),
     summary: z.string().max(20_000).nullish(),
+    tldr: z.string().max(2_000).nullish().meta({ description: 'A one-line summary.' }),
     authors: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
+    authorIds: z.array(z.string().trim().min(1).max(200)).max(200).optional().meta({
+      description: 'One opaque id per name in `authors`, in the same order. Left out or empty when there are none.',
+    }),
+    keywords: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+    primaryArea: z.string().trim().min(1).max(200).nullish().meta({ description: 'Opaque.' }),
     links: z.array(ListingLink).max(20).optional(),
     kind: z.string().min(1).max(100).nullish().meta({ description: 'Opaque.' }),
     references: z.array(ReferenceRequest).max(1000).optional().meta({
       description: 'The bibliography, in order. Replaced whole; left out, it is cleared.',
     }),
+  })
+  .refine((b) => !b.authorIds?.length || b.authorIds.length === (b.authors?.length ?? 0), {
+    path: ['authorIds'],
+    message: 'one id per author, or none',
   })
   .meta({
     id: 'UpsertListingRequest',

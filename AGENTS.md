@@ -130,8 +130,9 @@ in `../research`, which is just another API client.
 The venue never goes looking for outcomes either: settlement is an
 authenticated admin call made by `../research` when it observes a decision.
 
-**Listings are opaque subjects.** `listings` holds a title, a summary,
-names, labelled http(s) links and an opaque `kind`, all supplied whole by
+**Listings are opaque subjects.** `listings` holds a title, a summary, a
+`tldr`, names with opaque `authorIds` (one each, or none), `keywords`, a
+`primaryArea`, labelled http(s) links and an opaque `kind`, all supplied whole by
 `../research` (`POST /listings`, an admin upsert by slug) and never fetched,
 checked or interpreted here. A market may belong to one (`listing_id`); its
 `listing_rank` orders them, and rank 0 is the listing's **main market**. No
@@ -975,7 +976,7 @@ unpaginated, and 5 s for that search.
   `schema.ts`. Never house accounts. The home page shows up to 5 people
   above the papers when the query is only positive words (`peopleText`).
 - **The home search speaks a syntax** (`lib/query.ts`, modelled on
-  vvzapi.ch): `key:value` filters (`title author venue status accept
+  vvzapi.ch): `key:value` filters (`title author keyword area venue status accept
 volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `-` on a word, filter or group, `OR` and parentheses. A key that is not a
   field is text, so "BERT: pre-training" still searches; a bad value drops

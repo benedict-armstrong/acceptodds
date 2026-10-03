@@ -102,8 +102,9 @@ export const shortIds = pgSequence('short_ids');
  * A listing: an **opaque subject** that one or more markets are about.
  *
  * Supplied whole by the creating client (`../research`) and never fetched,
- * checked or interpreted here: a title, a free-text summary, a list of names,
- * a list of labelled links and an opaque `kind`. The venue does not know what
+ * checked or interpreted here: a title, a free-text summary and a one-line
+ * `tldr`, a list of names with their ids, keywords, a primary area, a list of
+ * labelled links and an opaque `kind`. The venue does not know what
  * a listing is — only the UI calls it a "paper". No money lives here.
  *
  * A market belongs to at most one listing (`markets.listing_id`); the market
@@ -127,6 +128,23 @@ export const listings = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * One opaque id per name in `authors`, same order and length, or empty
+     * (checked at the API). Whatever the creating client identifies people
+     * by; never resolved here.
+     */
+    authorIds: text('author_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    keywords: text('keywords')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /** The subject area the creating client files it under. Opaque. */
+    primaryArea: text('primary_area'),
+    /** A one-line summary, beside the full `summary`. */
+    tldr: text('tldr'),
     /** `[{ label, url }]`, http(s) only (checked at the API). Display data, nothing more. */
     links: jsonb('links')
       .$type<ListingLink[]>()

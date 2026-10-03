@@ -198,6 +198,9 @@ function searchPredicate(node: SearchNode, skip: SearchNode | null): SQL | null 
       const column = {
         title: sql`coalesce(l.title, m.question)`,
         author: sql`coalesce(array_to_string(l.authors, ' '), '')`,
+        // A newline between keywords, so a pattern never spans two of them.
+        keyword: sql`coalesce(array_to_string(l.keywords, E'\\n'), '')`,
+        area: sql`coalesce(l.primary_area, '')`,
         venue: sql`m.kind`,
       }[node.field];
       return sql`${column} ${node.op === '=' ? sql`ilike` : sql`not ilike`} ${containsPattern(node.value)}`;

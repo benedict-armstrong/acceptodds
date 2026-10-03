@@ -43,6 +43,21 @@ describe('parseSearch', () => {
     expect([...fields].sort()).toEqual(['accept', 'author', 'status', 'title', 'trades', 'venue', 'volume']);
   });
 
+  it('reads keyword and area, with their aliases', () => {
+    const { node, fields } = parseSearch('keyword:rl kw:"graph neural" -area:optimization primaryArea!=theory');
+    expect(node).toEqual({
+      kind: 'and',
+      items: [
+        { kind: 'match', field: 'keyword', op: '=', value: 'rl' },
+        { kind: 'match', field: 'keyword', op: '=', value: 'graph neural' },
+        { kind: 'not', item: { kind: 'match', field: 'area', op: '=', value: 'optimization' } },
+        { kind: 'match', field: 'area', op: '!=', value: 'theory' },
+      ],
+    });
+    expect([...fields].sort()).toEqual(['area', 'keyword']);
+    expect(parseSearch('area>x').errors).toHaveLength(1);
+  });
+
   it('treats an unknown key as text', () => {
     expect(parseSearch('BERT: pre-training').node).toEqual(text(['BERT:', 'pre-training']));
     expect(parseSearch('http://x.org').node).toEqual(text(['http://x.org']));

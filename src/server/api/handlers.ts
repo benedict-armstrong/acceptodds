@@ -713,7 +713,11 @@ export const postListing = route(async (req) => {
     slug: body.slug,
     title: body.title,
     summary: body.summary ?? null,
+    tldr: body.tldr ?? null,
     authors: body.authors ?? [],
+    authorIds: body.authorIds ?? [],
+    keywords: body.keywords ?? [],
+    primaryArea: body.primaryArea ?? null,
     links: body.links ?? [],
     kind: body.kind ?? null,
     references: (body.references ?? []).map((r) => ({

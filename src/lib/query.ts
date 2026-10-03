@@ -20,7 +20,7 @@
 
 import { prefixTsquery } from './search';
 
-export const TEXT_FIELDS = ['title', 'author', 'venue'] as const;
+export const TEXT_FIELDS = ['title', 'author', 'keyword', 'area', 'venue'] as const;
 export const NUMBER_FIELDS = ['accept', 'volume', 'trades'] as const;
 export const SEARCH_FIELDS = [...TEXT_FIELDS, 'status', ...NUMBER_FIELDS] as const;
 export type SearchField = (typeof SEARCH_FIELDS)[number];
@@ -32,6 +32,11 @@ const ALIASES: Record<string, SearchField> = {
   author: 'author',
   authors: 'author',
   a: 'author',
+  keyword: 'keyword',
+  keywords: 'keyword',
+  kw: 'keyword',
+  area: 'area',
+  primaryarea: 'area',
   venue: 'venue',
   kind: 'venue',
   v: 'venue',
@@ -50,6 +55,8 @@ const ALIASES: Record<string, SearchField> = {
 export const FIELD_HELP: { field: SearchField; aliases: string[]; example: string; means: string }[] = [
   { field: 'title', aliases: ['t'], example: 'title:diffusion', means: 'title contains' },
   { field: 'author', aliases: ['a'], example: 'author:"de freitas"', means: 'an author contains' },
+  { field: 'keyword', aliases: ['kw'], example: 'keyword:"graph neural"', means: 'a keyword contains' },
+  { field: 'area', aliases: ['primaryArea'], example: 'area:optimization', means: 'primary area contains' },
   { field: 'venue', aliases: ['v', 'kind'], example: 'venue:iclr', means: 'venue contains' },
   { field: 'status', aliases: ['s'], example: 'status:settled', means: 'open, closed, settled or void' },
   { field: 'accept', aliases: ['p', 'chance'], example: 'accept>=70', means: 'chance of acceptance, in %' },
@@ -179,6 +186,10 @@ function fragment(text: string, phrase: boolean): string | null {
   return phrase ? `"${clean}"` : clean;
 }
 
+function isTextField(f: SearchField): f is (typeof TEXT_FIELDS)[number] {
+  return (TEXT_FIELDS as readonly string[]).includes(f);
+}
+
 function fieldNode(tok: Extract<Token, { t: 'field' }>, errors: string[]): SearchNode | null {
   const field = ALIASES[tok.key];
   const op = (tok.op === ':' ? '=' : tok.op) as CompareOp;
@@ -187,7 +198,7 @@ function fieldNode(tok: Extract<Token, { t: 'field' }>, errors: string[]): Searc
     errors.push(`“${tok.raw}”: no value`);
     return null;
   }
-  if (field === 'title' || field === 'author' || field === 'venue') {
+  if (isTextField(field)) {
     if (op !== '=' && op !== '!=') {
       errors.push(`“${tok.raw}”: ${field} takes : or !=`);
       return null;

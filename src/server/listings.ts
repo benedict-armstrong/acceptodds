@@ -4,8 +4,8 @@ import { listingReferences, listings, type Listing, type ListingLink } from '@/d
 
 /**
  * Writing listings. A listing is an **opaque subject** that markets can be
- * grouped under — a title, a summary, names, labelled links and a
- * bibliography (`listing_references`, #38), all supplied by the creating
+ * grouped under — a title, a summary and a tldr, names and their ids,
+ * keywords, a primary area, labelled links and a bibliography (`listing_references`, #38), all supplied by the creating
  * client (`../research`). The venue never fetches, checks or
  * interprets any of it; only the UI calls a listing a "paper".
  *
@@ -18,7 +18,12 @@ export interface UpsertListingInput {
   slug: string;
   title: string;
   summary?: string | null;
+  tldr?: string | null;
   authors?: string[];
+  /** One opaque id per name in `authors`, or empty. */
+  authorIds?: string[];
+  keywords?: string[];
+  primaryArea?: string | null;
   links?: ListingLink[];
   kind?: string | null;
   /** The bibliography, in order (#38). Replaced whole, like every other field. */
@@ -47,7 +52,11 @@ export async function upsertListing(
   const values = {
     title: input.title,
     summary: input.summary ?? null,
+    tldr: input.tldr ?? null,
     authors: input.authors ?? [],
+    authorIds: input.authorIds ?? [],
+    keywords: input.keywords ?? [],
+    primaryArea: input.primaryArea ?? null,
     links: input.links ?? [],
     kind: input.kind ?? null,
   };

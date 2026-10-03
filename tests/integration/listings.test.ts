@@ -31,7 +31,11 @@ const LISTING = {
   slug: 'subject-one',
   title: 'An opaque subject',
   summary: 'Some text the client supplied.',
+  tldr: 'One line of it.',
   authors: ['A. Person', 'B. Person'],
+  authorIds: ['~A_Person1', '~B_Person1'],
+  keywords: ['first topic', 'second topic'],
+  primaryArea: 'some area',
   links: [
     { label: 'PDF', url: 'https://example.org/one.pdf' },
     { label: 'Page', url: 'http://example.org/one' },
@@ -71,7 +75,11 @@ describe('POST /listings', () => {
       id: created.body.listing.id,
       title: 'Renamed',
       authors: ['C. Person'],
+      authorIds: [],
+      keywords: [],
+      primaryArea: null,
       summary: null,
+      tldr: null,
       links: [],
       kind: null,
     });
@@ -83,13 +91,15 @@ describe('POST /listings', () => {
     expect((await api('POST', '/listings', { token: t.token, body: LISTING })).status).toBe(403);
   });
 
-  it('refuses non-http(s) links, a bad slug and an empty title', async () => {
+  it('refuses non-http(s) links, a bad slug, an empty title and ids that do not match the authors', async () => {
     for (const body of [
       { ...LISTING, links: [{ label: 'x', url: 'javascript:alert(1)' }] },
       { ...LISTING, links: [{ label: 'x', url: 'ftp://example.org/a' }] },
       { ...LISTING, slug: 'Not A Slug' },
       { ...LISTING, slug: '00000000-0000-4000-8000-000000000000' },
       { ...LISTING, title: '   ' },
+      { ...LISTING, authorIds: ['~A_Person1'] },
+      { ...LISTING, authors: undefined },
     ]) {
       const res = await api('POST', '/listings', { token: admin.token, body });
       expect(res.status).toBe(400);

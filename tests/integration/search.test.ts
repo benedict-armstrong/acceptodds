@@ -26,7 +26,7 @@ beforeAll(async () => {
   const base = { outcomes: ['YES', 'NO'], startingBalanceMicro: STARTING_MICRO, expectedTraders: 10 };
   const paper = async (
     slug: string,
-    listing: { title: string; authors?: string[]; summary?: string; kind?: string },
+    listing: { title: string; authors?: string[]; summary?: string; keywords?: string[]; primaryArea?: string },
     marketsOf: { question: string; description?: string; status?: 'draft' | 'open' }[],
     kind = 'ICLR 2027',
   ) => {
@@ -53,6 +53,8 @@ beforeAll(async () => {
       title: 'Attention Is All You Need: a Transformer for Translation',
       authors: ['Ashish Vaswani', 'Noam Shazeer'],
       summary: 'A network architecture based solely on attention mechanisms.',
+      keywords: ['sequence models', 'machine translation'],
+      primaryArea: 'natural language processing',
     },
     [
       { question: 'Will this paper be accepted at ICLR 2027?' },
@@ -65,6 +67,8 @@ beforeAll(async () => {
       title: 'Denoising Diffusion Probabilistic Models',
       authors: ['Jonathan Ho', 'Pieter Abbeel'],
       summary: 'High quality image synthesis.',
+      keywords: ['generative models', 'image synthesis'],
+      primaryArea: 'generative models',
     },
     [
       { question: 'Will this paper be accepted at ICLR 2027?' },
@@ -191,6 +195,12 @@ describe('browseListings search syntax (#10)', () => {
     expect(await search('a:"pieter abbeel"')).toEqual(['diffusion']);
     expect(await search('title:diffusion')).toEqual(['diffusion']);
     expect(await search('venue:neurips')).toEqual(['graphs']);
+    expect(await search('keyword:translation')).toEqual(['attention']);
+    expect(await search('kw:"image synthesis"')).toEqual(['diffusion']);
+    // One keyword at a time: a value never spans two.
+    expect(await search('keyword:"models machine"')).toEqual([]);
+    expect(await search('area:generative')).toEqual(['diffusion']);
+    expect(await search('primaryArea:language')).toEqual(['attention']);
     expect(await search('status:closed')).toEqual(['graphs']);
     // An unlisted market's title is its question.
     expect(await search('t:leaderboard')).toEqual(['unlisted-leaderboard']);
