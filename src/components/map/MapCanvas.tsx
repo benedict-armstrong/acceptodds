@@ -24,8 +24,14 @@ const CLUSTER_LABELS_FROM = 1;
 const ACCENT: [number, number, number] = [179, 27, 27];
 const INK: [number, number, number, number] = [29, 29, 29, 230];
 const PAGE: [number, number, number, number] = [251, 250, 247, 230];
-/** Behind the labels: the page, nearly opaque, so dots never show through the letters. */
-const LABEL_BACKING: [number, number, number, number] = [251, 250, 247, 215];
+/**
+ * The labels' SDF atlas. deck's `outlineWidth` is a fraction of the glyph's
+ * distance field (0–1), and the halo can reach no further than `buffer`: the
+ * field is wide enough here (`radius`) for a ~2.5px halo at label sizes, with
+ * a soft edge (`smoothing`) under half a pixel.
+ */
+const LABEL_FONT = { sdf: true, fontSize: 96, buffer: 32, radius: 48, smoothing: 0.2 };
+const LABEL_HALO = 0.2;
 /** How far the view may drift from where it opened before "Reset view" shows: a fraction of a pixel. */
 const HOME_TOLERANCE = 0.5;
 const FILTER = new DataFilterExtension({ filterSize: 1 });
@@ -316,12 +322,12 @@ export default function MapCanvas({
           getSize: level === 'region' ? 14 : 13,
           getColor: INK,
           fontFamily: 'Georgia, "Times New Roman", serif',
+          fontWeight: 'bold',
           characterSet: 'auto',
-          // Plain glyphs on a backing read better at label sizes than SDF outlines, which blur.
-          fontSettings: { sdf: false, fontSize: 96 },
-          background: true,
-          getBackgroundColor: LABEL_BACKING,
-          backgroundPadding: [3, 1, 3, 1],
+          // A halo in the page's colour, not a box: dots stay visible round the letters.
+          fontSettings: LABEL_FONT,
+          outlineWidth: LABEL_HALO,
+          outlineColor: [251, 250, 247, 255],
           extensions: [new CollisionFilterExtension()],
           getCollisionPriority: (d) => d.size,
         }),
