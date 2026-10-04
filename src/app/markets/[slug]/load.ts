@@ -25,7 +25,7 @@ export async function loadMarketLive(market: Market, viewer: { account: Account 
     priceHistory(market, { limit: 10_000 }),
     marketTape(market, { limit: TAPE_LIMIT }),
     listComments(market.id, { limit: COMMENT_PAGE, viewerAccountId: viewer?.account.id ?? null }),
-    viewer ? getPortfolio(viewer.account.id) : null,
+    viewer ? getPortfolio(viewer.account.id, undefined, market.id) : null,
     venueField(market),
   ]);
   events.log('market.read', { accountId: viewer?.account.id ?? null, marketId: market.id });

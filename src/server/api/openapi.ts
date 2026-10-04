@@ -503,8 +503,9 @@ export function buildRegistry(): OpenAPIRegistry {
       path: '/me/portfolio',
       tags: ['me'],
       summary: 'Holdings',
+      request: { query: S.PortfolioQuery },
       description:
-        'Each holding carries its **mark** (shares × price) and its **quoted exit value** (what selling it all now would pay) as separate fields. They differ, and only the second is a sale price. `summary` gives cash, liquidation net worth, and unrealized and realized P&L.',
+        'Each holding carries its **mark** (shares × price) and its **quoted exit value** (what selling it all now would pay) as separate fields. They differ, and only the second is a sale price. `summary` gives cash, liquidation net worth, and unrealized and realized P&L. Optional `marketId` filters the holdings only; summary and unsettled valuation remain account-wide.',
       scope: 'read',
       ok: { status: 200, schema: S.Portfolio, description: 'The portfolio.' },
     }),

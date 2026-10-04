@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { accounts, type Account, type TokenScope } from '@/db/schema';
@@ -199,9 +200,16 @@ export function requireTradingEligibility(principal: Principal): void {
 export async function viewerFromHeaders(
   headers: Headers,
 ): Promise<{ account: Account; isAdmin: boolean; email: string } | null> {
-  if (!headers.get('cookie')) return null;
-  const session = await getAuth().api.getSession({ headers });
-  if (!session || !session.user.emailVerified) return null;
-  const account = await ensureAccountForUser(session.user);
-  return { account, isAdmin: isAdminEmail(session.user.email), email: session.user.email };
+  const cookie = headers.get('cookie');
+  if (!cookie) return null;
+  return viewerForCookie(cookie);
 }
+
+const viewerForCookie = cache(
+  async (cookie: string): Promise<{ account: Account; isAdmin: boolean; email: string } | null> => {
+    const session = await getAuth().api.getSession({ headers: new Headers({ cookie }) });
+    if (!session || !session.user.emailVerified) return null;
+    const account = await ensureAccountForUser(session.user);
+    return { account, isAdmin: isAdminEmail(session.user.email), email: session.user.email };
+  },
+);

@@ -18,6 +18,7 @@ import { WELCOMED_COOKIE } from '@/lib/onboarding';
 import { rememberPending } from '@/lib/pending-confirmation';
 import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
+import { marketPollInterval } from '@/lib/market-poll';
 import type * as S from '@/server/api/schemas';
 import { publicJson } from '../markets/[slug]/MarketLive';
 import { TradeBox, type Choice } from '../markets/[slug]/TradeBox';
@@ -52,8 +53,6 @@ const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
   bet: 'pick',
   email: 'choice',
 };
-
-const POLL_MS = 3000;
 
 /** A listing can be bet on in onboarding when its main market is open. */
 function tradable(l: Listing): Market | null {
@@ -266,7 +265,8 @@ function BetStep({
 }) {
   const { data: market = initial } = useSWR<Market>(`/api/v1/markets/${initial.id}`, publicJson, {
     fallbackData: initial,
-    refreshInterval: POLL_MS,
+    refreshInterval: (latest) => marketPollInterval(latest ?? initial),
+    revalidateOnMount: false,
   });
   return (
     <>

@@ -642,7 +642,8 @@ export const deleteMyPositionPublic = route((req, params) => setPublic(req, para
 
 export const getMyPortfolio = route(async (req) => {
   const principal = await requireAuth(req, 'read');
-  const portfolio = await getPortfolio(principal.account.id);
+  const { marketId } = parseQuery(req, S.PortfolioQuery);
+  const portfolio = await getPortfolio(principal.account.id, undefined, marketId);
   events.log('portfolio.read', { accountId: principal.account.id });
   return respond(S.Portfolio, presentPortfolio(portfolio), { principal });
 });

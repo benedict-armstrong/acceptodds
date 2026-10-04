@@ -4,6 +4,8 @@ import { getDb, getPool } from '@/db';
 const db = getDb();
 import { createAccount, createHouse } from '@/server/accounts';
 import { createMarket } from '@/server/engine';
+import { clearFieldSnapshotReads } from '@/server/field-snapshot';
+import { clearMarketReads } from '@/server/market-cache';
 import { invalidateMap } from '@/server/map-cache';
 import { invalidateStandings } from '@/server/standings-cache';
 
@@ -20,6 +22,8 @@ export async function resetDatabase(): Promise<void> {
   `);
   // Truncating is a write the engine never saw.
   invalidateStandings();
+  clearMarketReads();
+  clearFieldSnapshotReads();
   invalidateMap();
 }
 

@@ -13,6 +13,7 @@ import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
 import { VenueStanding } from '@/components/VenueStanding';
 import { usePassed } from '@/components/usePassed';
+import { marketPollInterval, tapePollInterval } from '@/lib/market-poll';
 import { day, pct } from '@/lib/format';
 import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
@@ -49,8 +50,6 @@ export const publicJson = (url: string) => fetch(url, { credentials: 'omit' }).t
 /** Reads that need the viewer (their portfolio, "you" on comments). */
 export const viewerJson = (url: string) => fetch(url).then((r) => r.json());
 
-const POLL_MS = 3000;
-
 /**
  * A market's board, chart, trade box, tape and comments, kept live by polling.
  * `embedded` when it sits under a listing's own title (the paper page): the
@@ -74,21 +73,32 @@ export function MarketLive({
   const id = initial.market.id;
   const { data: market = initial.market, mutate: refreshMarket } = useSWR<Market>(`/api/v1/markets/${id}`, publicJson, {
     fallbackData: initial.market,
-    refreshInterval: POLL_MS,
+    refreshInterval: (latest) => marketPollInterval(latest ?? initial.market),
+    revalidateOnMount: false,
   });
   const { data: tape = initial.tape, mutate: refreshTape } = useSWR<Tape>(
     `/api/v1/markets/${id}/orders?limit=${TAPE_LIMIT}`,
     publicJson,
     {
       fallbackData: initial.tape,
-      refreshInterval: POLL_MS,
+      refreshInterval: () => tapePollInterval(market),
+      revalidateOnMount: false,
     },
   );
   const { data: portfolio, mutate: refreshPortfolio } = useSWR<Portfolio | null>(
-    initial.viewer.signedIn ? '/api/v1/me/portfolio' : null,
+    initial.viewer.signedIn ? `/api/v1/me/portfolio?marketId=${id}` : null,
     viewerJson,
-    { fallbackData: initial.portfolio, refreshInterval: POLL_MS * 2 },
+    { fallbackData: initial.portfolio, refreshInterval: 15_000, revalidateOnMount: false },
   );
+
+  const previousStatus = useRef(initial.market.status);
+  useEffect(() => {
+    if (market.status !== previousStatus.current) {
+      previousStatus.current = market.status;
+      void refreshTape();
+      void refreshPortfolio();
+    }
+  }, [market.status, refreshTape, refreshPortfolio]);
 
   // The chart starts from the full server-side history and grows by one point
   // whenever the tape shows a new fill: after a fill, the board's prices are

@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import {
@@ -12,6 +13,7 @@ import {
   markets,
   orders,
   outcomes,
+  positions,
   type Listing,
   type ListingReference,
   type Market,
@@ -26,8 +28,9 @@ import { containsPattern, parseSearch, requiredText, websearchOf, type SearchNod
 import { normalizeSearch, prefixTsquery } from '@/lib/search';
 import { cosineDistance } from '@/lib/vectors';
 import { ApiError } from './api/errors';
-import { standingsGeneration } from './standings-cache';
+import { standingsGeneration, standingsChangesSince } from './standings-cache';
 import { valuations } from './valuation';
+import { marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
 
 /**
  * Read models for the public API. **Reads only** — nothing here writes, and
@@ -325,13 +328,16 @@ async function searchListings(
 // ---------------------------------------------------------------------------
 
 /** A market by uuid or by slug, or a 404. */
-export async function resolveMarket(ref: string, database: Database = getDb()): Promise<Market> {
-  const [row] = await database
-    .select()
-    .from(markets)
-    .where(UUID.test(ref) ? eq(markets.id, ref.toLowerCase()) : eq(markets.slug, ref));
-  if (!row) throw new ApiError(404, 'not_found', `no market ${ref}`);
-  return row;
+export function resolveMarket(ref: string, database: Database = getDb()): Promise<Market> {
+  const compute = async () => {
+    const [row] = await database
+      .select()
+      .from(markets)
+      .where(UUID.test(ref) ? eq(markets.id, ref.toLowerCase()) : eq(markets.slug, ref));
+    if (!row) throw new ApiError(404, 'not_found', `no market ${ref}`);
+    return row;
+  };
+  return database === getDb() ? marketReads.get(`ref:${ref}`, MARKET_READ_TTL_MS, compute, ['refs']) : compute();
 }
 
 export interface MarketView {
@@ -373,9 +379,13 @@ export async function marketViews(rows: Market[], database: Database = getDb()):
   });
 }
 
-export async function marketView(market: Market, database: Database = getDb()): Promise<MarketView> {
-  const [view] = await marketViews([market], database);
-  return view;
+export function marketView(market: Market, database: Database = getDb()): Promise<MarketView> {
+  const compute = async () => (await marketViews([market], database))[0];
+  return database === getDb()
+    ? marketReads.get(`board:${market.id}:${market.orderCount}:${market.status}`, MARKET_READ_TTL_MS, compute, [
+        market.id,
+      ])
+    : compute();
 }
 
 /** Markets, newest first; or, with a non-blank `q`, by search rank (`searchMarkets`). */
@@ -969,7 +979,10 @@ async function ordersPage(
  * anonymous is the default until it is answered).
  */
 export function marketTape(market: Market, q: { cursor?: string; limit: number }, database: Database = getDb()) {
-  return ordersPage(eq(orders.marketId, market.id), q, database);
+  const compute = () => ordersPage(eq(orders.marketId, market.id), q, database);
+  return database === getDb()
+    ? marketReads.get(`tape:${market.id}:${q.limit}:${q.cursor ?? ''}`, MARKET_READ_TTL_MS, compute, [market.id])
+    : compute();
 }
 
 export function accountOrders(accountId: string, q: { cursor?: string; limit: number }, database: Database = getDb()) {
@@ -1232,10 +1245,65 @@ function rankedField(basis: LeaderboardBasis, database: Database): Promise<reado
   return entry.rows;
 }
 
+type FieldValues = Awaited<ReturnType<typeof valuations>>;
+let valuationCache: { generation: number; fullAt: number; values: Promise<FieldValues> } | undefined;
+
+/** Both ranking bases share the same valuations. Trades refresh holders of the changed markets only. */
+function fieldValues(database: Database): Promise<FieldValues> {
+  if (database !== getDb()) return valuations(undefined, database);
+  const generation = standingsGeneration();
+  const previous = valuationCache;
+  const fresh = previous && Date.now() - previous.fullAt < STANDINGS_TTL_MS;
+  if (fresh && previous.generation === generation) return previous.values;
+  const changes = fresh ? standingsChangesSince(previous.generation) : null;
+  const values =
+    changes && previous ? updateFieldValues(previous.values, changes, database) : valuations(undefined, database);
+  const entry = { generation, fullAt: changes && previous ? previous.fullAt : Date.now(), values };
+  valuationCache = entry;
+  values.catch(() => {
+    if (valuationCache === entry) valuationCache = undefined;
+  });
+  return values;
+}
+
+async function updateFieldValues(
+  previous: Promise<FieldValues>,
+  changes: { marketId: string; accountId?: string }[],
+  database: Database,
+): Promise<FieldValues> {
+  const values = new Map(await previous);
+  const traded = [...new Set(changes.filter((c) => c.accountId).map((c) => c.marketId))];
+  const settled = [...new Set(changes.filter((c) => !c.accountId).map((c) => c.marketId))];
+  const affected = new Set(changes.flatMap((c) => (c.accountId ? [c.accountId] : [])));
+  // A fill reprices every current holder, including holders of other outcomes.
+  if (traded.length > 0) {
+    const holders = await database
+      .selectDistinct({ accountId: positions.accountId })
+      .from(positions)
+      .innerJoin(outcomes, eq(outcomes.id, positions.outcomeId))
+      .where(and(inArray(outcomes.marketId, traded), ne(positions.sharesMicro, 0n)));
+    for (const h of holders) affected.add(h.accountId);
+  }
+  // Settlement moves historical P&L to realized even for traders who already
+  // sold out. Positions have been zeroed, so find every participant in orders.
+  if (settled.length > 0) {
+    const participants = await database
+      .selectDistinct({ accountId: orders.accountId })
+      .from(orders)
+      .where(inArray(orders.marketId, settled));
+    for (const p of participants) affected.add(p.accountId);
+  }
+  for (const [id, value] of await valuations([...affected], database)) {
+    if (!value.account.isHouse) values.set(id, value);
+  }
+  return values;
+}
+
 async function computeField(basis: LeaderboardBasis, database: Database): Promise<readonly LeaderboardRow[]> {
-  let rows: Omit<LeaderboardRow, 'rank'>[];
-  if (basis === 'net_worth') {
-    rows = [...(await valuations(undefined, database)).values()].map((v) => ({
+  const values = await fieldValues(database);
+  const rows = [...values.values()]
+    .filter((v) => basis === 'net_worth' || v.settledMarkets > 0)
+    .map((v) => ({
       accountId: v.accountId,
       handle: v.account.handle,
       displayName: v.account.displayName,
@@ -1246,32 +1314,6 @@ async function computeField(basis: LeaderboardBasis, database: Database): Promis
       netWorthMicro: v.netWorthMicro,
       unrealizedPnlMicro: v.unrealizedPnlMicro,
     }));
-  } else {
-    // Only accounts with a settled market are on this board.
-    const result = await database.execute<{ account_id: string; pnl: string; markets: number }>(sql`
-      select s.account_id, s.pnl::text as pnl, s.markets
-        from (${settledPnl}) s
-        join accounts a on a.id = s.account_id and not a.is_house
-    `);
-    const values = await valuations(
-      result.rows.map((r) => r.account_id),
-      database,
-    );
-    rows = result.rows.map((r) => {
-      const v = values.get(r.account_id)!;
-      return {
-        accountId: r.account_id,
-        handle: v.account.handle,
-        displayName: v.account.displayName,
-        isBot: v.account.isBot,
-        institutions: v.account.institutions,
-        settledPnlMicro: BigInt(r.pnl),
-        settledMarkets: r.markets,
-        netWorthMicro: v.netWorthMicro,
-        unrealizedPnlMicro: v.unrealizedPnlMicro,
-      };
-    });
-  }
   return ranked(rows, basis);
 }
 
@@ -1548,7 +1590,7 @@ export async function mapSearch(
 }
 
 /** Every `kind` with at least one visible row, most rows first. A listing counts once, by its main market. */
-export async function marketKinds(database: Database = getDb()): Promise<{ kind: string; count: number }[]> {
+export const marketKinds = cache(async (database: Database = getDb()): Promise<{ kind: string; count: number }[]> => {
   return (
     database
       .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
@@ -1558,56 +1600,85 @@ export async function marketKinds(database: Database = getDb()): Promise<{ kind:
       // Byte order, so ties sort the same whatever locale the database was created with.
       .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`)
   );
-}
+});
 
 /**
- * Each market's headline (`lib/headline.ts`) after each of its last `points`
- * fills, for list sparklines. Replayed from the fills: the share vector is the
- * running sum of order shares, and the headline of a market with more than two
- * outcomes depends on all of it, so `orders.price_after` (the traded outcome's
- * price only) is not enough. One query for the markets on a page (their whole
- * tapes); keep a per-fill headline if a single market's tape grows too long.
+ * The last `points` post-fill headlines, in tape order. One bounded query for
+ * the page: the current share vector and recent fills come from the SAME SQL
+ * snapshot. Walk backwards by subtracting fills, then reverse the prices.
+ * The remainder is the opening vector when the tape is shorter than `points`,
+ * so priors are preserved without reading the market's entire history.
  */
 export async function sparklines(
   views: MarketView[],
   points = 40,
   database: Database = getDb(),
 ): Promise<Map<string, number[]>> {
-  const out = new Map<string, number[]>();
   const wanted = views.filter((v) => v.outcomes.length >= 2 && v.orderCount > 0);
-  if (wanted.length === 0) return out;
-  const result = await database.execute<{ market_id: string; ordinal: number; shares_micro: string }>(sql`
-    select o.market_id, oc.ordinal, o.shares_micro::text as shares_micro
-      from orders o join outcomes oc on oc.id = o.outcome_id
-     where o.market_id in (${sql.join(
-       wanted.map((v) => sql`${v.market.id}::uuid`),
+  if (wanted.length === 0 || points <= 0) return new Map();
+  if (database !== getDb()) return recentSparklines(wanted, points, database);
+  // A miss on any row starts one batch for the page; concurrent readers share
+  // each market's promise. Entries are bounded and invalidated after fills.
+  let batch: Promise<Map<string, number[]>> | undefined;
+  const entries = await Promise.all(
+    wanted.map(async (v) => {
+      const line = await sparklineReads.get(
+        `${v.market.id}:${v.orderCount}:${points}`,
+        30_000,
+        async () => {
+          batch ??= recentSparklines(wanted, points, database);
+          return (await batch).get(v.market.id) ?? [];
+        },
+        [v.market.id],
+      );
+      return [v.market.id, line] as const;
+    }),
+  );
+  return new Map(entries);
+}
+
+async function recentSparklines(
+  views: MarketView[],
+  points: number,
+  database: Database,
+): Promise<Map<string, number[]>> {
+  const result = await database.execute<{
+    id: string;
+    b: number;
+    shares: string[];
+    fills: { ordinal: number; shares: string }[];
+  }>(sql`
+    select m.id, m.b,
+           array(select oc.shares_micro::text from outcomes oc where oc.market_id = m.id order by oc.ordinal) as shares,
+           coalesce(t.fills, '[]'::jsonb) as fills
+      from markets m
+      left join lateral (
+        select jsonb_agg(jsonb_build_object('ordinal', z.ordinal, 'shares', z.shares)
+                         order by z.created_at desc, z.id desc) as fills
+          from (
+            select o.id, o.created_at, oc.ordinal, o.shares_micro::text as shares
+              from orders o join outcomes oc on oc.id = o.outcome_id
+             where o.market_id = m.id
+             order by o.created_at desc, o.id desc
+             limit ${points}
+          ) z
+      ) t on true
+     where m.id in (${sql.join(
+       views.map((v) => sql`${v.market.id}::uuid`),
        sql`, `,
      )})
-     order by o.market_id, o.created_at, o.id
   `);
-  const byMarket = new Map(wanted.map((v) => [v.market.id, v]));
-  const shares = new Map(wanted.map((v) => [v.market.id, v.outcomes.map((o) => o.openingSharesMicro)]));
-  for (const r of result.rows) {
-    const v = byMarket.get(r.market_id)!;
-    const q = shares.get(r.market_id)!;
-    q[r.ordinal] += BigInt(r.shares_micro);
-    const list = out.get(r.market_id) ?? [];
-    list.push(headlinePrice(prices(q.map(microToFloat), v.market.b)));
-    out.set(r.market_id, list);
-  }
-  for (const [id, list] of out) {
-    // A market with fewer fills than asked for is shown from its opening price.
-    if (list.length < points) {
-      const v = byMarket.get(id)!;
-      list.unshift(
-        headlinePrice(
-          prices(
-            v.outcomes.map((o) => microToFloat(o.openingSharesMicro)),
-            v.market.b,
-          ),
-        ),
-      );
-    } else out.set(id, list.slice(-points));
+  const out = new Map<string, number[]>();
+  for (const row of result.rows) {
+    const shares = row.shares.map(BigInt);
+    const line: number[] = [];
+    for (const fill of row.fills) {
+      line.push(headlinePrice(prices(shares.map(microToFloat), row.b)));
+      shares[fill.ordinal] -= BigInt(fill.shares);
+    }
+    if (line.length === 0) continue;
+    if (line.length < points) line.push(headlinePrice(prices(shares.map(microToFloat), row.b)));
+    out.set(row.id, line.reverse());
   }
   return out;
 }

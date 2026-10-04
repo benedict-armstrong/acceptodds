@@ -3,6 +3,7 @@ import { getDb, type Database } from '@/db';
 import { fieldSnapshots } from '@/db/schema';
 import { density } from '@/lib/distribution';
 import { microToFloat } from '@/lib/money';
+import { ReadCache } from './read-cache';
 import { leaderboardStandings } from './views';
 
 /**
@@ -41,8 +42,20 @@ function maxAgeMs(): number {
 /** Micro-units as whole units, for plotting only. */
 const toUnits = (micro: bigint) => microToFloat(micro) / 1_000_000;
 
-/** The current snapshot, computing it first only if there has never been one. */
-export async function fieldSnapshot(database: Database = getDb()): Promise<FieldSnapshot> {
+const snapshotReads = new ReadCache(1);
+
+export function clearFieldSnapshotReads(): void {
+  snapshotReads.clear();
+}
+
+/** Keep the already stale-tolerant snapshot in memory; concurrent page loads share the database read. */
+export function fieldSnapshot(database: Database = getDb()): Promise<FieldSnapshot> {
+  return database === getDb()
+    ? snapshotReads.get('field', Math.min(5_000, maxAgeMs()), () => loadFieldSnapshot(database))
+    : loadFieldSnapshot(database);
+}
+
+async function loadFieldSnapshot(database: Database): Promise<FieldSnapshot> {
   const [row] = await database.select().from(fieldSnapshots).where(eq(fieldSnapshots.basis, BASIS));
   if (!row) return refreshFieldSnapshot(database);
   if (Date.now() - row.computedAt.getTime() >= maxAgeMs()) {
@@ -82,6 +95,7 @@ let refreshing: Promise<FieldSnapshot> | null = null;
  * run; a slower run from elsewhere never overwrites a newer snapshot.
  */
 export function refreshFieldSnapshot(database: Database = getDb()): Promise<FieldSnapshot> {
+  if (database !== getDb()) return computeAndStore(database);
   refreshing ??= computeAndStore(database).finally(() => {
     refreshing = null;
   });
@@ -105,5 +119,6 @@ async function computeAndStore(database: Database): Promise<FieldSnapshot> {
       set: values,
       setWhere: sql`${fieldSnapshots.computedAt} < excluded.computed_at`,
     });
+  if (database === getDb()) clearFieldSnapshotReads();
   return { computedAt, worthsMicro, curve, domain };
 }

@@ -20,11 +20,29 @@
  */
 
 let generation = 0;
+type Change = { marketId: string; accountId?: string };
+const changes = new Map<number, Change>();
 
-export function invalidateStandings(): void {
+export function invalidateStandings(change?: Change): void {
   generation += 1;
+  if (!change) changes.clear();
+  else {
+    changes.set(generation, change);
+    if (changes.size > 256) changes.delete(changes.keys().next().value!);
+  }
 }
 
 export function standingsGeneration(): number {
   return generation;
+}
+
+/** null means a full rebuild is required (an account change, or a gap in the bounded journal). */
+export function standingsChangesSince(previous: number): Change[] | null {
+  const result: Change[] = [];
+  for (let next = previous + 1; next <= generation; next++) {
+    const change = changes.get(next);
+    if (!change) return null;
+    result.push(change);
+  }
+  return result;
 }

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { SearchSyntax } from '@/components/SearchSyntax';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
@@ -68,6 +69,19 @@ const SEARCH_HITS = 10;
 const SEARCH_DEBOUNCE_MS = 450;
 /** A paper the search did not find: still there, barely. */
 const UNMATCHED_ALPHA = 22;
+const MAP_FILTERS_KEY = 'map-filters';
+const subscribeToBrowser = () => () => {};
+const browserSnapshot = () => true;
+const serverSnapshot = () => false;
+const MapFilters = z.object({
+  colourBy: z.enum(['region', 'cluster', 'area', 'odds']),
+  labelMode: z.enum(['auto', 'region', 'cluster', 'off']),
+  query: z.string().max(SEARCH_MAX_LENGTH),
+  open: z.boolean(),
+  syntax: z.boolean(),
+  redraw: z.boolean(),
+  showMine: z.boolean(),
+});
 
 /**
  * `/map`, full screen: every listed paper on the layout a separate similarity service
@@ -83,6 +97,7 @@ const UNMATCHED_ALPHA = 22;
  * reload.
  */
 export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; initialPaper: string | null }) {
+  const router = useRouter();
   const { data, error } = useSWR<PaperMap>('/api/v1/map', publicJson, { revalidateOnFocus: false });
   const [colourBy, setColourBy] = useState<ColourBy>('region');
   const [labelMode, setLabelMode] = useState<LabelMode>('auto');
@@ -94,6 +109,39 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
   const [syntax, setSyntax] = useState(false);
   const [redraw, setRedraw] = useState(true);
   const [showMine, setShowMine] = useState(true);
+  const [filtersRestored, setFiltersRestored] = useState(false);
+  const inBrowser = useSyncExternalStore(subscribeToBrowser, browserSnapshot, serverSnapshot);
+  // Restore once during rendering, after hydration makes browser storage available.
+  if (inBrowser && !filtersRestored) {
+    try {
+      const raw = sessionStorage.getItem(MAP_FILTERS_KEY);
+      const saved = raw ? MapFilters.safeParse(JSON.parse(raw)) : null;
+      if (saved?.success) {
+        setColourBy(saved.data.colourBy);
+        setLabelMode(saved.data.labelMode);
+        setQuery(saved.data.query);
+        setOpen(saved.data.open);
+        setSyntax(saved.data.syntax);
+        setRedraw(saved.data.redraw);
+        setShowMine(saved.data.showMine);
+      }
+    } catch {
+      // Storage may be unavailable; the map still works with its defaults.
+    }
+    setFiltersRestored(true);
+  }
+  useEffect(() => {
+    // Wait for restoration so the first render's defaults never overwrite the saved filters.
+    if (!filtersRestored) return;
+    try {
+      sessionStorage.setItem(
+        MAP_FILTERS_KEY,
+        JSON.stringify({ colourBy, labelMode, query, open, syntax, redraw, showMine }),
+      );
+    } catch {
+      // Remembering filters is optional when browser storage is blocked or full.
+    }
+  }, [filtersRestored, colourBy, labelMode, query, open, syntax, redraw, showMine]);
   const frame = useRef<HTMLDivElement>(null);
   const height = useFillViewport(frame);
 
@@ -308,7 +356,10 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
           neighbours={relatedHere}
           focus={focus}
           onHover={setHover}
-          onSelect={setSelected}
+          onSelect={(i) => {
+            if (i !== null && i === selected) router.push(`/papers/${encodeURIComponent(points![i].slug)}`);
+            else setSelected(i);
+          }}
           onOpen={(i) => window.open(`/papers/${encodeURIComponent(points![i].slug)}`, '_blank', 'noopener')}
         />
       )}
@@ -326,7 +377,8 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
           </span>
           {/* Only ever rendered in the browser (a hover), so `navigator` is there. */}
           <span className="mt-0.5 block opacity-50">
-            {/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}-click to open the paper
+            {hover.index === selected ? 'Click again to open the paper · ' : ''}
+            {/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}-click to open in a new tab
           </span>
         </div>
       )}

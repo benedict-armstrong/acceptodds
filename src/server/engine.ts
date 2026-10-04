@@ -11,6 +11,7 @@ import { costToMicro, microToFloat } from '@/lib/money';
 import { EngineError } from './errors';
 import * as events from './events';
 import { invalidateStandings } from './standings-cache';
+import { invalidateMarketReads } from './market-cache';
 
 /**
  * The engine. **The only module that writes market state.**
@@ -304,6 +305,7 @@ export async function createMarket(
   // Logged after the commit, never inside it: see `server/events.ts`. The
   // treasury and maker moved, so the leaderboard's cached field is stale.
   invalidateStandings();
+  invalidateMarketReads(created.marketId);
   events.log('market.created', {
     accountId: input.createdBy ?? null,
     marketId: created.marketId,
@@ -393,7 +395,10 @@ export async function trade(
     // After the commit, never inside it. The log must not be able to touch a
     // row the transaction is holding. A fill moves the trader's balance and
     // every holder's exit value in this market: the cached field is stale.
-    invalidateStandings();
+    if (!fill.replayed) {
+      invalidateStandings({ marketId: fill.marketId, accountId: fill.accountId });
+      invalidateMarketReads(fill.marketId);
+    }
     events.log('order.placed', { accountId, marketId });
     return fill;
   } catch (err) {
@@ -712,7 +717,8 @@ export async function settle(
       .where(eq(markets.id, marketId));
   });
 
-  invalidateStandings();
+  invalidateStandings({ marketId });
+  invalidateMarketReads(marketId);
   events.log('market.settled', { marketId });
 }
 
@@ -725,6 +731,7 @@ export async function closeMarket(marketId: string, database: Db = getDb()): Pro
     await tx.update(markets).set({ status: 'closed' }).where(eq(markets.id, marketId));
   });
 
+  invalidateMarketReads(marketId);
   events.log('market.closed', { marketId });
 }
 

@@ -120,6 +120,14 @@ export default function MapCanvas({
   const opening = useRef(0);
   const [zoom, setZoom] = useState<number | null>(null);
   const [moved, setMoved] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const media = matchMedia('(max-width: 720px)');
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const pointsAt = useRef(positions);
   useEffect(() => {
     pointsAt.current = positions;
@@ -224,7 +232,11 @@ export default function MapCanvas({
     const dimmed = selected !== null;
     const level =
       labelMode === 'auto' ? (zoom - opening.current < CLUSTER_LABELS_FROM ? 'region' : 'cluster') : labelMode;
-    const labels = level === 'region' ? regions : level === 'cluster' ? clusters : [];
+    const topics = level === 'region' ? regions : level === 'cluster' ? clusters : [];
+    // On phones, keep three quarters of the labels, favouring the largest topics as collisions do.
+    const labels = narrow
+      ? topics.toSorted((a, b) => b.size - a.size || a.number - b.number).slice(0, Math.round(topics.length * 0.75))
+      : topics;
     const at = (i: number): [number, number] => [positions[2 * i], positions[2 * i + 1]];
     // Only what the map shows: a search that hides the rest hides the viewer's papers too.
     const visible = (indexes: number[]) => (shown ? indexes.filter((i) => shown[i] > 0) : indexes);
@@ -343,6 +355,7 @@ export default function MapCanvas({
     regions,
     clusters,
     labelMode,
+    narrow,
     selected,
     neighbours,
     zoom,

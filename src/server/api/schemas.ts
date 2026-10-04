@@ -811,6 +811,9 @@ export const PublicPositionState = z
   })
   .meta({ id: 'PublicPositionState' });
 
+/** Filtering holdings never changes the account-wide financial totals. */
+export const PortfolioQuery = z.object({ marketId: Id.optional() });
+
 export const Portfolio = z
   .object({
     accountId: Id,

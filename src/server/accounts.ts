@@ -7,14 +7,15 @@ import { accounts, affiliations, ledgerEntries, listings, markets, orders, outco
 import { costBasis, type Fill } from '@/lib/cost-basis';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
-import { creditAccount, HOUSE_HANDLE, quote } from './engine';
+import { creditAccount, HOUSE_HANDLE } from './engine';
 import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
 import { normalizeEmail, syncAccount } from './affiliations';
 import { institutionForEmail } from './institution-domains';
 import { invalidateStandings } from './standings-cache';
 import { publicPositionIds } from './public-positions';
-import { tradeFlows } from './valuation';
+import { accountTradeFlows, quotedExitMicro } from './valuation';
+import { accountHoldings } from './account-read';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -193,24 +194,10 @@ export interface PortfolioSummary {
   realizedPnlMicro: bigint;
 }
 
-export async function getPortfolio(accountId: string, database: Db = getDb()): Promise<Portfolio> {
-  const [account] = await database.select().from(accounts).where(eq(accounts.id, accountId));
-  if (!account) throw new EngineError('not_found', `no account ${accountId}`);
-
-  const rows = await database
-    .select({
-      position: positions,
-      outcome: outcomes,
-      market: markets,
-      listingSlug: listings.slug,
-      listingTitle: listings.title,
-    })
-    .from(positions)
-    .innerJoin(outcomes, eq(positions.outcomeId, outcomes.id))
-    .innerJoin(markets, eq(outcomes.marketId, markets.id))
-    .leftJoin(listings, eq(listings.id, markets.listingId))
-    .where(and(eq(positions.accountId, accountId), ne(positions.sharesMicro, 0n)))
-    .orderBy(asc(markets.slug), asc(outcomes.ordinal));
+export async function getPortfolio(accountId: string, database: Db = getDb(), marketId?: string): Promise<Portfolio> {
+  const snapshot = await accountHoldings(accountId, database);
+  if (!snapshot) throw new EngineError('not_found', `no account ${accountId}`);
+  const { account, rows, boards } = snapshot;
 
   // Every fill on an outcome still held, in the order they filled, for the
   // cost basis. One query for the whole portfolio.
@@ -218,7 +205,13 @@ export async function getPortfolio(accountId: string, database: Db = getDb()): P
     .select({ outcomeId: orders.outcomeId, sharesMicro: orders.sharesMicro, costMicro: orders.costMicro })
     .from(orders)
     .innerJoin(positions, and(eq(positions.accountId, orders.accountId), eq(positions.outcomeId, orders.outcomeId)))
-    .where(and(eq(orders.accountId, accountId), ne(positions.sharesMicro, 0n)))
+    .where(
+      and(
+        eq(orders.accountId, accountId),
+        ne(positions.sharesMicro, 0n),
+        marketId ? eq(orders.marketId, marketId) : undefined,
+      ),
+    )
     .orderBy(asc(orders.createdAt), asc(orders.id));
   const fillsByOutcome = new Map<string, Fill[]>();
   for (const f of fills) {
@@ -229,22 +222,19 @@ export async function getPortfolio(accountId: string, database: Db = getDb()): P
 
   const published = await publicPositionIds(accountId, database);
   const holdings: Holding[] = [];
+  let mark = account.balanceMicro;
+  let liquid = account.balanceMicro;
   for (const row of rows) {
-    const board = await database
-      .select()
-      .from(outcomes)
-      .where(eq(outcomes.marketId, row.market.id))
-      .orderBy(asc(outcomes.ordinal));
-    const q = board.map((o) => microToFloat(o.sharesMicro));
-    const index = board.findIndex((o) => o.id === row.outcome.id);
-    const price = prices(q, row.market.b)[index];
-
-    // The mark: shares x price. Not a sale price.
+    const board = boards.get(row.market.id)!;
+    const index = board.rows.findIndex((o) => o.id === row.outcome.id);
+    const price = prices(board.q, row.market.b)[index];
     const markMicro = costToMicro(microToFloat(row.position.sharesMicro) * price);
+    // The same full-size exit maths and single rounding as engine.quote().
+    const exitMicro = quotedExitMicro({ q: board.q, b: row.market.b }, index, row.position.sharesMicro);
 
-    // The honest one: an actual quote to close the whole position.
-    const exit = await quote(row.market.id, row.outcome.id, -row.position.sharesMicro, database);
-
+    mark += markMicro;
+    liquid += exitMicro;
+    if (marketId && row.market.id !== marketId) continue;
     holdings.push({
       marketId: row.market.id,
       marketSlug: row.market.slug,
@@ -255,24 +245,17 @@ export async function getPortfolio(accountId: string, database: Db = getDb()): P
       outcomeId: row.outcome.id,
       outcomeLabel: row.outcome.label,
       outcomeOrdinal: index,
-      outcomeCount: board.length,
+      outcomeCount: board.rows.length,
       sharesMicro: row.position.sharesMicro,
       price,
       markMicro,
-      quotedExitMicro: -exit.costMicro,
+      quotedExitMicro: exitMicro,
       costBasisMicro: costBasis(fillsByOutcome.get(row.outcome.id) ?? []).basisMicro,
       publicPositionId: published.get(row.outcome.id) ?? null,
     });
   }
 
-  let mark = account.balanceMicro;
-  let liquid = account.balanceMicro;
-  for (const h of holdings) {
-    mark += h.markMicro;
-    liquid += h.quotedExitMicro;
-  }
-
-  const flows = (await tradeFlows([accountId], database)).get(accountId);
+  const flows = await accountTradeFlows(accountId, database);
   const holdingsValue = liquid - account.balanceMicro;
   return {
     accountId,

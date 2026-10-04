@@ -1,8 +1,10 @@
+import { cache } from 'react';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import type * as schema from '@/db/schema';
 import { accounts, markets, outcomes, positions, type Account } from '@/db/schema';
+import { accountHoldings } from './account-read';
 import { costToTrade } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 
@@ -134,8 +136,14 @@ export async function valuations(
         .where(inArray(outcomes.marketId, marketIds))
         .orderBy(asc(outcomes.marketId), asc(outcomes.ordinal)),
     ]);
+    const grouped = new Map<string, typeof outcomeRows>();
+    for (const o of outcomeRows) {
+      const group = grouped.get(o.marketId) ?? [];
+      group.push(o);
+      grouped.set(o.marketId, group);
+    }
     for (const m of marketRows) {
-      const rows = outcomeRows.filter((o) => o.marketId === m.id);
+      const rows = grouped.get(m.id) ?? [];
       boards.set(m.id, {
         q: rows.map((o) => microToFloat(o.sharesMicro)),
         b: m.b,
@@ -171,6 +179,39 @@ export async function valuations(
 }
 
 /** One account's valuation, or `null` if it does not exist. */
-export async function valuation(accountId: string, database: Database = getDb()): Promise<Valuation | null> {
-  return (await valuations([accountId], database)).get(accountId) ?? null;
+export function valuation(accountId: string, database: Database = getDb()): Promise<Valuation | null> {
+  return database === getDb() ? cachedValuation(accountId, database) : readValuation(accountId, database);
+}
+
+const cachedValuation = cache(readValuation);
+
+async function readValuation(accountId: string, database: Database): Promise<Valuation | null> {
+  const snapshot = await accountHoldings(accountId, database);
+  if (!snapshot) return null;
+  let holdingsValueMicro = 0n;
+  for (const row of snapshot.rows) {
+    const board = snapshot.boards.get(row.market.id)!;
+    const index = board.rows.findIndex((o) => o.id === row.outcome.id);
+    holdingsValueMicro += quotedExitMicro({ q: board.q, b: row.market.b }, index, row.position.sharesMicro);
+  }
+  const flow = await accountTradeFlows(accountId, database);
+  return {
+    accountId,
+    cashMicro: snapshot.account.balanceMicro,
+    holdingsValueMicro,
+    netWorthMicro: snapshot.account.balanceMicro + holdingsValueMicro,
+    unrealizedPnlMicro: holdingsValueMicro + (flow?.openTradeMicro ?? 0n),
+    realizedPnlMicro: flow?.realizedMicro ?? 0n,
+    settledMarkets: flow?.settledMarkets ?? 0,
+  };
+}
+
+/** Request-scoped ledger aggregation shared by the navbar and portfolio. */
+const cachedAccountFlows = cache(async (accountId: string, database: Database) =>
+  (await tradeFlows([accountId], database)).get(accountId),
+);
+export async function accountTradeFlows(accountId: string, database: Database = getDb()) {
+  return database === getDb()
+    ? cachedAccountFlows(accountId, database)
+    : (await tradeFlows([accountId], database)).get(accountId);
 }

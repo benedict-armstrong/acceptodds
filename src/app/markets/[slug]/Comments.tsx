@@ -81,7 +81,11 @@ export function Comments({
     (i, previous: CommentList | null) =>
       i === 0 ? base : previous?.nextCursor ? `${base}&cursor=${encodeURIComponent(previous.nextCursor)}` : null,
     fetchJson,
-    { fallbackData: sort === 'newest' ? [initial] : undefined, refreshInterval: 10_000 },
+    {
+      fallbackData: sort === 'newest' ? [initial] : undefined,
+      refreshInterval: 30_000,
+      revalidateOnMount: sort !== 'newest',
+    },
   );
   useEffect(() => {
     if (version > 0) void mutate();

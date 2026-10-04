@@ -40,6 +40,7 @@ export function useQuote(
 ): Quote | null {
   const [quote, setQuote] = useState<{ key: string; q: Quote } | null>(null);
   const key = `${outcomeId}:${sharesMicro}`;
+  const boardKey = JSON.stringify(board);
 
   useEffect(() => {
     if (sharesMicro === null) return;
@@ -58,7 +59,7 @@ export function useQuote(
       clearTimeout(t);
       ctl.abort();
     };
-  }, [key, board, marketId, outcomeId, sharesMicro]);
+  }, [key, boardKey, marketId, outcomeId, sharesMicro]);
 
   return sharesMicro !== null && quote?.key === key ? quote.q : null;
 }
