@@ -21,6 +21,7 @@ import {
 } from '../groups';
 import { setRelated, upsertListing } from '../listings';
 import { setMap } from '../map';
+import { mapCached } from '../map-cache';
 import { countTransition, countView } from '../view-counter';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
@@ -38,6 +39,7 @@ import {
   leaderboard as leaderboardView,
   listListings as listListingsView,
   listingCitations,
+  listingMinimap,
   listingRelatedTo,
   listingTransitionCounts,
   listMarkets as listMarketsView,
@@ -45,6 +47,7 @@ import {
   marketTape,
   marketView,
   mapRelated,
+  mapTitles,
   mapSearch,
   paperMap,
   priceHistory,
@@ -53,7 +56,18 @@ import {
   resolveMarket,
 } from '../views';
 import { ApiError } from './errors';
-import { clientIp, parseBody, parseParam, parseQuery, respond, route, toIso, toIsoOrNull } from './http';
+import {
+  clientIp,
+  parseBody,
+  parseParam,
+  parseQuery,
+  prepare,
+  preparedResponse,
+  respond,
+  route,
+  toIso,
+  toIsoOrNull,
+} from './http';
 import {
   presentFill,
   presentFollowed,
@@ -218,34 +232,70 @@ export const putListingRelated = route(async (req, params) => {
   return respond(S.SetRelatedResult, { listingId: listing.id, count }, { principal });
 });
 
-/** The supplied paper map, drawn whole by `/map`. Public, and cached like badges. */
+/**
+ * How long a cached map response is served. Every write to the map, the
+ * related lists or a listing bumps the cache; this covers only what bumps
+ * nothing — headlines, which move with trades — and writers in another
+ * process. An hour-old headline is fine on the map, on the owner's call.
+ */
+const MAP_TTL_MS = 60 * 60_000;
+/** Public, and the same for everyone; a browser past `max-age` revalidates by ETag, and may show what it holds meanwhile. */
+const MAP_CACHE_CONTROL = 'public, max-age=300, stale-while-revalidate=3600';
+
+/** The supplied paper map, drawn whole by `/map`, without its titles. Public, cached in process and by the browser. */
 export const getMap = route(async (req) => {
   const principal = await authenticate(req);
-  return respond(S.PaperMap, await paperMap(), {
-    principal,
-    headers: { 'Cache-Control': 'public, max-age=300' },
-  });
+  const prepared = await mapCached('map', MAP_TTL_MS, async () => prepare(S.PaperMap, await paperMap()));
+  return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
 });
 
-/** The listings the home page's search finds, for the map to light up. */
+/** The titles `getMap` leaves out, most of the map's bytes, fetched once it is drawn. Public, cached like the map. */
+export const getMapTitles = route(async (req) => {
+  const principal = await authenticate(req);
+  const prepared = await mapCached('map/titles', MAP_TTL_MS, async () =>
+    prepare(S.MapTitles, { titles: await mapTitles() }),
+  );
+  return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
+});
+
+/** The listings the home page's search finds, for the map to light up. Public: a browser may keep it a minute. */
 export const getMapSearch = route(async (req) => {
   const principal = await authenticate(req);
   const { q } = parseQuery(req, S.MapSearchQuery);
-  return respond(S.MapSearch, await mapSearch(q), { principal });
+  return respond(S.MapSearch, await mapSearch(q), { principal, headers: { 'Cache-Control': 'public, max-age=60' } });
 });
 
 /** The related lists between papers on the map, compactly. Public, and cached like the map. */
 export const getMapRelated = route(async (req) => {
   const principal = await authenticate(req);
-  const slugs: string[] = [];
-  const index = new Map<string, number>();
-  const at = (slug: string) => {
-    let i = index.get(slug);
-    if (i === undefined) index.set(slug, (i = slugs.push(slug) - 1));
-    return i;
-  };
-  const edges = (await mapRelated()).flatMap((e) => [at(e.from), at(e.to)]);
-  return respond(S.MapRelated, { slugs, edges }, { principal, headers: { 'Cache-Control': 'public, max-age=300' } });
+  const prepared = await mapCached('map/related', MAP_TTL_MS, async () => {
+    const slugs: string[] = [];
+    const index = new Map<string, number>();
+    const at = (slug: string) => {
+      let i = index.get(slug);
+      if (i === undefined) index.set(slug, (i = slugs.push(slug) - 1));
+      return i;
+    };
+    const edges = (await mapRelated()).flatMap((e) => [at(e.from), at(e.to)]);
+    return prepare(S.MapRelated, { slugs, edges });
+  });
+  return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
+});
+
+/**
+ * A listing's piece of the map, for the paper page's minimap, which asks for
+ * it only once it scrolls into view. `404` when the listing is not on the
+ * map. Public, and cached like the map.
+ */
+export const getListingMinimap = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const prepared = await mapCached(`minimap/${listing.id}`, MAP_TTL_MS, async () => {
+    const minimap = await listingMinimap(listing, await listingRelatedTo(listing));
+    return minimap && prepare(S.Minimap, minimap);
+  });
+  if (!prepared) throw new ApiError(404, 'not_found', `listing ${listing.id} is not on the map`);
+  return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
 });
 
 /** Replace the paper map. Written by `map.ts`; not market state. */

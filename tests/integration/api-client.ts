@@ -24,9 +24,11 @@ import * as listingFollowRoute from '@/app/api/v1/listings/[id]/follow/route';
 import * as listingViewRoute from '@/app/api/v1/listings/[id]/view/route';
 import * as listingCitationsRoute from '@/app/api/v1/listings/[id]/citations/route';
 import * as listingRelatedRoute from '@/app/api/v1/listings/[id]/related/route';
+import * as listingMinimapRoute from '@/app/api/v1/listings/[id]/minimap/route';
 import * as mapRoute from '@/app/api/v1/map/route';
 import * as mapSearchRoute from '@/app/api/v1/map/search/route';
 import * as mapRelatedRoute from '@/app/api/v1/map/related/route';
+import * as mapTitlesRoute from '@/app/api/v1/map/titles/route';
 import * as transitionsRoute from '@/app/api/v1/transitions/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
 import * as groupsRoute from '@/app/api/v1/groups/route';
@@ -81,9 +83,11 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/listings/[id]/view', listingViewRoute],
   ['/listings/[id]/citations', listingCitationsRoute],
   ['/listings/[id]/related', listingRelatedRoute],
+  ['/listings/[id]/minimap', listingMinimapRoute],
   ['/map', mapRoute],
   ['/map/search', mapSearchRoute],
   ['/map/related', mapRelatedRoute],
+  ['/map/titles', mapTitlesRoute],
   ['/transitions', transitionsRoute],
   ['/leaderboard', leaderboardRoute],
   ['/groups', groupsRoute],

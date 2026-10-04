@@ -255,24 +255,39 @@ export const SetRelatedResult = z
 
 const MapTopic = z.object({ number: z.number().int(), label: z.string() }).meta({ id: 'MapTopic' });
 
+const MapPoint = z
+  .object({
+    slug: z.string(),
+    title: z.string(),
+    primaryArea: z.string().nullable(),
+    x: z.number(),
+    y: z.number(),
+    region: z.number().int().nullable(),
+    cluster: z.number().int().nullable(),
+    headline: z.number().nullable().meta({
+      description:
+        'The main market’s headline price (accepted in any form, for a paper); 1/0 once settled; `null` when void or there is no market. A price, never a value.',
+    }),
+  })
+  .meta({ id: 'MapPoint' });
+
+const column = <T extends z.ZodType>(item: T, description: string) => z.array(item).meta({ description });
+
 export const PaperMap = z
   .object({
-    points: z.array(
-      z
-        .object({
-          slug: z.string(),
-          title: z.string(),
-          primaryArea: z.string().nullable(),
-          x: z.number(),
-          y: z.number(),
-          region: z.number().int().nullable(),
-          cluster: z.number().int().nullable(),
-          headline: z.number().nullable().meta({
-            description:
-              'The main market’s headline price (accepted in any form, for a paper); 1/0 once settled; `null` when void or there is no market. A price, never a value.',
-          }),
-        })
-        .meta({ id: 'MapPoint' }),
+    slugs: column(
+      z.string(),
+      'Every listing on the map, by slug, sorted. Index `i` of every other column is this listing.',
+    ),
+    x: column(z.number(), 'Horizontal coordinate, in the layout’s own units.'),
+    y: column(z.number(), 'Vertical coordinate, in the layout’s own units.'),
+    region: column(z.number().int().nullable(), 'Coarse grouping (`regions`).'),
+    cluster: column(z.number().int().nullable(), 'Fine grouping (`clusters`).'),
+    area: column(z.number().int().min(0).nullable(), 'Index into `areas` of the listing’s primary area.'),
+    areas: column(z.string(), 'The distinct primary areas, sorted.'),
+    headline: column(
+      z.number().nullable(),
+      'The main market’s headline price (accepted in any form, for a paper); 1/0 once settled; `null` when void or there is no market. A price, never a value.',
     ),
     regions: z.array(MapTopic).meta({ description: 'Names of the coarse groupings.' }),
     clusters: z.array(MapTopic).meta({ description: 'Names of the fine groupings.' }),
@@ -280,7 +295,35 @@ export const PaperMap = z
   .meta({
     id: 'PaperMap',
     description:
-      'A 2D layout of the listings, supplied by a separate service. Coordinates are in its own units; the venue computes no layout.',
+      'A 2D layout of the listings, supplied by a separate service, by column, without titles (`GET /map/titles`). Coordinates are in its own units; the venue computes no layout.',
+  });
+
+export const MapTitles = z
+  .object({ titles: z.record(z.string(), z.string()).meta({ description: 'Each listing’s title, by slug.' }) })
+  .meta({ id: 'MapTitles', description: 'The title of every listing on the paper map.' });
+
+export const Minimap = z
+  .object({
+    points: z.array(MapPoint).meta({ description: 'The listing, the papers nearest it and its related papers.' }),
+    vectors: z.array(z.array(z.number())).nullable().meta({
+      description: 'The supplied vector of each point, in `points`’ order; `null` unless every point has one.',
+    }),
+    self: z.number().int().min(0).meta({ description: 'Index of the listing itself in `points`.' }),
+    related: z.array(z.number().int().min(0)).meta({ description: 'Indexes of its related papers, best first.' }),
+    relatedElsewhere: z
+      .number()
+      .int()
+      .min(0)
+      .meta({ description: 'Related papers that are listed but not on the map.' }),
+    edges: z
+      .array(z.tuple([z.number().int().min(0), z.number().int().min(0)]))
+      .meta({ description: 'Every related pair between `points`, as indexes.' }),
+    clusters: z.array(MapTopic).meta({ description: 'Names of the fine groupings among `points`.' }),
+  })
+  .meta({
+    id: 'Minimap',
+    description:
+      'A listing’s piece of the paper map, with what a client needs to lay it out again round the listing. All supplied by other services.',
   });
 
 export const MapSearchQuery = z.object({

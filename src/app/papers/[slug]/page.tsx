@@ -26,9 +26,9 @@ import { followedListingIds } from '@/server/follows';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
 import {
   listingCitations,
-  listingMinimap,
   listingRelatedTo,
   listingView,
+  onMap,
   resolveListing,
   type MarketView,
 } from '@/server/views';
@@ -98,12 +98,13 @@ export default async function PaperPage({
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
-  const [{ markets, followers }, citations, related] = await Promise.all([
+  // The minimap itself is the browser's to fetch, once it scrolls into view: here only whether there is one.
+  const [{ markets, followers }, citations, related, mapped] = await Promise.all([
     listingView(listing),
     listingCitations(listing),
     listingRelatedTo(listing),
+    onMap(listing),
   ]);
-  const minimap = await listingMinimap(listing, related);
   const wanted = Array.isArray(sp.market) ? sp.market[0] : sp.market;
   const selected = markets.find((m) => m.market.slug === wanted) ?? markets[0];
 
@@ -115,7 +116,7 @@ export default async function PaperPage({
   const relatedPapers = (
     <RelatedPapers
       related={related}
-      minimap={minimap}
+      minimapOf={mapped ? listing.slug : null}
       figure={(initial ? marketLiveFigures(initial.market, initial.venue !== null) : 0) + 1}
     />
   );

@@ -24,7 +24,12 @@ const CLUSTER_LABELS_FROM = 1;
 const ACCENT: [number, number, number] = [179, 27, 27];
 const INK: [number, number, number, number] = [29, 29, 29, 230];
 const PAGE: [number, number, number, number] = [251, 250, 247, 230];
+/** Behind the labels: the page, nearly opaque, so dots never show through the letters. */
+const LABEL_BACKING: [number, number, number, number] = [251, 250, 247, 215];
+/** How far the view may drift from where it opened before "Reset view" shows: a fraction of a pixel. */
+const HOME_TOLERANCE = 0.5;
 const FILTER = new DataFilterExtension({ filterSize: 1 });
+const SAFARI_GESTURES = ['gesturestart', 'gesturechange', 'gestureend'];
 
 /**
  * deck's controller, except that a drag always pans. Its own turns a drag
@@ -35,6 +40,19 @@ const FILTER = new DataFilterExtension({ filterSize: 1 });
 class PanController extends OrthographicController {
   isFunctionKeyPressed(event: Parameters<OrthographicController['isFunctionKeyPressed']>[0]): boolean {
     return event.type === 'panstart' ? false : super.isFunctionKeyPressed(event);
+  }
+}
+
+/**
+ * Embedded in a page that scrolls, on a touch screen one finger scrolls the
+ * page and two pan and zoom, as an embedded Google map does: the browser
+ * keeps one-finger pans (`touch-action: pan-x pan-y`, below), and a pinch
+ * pans as it zooms, around the fingers. Without this the figure caught every
+ * swipe and the page could not be scrolled past it.
+ */
+class EmbeddedController extends PanController {
+  protected _onPanStart(event: Parameters<PanController['_onPanStart']>[0]): boolean {
+    return event.pointerType === 'touch' ? false : super._onPanStart(event);
   }
 }
 
@@ -86,13 +104,20 @@ export default function MapCanvas({
   dotRadius?: number;
   /** The other papers' opacity while one is selected. */
   dimmed?: number;
-  /** Set in a page that scrolls (the paper page's minimap): the wheel scrolls the page, and zooms only with ⌘ or Ctrl. */
+  /**
+   * Set in a page that scrolls (the paper page's minimap): the wheel scrolls the page, and zooms only with ⌘ or Ctrl.
+   */
   embedded?: boolean;
 }) {
   const parent = useRef<HTMLDivElement>(null);
   const deck = useRef<Deck<OrthographicView> | null>(null);
   const opening = useRef(0);
   const [zoom, setZoom] = useState<number | null>(null);
+  const [moved, setMoved] = useState(false);
+  const pointsAt = useRef(positions);
+  useEffect(() => {
+    pointsAt.current = positions;
+  });
   const everyPoint = useMemo(() => new Float32Array(positions.length / 2).fill(1), [positions]);
   const handlers = useRef({ onHover, onSelect, onOpen });
   useEffect(() => {
@@ -109,30 +134,36 @@ export default function MapCanvas({
   useEffect(() => {
     const el = parent.current!;
     opening.current = Math.log2((Math.min(el.clientWidth, el.clientHeight) / MAP_SIZE) * 0.95);
-    const initialViewState: OrthographicViewState = {
-      target: [MAP_SIZE / 2, MAP_SIZE / 2, 0],
-      zoom: opening.current,
-      minZoom: opening.current - 1,
-      maxZoom: opening.current + 9,
-    };
+    const initialViewState = homeView(opening.current);
     deck.current = new Deck({
       parent: el,
       views: new OrthographicView({ flipY: false }),
       initialViewState,
-      controller: { type: PanController, doubleClickZoom: true, inertia: true },
+      controller: { type: embedded ? EmbeddedController : PanController, doubleClickZoom: true, inertia: true },
+      touchAction: embedded ? 'pan-x pan-y' : 'none',
       getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
-      onViewStateChange: ({ viewState }) => setZoom((viewState as OrthographicViewState).zoom as number),
+      onViewStateChange: ({ viewState }) => {
+        const view = viewState as OrthographicViewState;
+        setZoom(view.zoom as number);
+        setMoved(awayFromHome(view, opening.current, el));
+      },
       onClick: (info) => {
         if (!info.picked) handlers.current.onSelect(null);
       },
     });
     setZoom(opening.current);
+    // iOS Safari can still zoom the page on a pinch over the map; refusing its own gesture events stops it.
+    const refuse = (e: Event) => e.preventDefault();
+    for (const type of SAFARI_GESTURES) el.addEventListener(type, refuse, { passive: false });
     return () => {
+      for (const type of SAFARI_GESTURES) el.removeEventListener(type, refuse);
       deck.current?.finalize();
       deck.current = null;
       // finalize() leaves the canvas it made in `parent`; a remount (Strict Mode's, in dev) would stack below it.
       el.replaceChildren();
     };
+    // `embedded` is fixed for a figure's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Embedded, the wheel scrolls the page and zooms only with ⌘ or Ctrl held (a trackpad pinch
@@ -148,12 +179,24 @@ export default function MapCanvas({
     return () => el.removeEventListener('wheel', onWheel, { capture: true });
   }, [embedded]);
 
+  const reset = () => {
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    deck.current?.setProps({
+      initialViewState: {
+        ...homeView(opening.current),
+        transitionDuration: still ? 0 : 400,
+        transitionInterpolator: new LinearInterpolator(['target', 'zoom']),
+      },
+    });
+  };
+
   useEffect(() => {
     if (!focus || !deck.current) return;
     const i = focus.index;
+    const at = pointsAt.current;
     deck.current.setProps({
       initialViewState: {
-        target: [positions[2 * i], positions[2 * i + 1], 0],
+        target: [at[2 * i], at[2 * i + 1], 0],
         zoom: Math.max(zoom ?? opening.current, opening.current + 3),
         minZoom: opening.current - 1,
         maxZoom: opening.current + 9,
@@ -161,9 +204,10 @@ export default function MapCanvas({
         transitionInterpolator: new LinearInterpolator(['target', 'zoom']),
       },
     });
-    // Only a new focus flies; zoom changes must not re-trigger it.
+    // Only a new focus flies. Not new positions either: a redraw sends them every frame as it settles,
+    // and each one flew the view back, so the map could not be panned or zoomed until it stopped.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus, positions]);
+  }, [focus]);
 
   useEffect(() => {
     if (!deck.current || zoom === null) return;
@@ -269,13 +313,15 @@ export default function MapCanvas({
           data: labels,
           getPosition: (d) => [d.x, d.y],
           getText: (d) => d.text,
-          getSize: level === 'region' ? 13 : 11,
+          getSize: level === 'region' ? 14 : 13,
           getColor: INK,
           fontFamily: 'Georgia, "Times New Roman", serif',
-          fontSettings: { sdf: true },
-          outlineWidth: 4,
-          outlineColor: PAGE,
           characterSet: 'auto',
+          // Plain glyphs on a backing read better at label sizes than SDF outlines, which blur.
+          fontSettings: { sdf: false, fontSize: 96 },
+          background: true,
+          getBackgroundColor: LABEL_BACKING,
+          backgroundPadding: [3, 1, 3, 1],
           extensions: [new CollisionFilterExtension()],
           getCollisionPriority: (d) => d.size,
         }),
@@ -298,5 +344,37 @@ export default function MapCanvas({
     dimmedOpacity,
   ]);
 
-  return <div ref={parent} className="relative h-full w-full" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={parent} className="relative h-full w-full" />
+      {moved && (
+        <button
+          type="button"
+          className="absolute top-2 right-2 z-10 cursor-pointer border border-frame bg-card/95 px-2 py-0.5 font-sans text-xs hover:border-ink"
+          onClick={reset}
+        >
+          Reset view
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Where the map opens: the whole of it, centred. */
+function homeView(opening: number): OrthographicViewState {
+  return {
+    target: [MAP_SIZE / 2, MAP_SIZE / 2, 0],
+    zoom: opening,
+    minZoom: opening - 1,
+    maxZoom: opening + 9,
+  };
+}
+
+/** Whether the view has been panned or zoomed off where it opened, by more than a fraction of a pixel. */
+function awayFromHome(view: OrthographicViewState, opening: number, el: HTMLElement): boolean {
+  const zoom = view.zoom as number;
+  const [x, y] = view.target as number[];
+  const pixels = 2 ** zoom * Math.hypot(x - MAP_SIZE / 2, y - MAP_SIZE / 2);
+  const grown = Math.abs(2 ** (zoom - opening) - 1) * Math.min(el.clientWidth, el.clientHeight);
+  return pixels > HOME_TOLERANCE || grown > HOME_TOLERANCE;
 }

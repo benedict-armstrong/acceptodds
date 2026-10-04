@@ -567,8 +567,24 @@ export interface MapPointView {
   headline: number | null;
 }
 
+/**
+ * The whole map, by column: index `i` of each array is one paper, ordered by
+ * slug. Columns, not one object per paper, and no titles (`mapTitles`):
+ * with 40k papers that is 2 MB instead of 10, which the browser can draw
+ * from before the titles arrive.
+ */
 export interface PaperMap {
-  points: MapPointView[];
+  slugs: string[];
+  x: number[];
+  y: number[];
+  region: (number | null)[];
+  cluster: (number | null)[];
+  /** Index into `areas` of each paper's primary area. */
+  area: (number | null)[];
+  /** The distinct primary areas, sorted. */
+  areas: string[];
+  /** The main market's headline cache (#12): a price, never a value; `null` when void or there is none. */
+  headline: (number | null)[];
   regions: { number: number; label: string }[];
   clusters: { number: number; label: string }[];
 }
@@ -600,13 +616,35 @@ function mapPointRows(database: Database) {
  * pass over the whole map: it is drawn whole.
  */
 export async function paperMap(database: Database = getDb()): Promise<PaperMap> {
-  const [points, topics] = await Promise.all([
+  const [rows, topics] = await Promise.all([
     mapPointRows(database).orderBy(asc(mapPoints.slug)),
     database.select().from(mapTopics).orderBy(asc(mapTopics.level), asc(mapTopics.number)),
   ]);
   const topic = (level: string) =>
     topics.filter((t) => t.level === level).map(({ number, label }) => ({ number, label }));
-  return { points, regions: topic('region'), clusters: topic('cluster') };
+  const areas = [...new Set(rows.flatMap((r) => (r.primaryArea === null ? [] : [r.primaryArea])))].sort();
+  const areaIndex = new Map(areas.map((a, i) => [a, i]));
+  return {
+    slugs: rows.map((r) => r.slug),
+    x: rows.map((r) => r.x),
+    y: rows.map((r) => r.y),
+    region: rows.map((r) => r.region),
+    cluster: rows.map((r) => r.cluster),
+    area: rows.map((r) => (r.primaryArea === null ? null : areaIndex.get(r.primaryArea)!)),
+    areas,
+    headline: rows.map((r) => r.headline),
+    regions: topic('region'),
+    clusters: topic('cluster'),
+  };
+}
+
+/** The title of every paper on the map, by slug: what `paperMap` leaves out, for a second, later request. */
+export async function mapTitles(database: Database = getDb()): Promise<Record<string, string>> {
+  const rows = await database
+    .select({ slug: listings.slug, title: listings.title })
+    .from(mapPoints)
+    .innerJoin(listings, eq(listings.slug, mapPoints.slug));
+  return Object.fromEntries(rows.map((r) => [r.slug, r.title]));
 }
 
 export interface Minimap {
@@ -648,7 +686,8 @@ export async function listingMinimap(
   const [centre] = await database.select().from(mapPoints).where(eq(mapPoints.slug, listing.slug));
   if (!centre) return null;
   const relatedSlugs = related.map((r) => r.listing.slug);
-  const d2 = sql`(${mapPoints.x} - ${centre.x}) ^ 2 + (${mapPoints.y} - ${centre.y}) ^ 2`;
+  // The nearest first, by `map_points_xy_idx` (GiST, k-nearest): no pass over the whole map.
+  const d2 = sql`point(${mapPoints.x}, ${mapPoints.y}) <-> point(${centre.x}, ${centre.y})`;
   const [candidates, clusters] = await Promise.all([
     database
       .select({ slug: mapPoints.slug, vector: mapPoints.vector })
@@ -708,6 +747,12 @@ export async function listingMinimap(
     }),
     clusters: clusters.filter((c) => here.has(c.number)),
   };
+}
+
+/** Whether the paper is on the supplied map: the paper page's cheap check before the browser asks for its minimap. */
+export async function onMap(listing: Listing, database: Database = getDb()): Promise<boolean> {
+  const [row] = await database.select({ slug: mapPoints.slug }).from(mapPoints).where(eq(mapPoints.slug, listing.slug));
+  return row !== undefined;
 }
 
 /** How many of each listing's related entries the map draws on: the best few carry the structure. */

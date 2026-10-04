@@ -818,10 +818,25 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   every one the same length. Stored as `real[]` on `map_points`. Only
   cosine distances between vectors are ever read (`lib/vectors.ts`), and
   only for the minimap, below. A point without one is still on the map.
-- `GET /map` (`views.paperMap`) is the whole map in one response, each
-  point with its listing's title and primary area and its main market's
-  headline (void: `null`). Prices, never values (§1.1). Public, with
-  `Cache-Control: public, max-age=300`.
+- `GET /map` (`views.paperMap`) is the whole map in one response, **by
+  column and without titles**: slugs, coordinates, groupings, an index into
+  `areas` for the primary area, and the main market's headline (void:
+  `null`). Prices, never values (§1.1). The titles are `GET /map/titles`
+  (`views.mapTitles`, by slug), fetched once the map is drawn: at 40k
+  papers they are 70% of the bytes, and only hover and selection need them.
+  Both public, with
+  `Cache-Control: public, max-age=300, stale-while-revalidate=3600` and an
+  ETag (`304` on `If-None-Match`).
+- **The map's public reads are cached in process** (`server/map-cache.ts`),
+  since Cloudflare bypasses `/api/*` (§11): `GET /map`, `/map/titles`,
+  `/map/related` and `/listings/{id}/minimap` are validated, serialised and
+  compressed once (`http.prepare`: brotli and gzip, picked by
+  `Accept-Encoding` in `preparedResponse`; nothing downstream compresses a
+  route handler's body) and served from memory. `setMap`, `setRelated` and
+  `upsertListing` bump its generation **after their commit**; headlines
+  bump nothing and are covered by an hour's TTL, on the owner's call (the
+  map changes rarely). Like the standings cache, correct for one app
+  container only.
 - The page fetches it anonymously and draws it in WebGL with deck.gl
   (`components/map/MapCanvas`, loaded with `ssr: false`). The display maths
   (scaling, label placement, colours) is `lib/map.ts`. `LIKELIHOOD_RGB`
@@ -843,7 +858,8 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   display only: never stored or sent, and the supplied map is untouched.
   `lib/map-layout.ts` is a d3-force layout seeded from the supplied
   positions, linked by the similarity service's related lists between
-  matches (`GET /map/related`, each listing's best 10, as index pairs) and
+  matches (`GET /map/related`, each listing's best 10, as index pairs,
+  fetched only once a search needs a redraw) and
   each match's 6 nearest matches on the map. It runs in a Web Worker
   (`lib/map-layout.worker.ts`, one job at a time, a newer search ends the
   last) and is drawn as it settles. The cost is d3's many-body repulsion
@@ -853,11 +869,15 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   into more CPU tuning.
 - **The paper page's minimap** (`components/map/Minimap`, inside "Related
   papers") is a few papers from the same map around one paper, drawn by
-  the same `MapCanvas`. `views.listingMinimap` picks them: the paper, its
+  the same `MapCanvas`. **It is lazy**: the page only checks `views.onMap`;
+  the browser fetches `GET /listings/{id}/minimap` (and loads deck.gl and
+  the worker) once the figure nears the window, so a crawler or a reader
+  who never scrolls there costs nothing. `views.listingMinimap` picks them: the paper, its
   `MINIMAP_NEAREST` (100) nearest papers, and its related papers wherever
   they lie. "Nearest" is by vector: of its `MINIMAP_CANDIDATES` (400)
-  nearest on the map, the 100 closest by cosine (by the map alone when the
-  paper has no vector). It sends their vectors (`null` unless every paper
+  nearest on the map (a k-nearest scan of the GiST index
+  `map_points_xy_idx`; the query's `point(x, y)` must match it), the 100
+  closest by cosine (by the map alone when the paper has no vector). It sends their vectors (`null` unless every paper
   has one) and the related pairs among them.
 - **The minimap is redrawn from the vectors, not the 2D map**, by default,
   in the map's worker (`lib/map-layout.ts` `embedAround`): UMAP

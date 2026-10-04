@@ -35,7 +35,8 @@ export function FirstTrade({ paper = false, ...box }: Props) {
   }
   return (
     <div className="text-center">
-      <h3 className="mb-4 text-xl font-normal">What do you think {subject} will get?</h3>
+      <h3 className="text-xl font-normal">What do you think {subject} will get?</h3>
+      <p className="mt-1 mb-4 text-xs text-muted">All positions stay anonymous.</p>
       <div className="grid grid-cols-2 gap-2">
         {market.outcomes.map((o, i) => (
           <button

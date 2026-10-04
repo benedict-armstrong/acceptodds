@@ -1,0 +1,1 @@
+CREATE INDEX "map_points_xy_idx" ON "map_points" USING gist (point("x", "y"));

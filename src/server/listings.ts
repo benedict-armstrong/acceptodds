@@ -1,6 +1,7 @@
 import { eq, getTableColumns, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { listingReferences, listingRelated, listings, type Listing, type ListingLink } from '@/db/schema';
+import { invalidateMap } from './map-cache';
 
 /**
  * Writing listings. A listing is an **opaque subject** that markets can be
@@ -67,7 +68,7 @@ export async function upsertListing(
     links: input.links ?? [],
     kind: input.kind ?? null,
   };
-  return database.transaction(async (tx) => {
+  const result = await database.transaction(async (tx) => {
     const [{ created, ...listing }] = await tx
       .insert(listings)
       .values({ slug: input.slug, ...values })
@@ -92,6 +93,9 @@ export async function upsertListing(
     }
     return { listing, created };
   });
+  // A slug on the map is shown once it is listed, under the listing's title.
+  invalidateMap();
+  return result;
 }
 
 /**
@@ -115,5 +119,6 @@ export async function setRelated(
         .values(kept.map((r, position) => ({ listingId: listing.id, position, relatedSlug: r.slug, score: r.score })));
     }
   });
+  invalidateMap();
   return kept.length;
 }

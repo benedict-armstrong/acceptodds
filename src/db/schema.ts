@@ -254,14 +254,19 @@ export const listingRelated = pgTable(
  * dimensions, any scale): only cosine distances between vectors are read,
  * to pick a paper's neighbourhood and lay it out again (the minimap).
  */
-export const mapPoints = pgTable('map_points', {
-  slug: text('slug').primaryKey(),
-  x: doublePrecision('x').notNull(),
-  y: doublePrecision('y').notNull(),
-  region: integer('region'),
-  cluster: integer('cluster'),
-  vector: real('vector').array(),
-});
+export const mapPoints = pgTable(
+  'map_points',
+  {
+    slug: text('slug').primaryKey(),
+    x: doublePrecision('x').notNull(),
+    y: doublePrecision('y').notNull(),
+    region: integer('region'),
+    cluster: integer('cluster'),
+    vector: real('vector').array(),
+  },
+  // A paper's nearest on the map (`views.listingMinimap`), by `<->`: the expression must match the query's.
+  (t) => [index('map_points_xy_idx').using('gist', sql`point(${t.x}, ${t.y})`)],
+);
 
 /** The names of the map's groupings, replaced with `map_points`. `level` is `region` or `cluster`. */
 export const mapTopics = pgTable(

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { promisify } from 'node:util';
+import { brotliCompress, constants as zlibConstants, gzip } from 'node:zlib';
 import { z } from 'zod';
 import { EngineError } from '../errors';
 import { rateLimitHeaders } from '../ratelimit';
@@ -80,6 +83,93 @@ export function respond<S extends z.ZodType>(
   return Response.json(parsed.data, {
     status: init.status ?? 200,
     headers: { ...BASE_HEADERS, ...(rl ? rateLimitHeaders(rl) : {}), ...init.headers },
+  });
+}
+
+/** A body validated, serialised and compressed once, to be sent many times (`preparedResponse`). */
+export interface Prepared {
+  json: string;
+  etag: string;
+  /** The body brotli- and gzip-encoded, when it is big enough to be worth it. */
+  encoded: { br: Buffer; gzip: Buffer } | null;
+}
+
+/** Below this a body goes out as it is: compressing it saves less than the headers cost. */
+const COMPRESS_MIN_BYTES = 1024;
+/** Brotli's quality: 6 is within a few per cent of 11 on the map at a thirtieth of the time, and an entry is rebuilt every minute. */
+const BROTLI_QUALITY = 6;
+const brotli = promisify(brotliCompress);
+const gzipped = promisify(gzip);
+
+/**
+ * `respond`'s validation and serialisation, done once for a cached body
+ * (`map-cache.ts`), and its compression with it, on the thread pool. Done
+ * here because nothing downstream compresses a route handler's response:
+ * the map went out as 10 MB of raw JSON.
+ */
+export async function prepare<S extends z.ZodType>(schema: S, body: z.input<S>): Promise<Prepared> {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    console.error('response failed its schema', zodDetails(parsed.error));
+    throw new ApiError(500, 'internal_error', 'response failed validation');
+  }
+  const json = JSON.stringify(parsed.data);
+  const etag = `"${createHash('sha1').update(json).digest('base64url')}"`;
+  if (Buffer.byteLength(json) < COMPRESS_MIN_BYTES) return { json, etag, encoded: null };
+  const [br, gz] = await Promise.all([
+    brotli(json, {
+      params: {
+        [zlibConstants.BROTLI_PARAM_QUALITY]: BROTLI_QUALITY,
+        [zlibConstants.BROTLI_PARAM_SIZE_HINT]: Buffer.byteLength(json),
+      },
+    }),
+    gzipped(json),
+  ]);
+  return { json, etag, encoded: { br, gzip: gz } };
+}
+
+/** The best encoding of `encoded` that the request accepts (`Accept-Encoding`, `q=0` refusing one). */
+function pickEncoding(req: Request): 'br' | 'gzip' | null {
+  const accepted = new Set(
+    (req.headers.get('accept-encoding') ?? '')
+      .split(',')
+      .map((part) => part.trim().split(';'))
+      .filter(([, ...params]) => !params.some((p) => /^\s*q\s*=\s*0(\.0*)?\s*$/.test(p)))
+      .map(([name]) => name.trim().toLowerCase()),
+  );
+  return accepted.has('br') ? 'br' : accepted.has('gzip') ? 'gzip' : null;
+}
+
+/**
+ * Send a prepared body, compressed when the client accepts it, or `304`
+ * with no body when the client already holds it (`If-None-Match`): a
+ * revalidation then costs neither a query nor the transfer. The ETag names
+ * the JSON, whatever the encoding.
+ */
+export function preparedResponse(
+  req: Request,
+  prepared: Prepared,
+  init: { principal?: Principal | null; headers?: Record<string, string> } = {},
+): Response {
+  const rl = init.principal?.rateLimit;
+  const headers: Record<string, string> = {
+    ...BASE_HEADERS,
+    ...(rl ? rateLimitHeaders(rl) : {}),
+    ...init.headers,
+    ETag: prepared.etag,
+  };
+  if (prepared.encoded) headers.Vary = 'Accept-Encoding';
+  const held = req.headers.get('if-none-match');
+  if (held && held.split(',').some((t) => t.trim().replace(/^W\//, '') === prepared.etag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  const encoding = prepared.encoded && pickEncoding(req);
+  if (!encoding) {
+    return new Response(prepared.json, { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } });
+  }
+  return new Response(new Uint8Array(prepared.encoded![encoding]), {
+    status: 200,
+    headers: { ...headers, 'Content-Type': 'application/json', 'Content-Encoding': encoding },
   });
 }
 

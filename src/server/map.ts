@@ -1,5 +1,6 @@
 import { getDb, type Database } from '@/db';
 import { mapPoints, mapTopics } from '@/db/schema';
+import { invalidateMap } from './map-cache';
 
 /**
  * The paper map's writer. The layout is computed elsewhere (a separate
@@ -61,5 +62,6 @@ export async function setMap(input: MapInput, database: Database = getDb()): Pro
     }
     if (topics.length > 0) await tx.insert(mapTopics).values(topics).onConflictDoNothing();
   });
+  invalidateMap();
   return points.length;
 }

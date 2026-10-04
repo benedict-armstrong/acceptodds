@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
+import type { z } from 'zod';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { categoryRgb, frameAround, topicLabels } from '@/lib/map';
 import type { LayoutFrame, LayoutRequest } from '@/lib/map-layout.worker';
-import type { Minimap as MinimapView } from '@/server/views';
+import type * as S from '@/server/api/schemas';
 
 const MapCanvas = dynamic(() => import('./MapCanvas'), {
   ssr: false,
@@ -22,6 +24,61 @@ const DOT_RADIUS = 3.2;
 const CONTEXT_OPACITY = 0.45;
 /** Share of a redrawn piece the view fits: all of it, since the layout is compact. */
 const REDRAWN_FIT = 1;
+/** How far below the window the figure starts loading, so it is there by the time it is scrolled to. */
+const LOAD_AHEAD = '600px';
+
+type MinimapView = z.output<typeof S.Minimap>;
+
+/**
+ * The paper page's minimap, loaded lazily: nothing is fetched, and neither
+ * deck.gl nor the layout worker is loaded, until the figure comes near the
+ * window (`GET /listings/{slug}/minimap`, public and cached). A reader who
+ * never scrolls to it, and a crawler, costs the server nothing.
+ */
+export function Minimap({ slug, figure }: { slug: string; figure: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || near) return;
+    const seen = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setNear(true), {
+      rootMargin: LOAD_AHEAD,
+    });
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [near]);
+  const { data, error } = useSWR<MinimapView>(
+    near ? `/api/v1/listings/${encodeURIComponent(slug)}/minimap` : null,
+    publicJson,
+    { revalidateOnFocus: false },
+  );
+  if (data) return <MinimapFigure minimap={data} figure={figure} />;
+  return (
+    <figure className="mb-4">
+      <Frame ref={box}>
+        <div className="grid h-full place-items-center italic text-muted">
+          {error ? 'The map could not be loaded.' : 'Loading the map…'}
+        </div>
+      </Frame>
+    </figure>
+  );
+}
+
+/** Public reads go anonymously, as on `/map`, so they spend no one's rate limit. */
+async function publicJson(url: string) {
+  const r = await fetch(url, { credentials: 'omit' });
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
+
+/** The figure's box: the same size loading as loaded, so nothing below it jumps. */
+function Frame({ ref, children }: { ref?: Ref<HTMLDivElement>; children: ReactNode }) {
+  return (
+    <div ref={ref} className="relative h-[380px] overflow-hidden border border-rule bg-bg narrow:h-[300px]">
+      {children}
+    </div>
+  );
+}
 
 /**
  * A paper's piece of the map (`views.listingMinimap`), drawn by `/map`'s own
@@ -33,9 +90,9 @@ const REDRAWN_FIT = 1;
  * vectors, related pairs drawn closer, starting from the map; animated from
  * the map, framed round the paper (`frameAround`). Display only.
  * Hover names a paper; a click opens the full map on it, selected. Drag pans; ⌘ or Ctrl + scroll, a
- * pinch or a double click zooms.
+ * pinch or a double click zooms. On a touch screen one finger scrolls the page and two move the map.
  */
-export function Minimap({ minimap, figure }: { minimap: MinimapView; figure: number }) {
+function MinimapFigure({ minimap, figure }: { minimap: MinimapView; figure: number }) {
   const router = useRouter();
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
   const [redraw, setRedraw] = useState(true);
@@ -98,7 +155,7 @@ export function Minimap({ minimap, figure }: { minimap: MinimapView; figure: num
   const shownRelated = related.length;
   return (
     <figure className="mb-4">
-      <div className="relative h-[380px] overflow-hidden border border-rule bg-bg narrow:h-[300px]">
+      <Frame>
         <MapCanvas
           positions={positions}
           colours={colours}
@@ -149,7 +206,7 @@ export function Minimap({ minimap, figure }: { minimap: MinimapView; figure: num
             Open the full map
           </Link>
         </div>
-      </div>
+      </Frame>
       <figcaption className="mt-1 text-[13px] text-subtle">
         <b>Figure {figure}.</b> This paper (maroon) with its related papers and the papers nearest it on the map of
         papers, coloured by cluster.{' '}
@@ -158,7 +215,8 @@ export function Minimap({ minimap, figure }: { minimap: MinimapView; figure: num
           : 'Placed as on the map, where a related paper may lie off the edge. '}
         {shownRelated > 0 &&
           `Lines go to ${shownRelated === 1 ? 'the one related paper' : `the ${shownRelated} related papers`}${relatedElsewhere > 0 ? ` (${relatedElsewhere} more are not on the map)` : ''}. `}
-        Drag to pan, ⌘/Ctrl + scroll or double-click to zoom, click a paper to find it on the full map.
+        Drag to pan, ⌘/Ctrl + scroll or double-click to zoom (on a touch screen, two fingers pan and zoom), click a
+        paper to find it on the full map.
       </figcaption>
     </figure>
   );

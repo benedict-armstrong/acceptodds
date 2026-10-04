@@ -210,6 +210,20 @@ export function buildRegistry(): OpenAPIRegistry {
 
   r.registerPath(
     op({
+      method: 'get',
+      path: '/listings/{id}/minimap',
+      tags: ['listings'],
+      summary: 'A listing’s piece of the paper map',
+      description:
+        'The listing, the papers nearest it on the map (by the supplied vectors when it has one) and its related papers wherever they lie, with their vectors and the related pairs between them. Public, cached for five minutes.',
+      request: { params: z.object({ id: S.ListingRef }) },
+      ok: { status: 200, schema: S.Minimap, description: 'The piece of the map.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
       method: 'put',
       path: '/listings/{id}/related',
       tags: ['listings'],
@@ -233,8 +247,20 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'The paper map',
       description:
-        'Every listing on the supplied 2D layout, with its title, groupings and main market’s headline price. Laid out by a separate service; the venue computes no layout. Public, cached for five minutes.',
+        'Every listing on the supplied 2D layout, by column: its slug, groupings, primary area and main market’s headline price. Titles are `GET /map/titles`. Laid out by a separate service; the venue computes no layout. Public, cached for five minutes.',
       ok: { status: 200, schema: S.PaperMap, description: 'The whole map.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/map/titles',
+      tags: ['listings'],
+      summary: 'Titles of the papers on the map',
+      description:
+        'The title of every listing on the map, by slug: what `GET /map` leaves out, so a client can draw the map before they arrive. Public, cached for five minutes.',
+      ok: { status: 200, schema: S.MapTitles, description: 'The titles.' },
     }),
   );
 

@@ -22,7 +22,17 @@ const MapCanvas = dynamic(() => import('./MapCanvas'), {
 });
 
 type PaperMap = z.output<typeof S.PaperMap>;
-type Point = PaperMap['points'][number];
+type MapTitles = z.output<typeof S.MapTitles>;
+/** One paper, from the map's columns. Its title is a separate, later fetch (`titleOf`). */
+interface Point {
+  slug: string;
+  primaryArea: string | null;
+  x: number;
+  y: number;
+  region: number | null;
+  cluster: number | null;
+  headline: number | null;
+}
 type Related = z.output<typeof S.ListingRelated>;
 type ColourBy = 'region' | 'cluster' | 'area' | 'odds';
 type MapSearch = z.output<typeof S.MapSearch>;
@@ -61,7 +71,8 @@ const UNMATCHED_ALPHA = 22;
 
 /**
  * `/map`, full screen: every listed paper on the layout a separate similarity service
- * supplied (`GET /api/v1/map`), fetched once, anonymously. Colour by its
+ * supplied (`GET /api/v1/map`), fetched once, anonymously, and drawn as soon
+ * as it arrives; the titles, most of the bytes, follow (`/map/titles`). Colour by its
  * groupings, the primary area or the main market's headline (a price, never
  * a value). Selecting a paper draws lines to the papers the same service
  * named as related (`GET /listings/{id}/related`), so the map and the paper
@@ -86,8 +97,13 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
   const frame = useRef<HTMLDivElement>(null);
   const height = useFillViewport(frame);
 
-  const points = data?.points;
   const derived = useMemo(() => (data ? derive(data) : null), [data]);
+  const points = derived?.points;
+  // Asked for only once the map is drawable, so the two never compete for the line.
+  const { data: titles } = useSWR<MapTitles>(data ? '/api/v1/map/titles' : null, publicJson, {
+    revalidateOnFocus: false,
+  });
+  const titleOf = (i: number): ReactNode => titles?.titles[points![i].slug] ?? <span className="italic">…</span>;
   const colours = useMemo(
     () => (points && derived ? paint(points, colourBy, derived.areaIndex) : null),
     [points, colourBy, derived],
@@ -165,10 +181,11 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
   }, [redraw, matches, points]);
 
   // Redrawn, the rest is hidden and the matches are laid out again among themselves, in a worker, and drawn as they settle.
-  const { data: relatedEdges } = useSWR<MapRelated>(redraw ? '/api/v1/map/related' : null, publicJson, {
+  const relaySubset = onlyMatches && matches && matches.length <= MAX_RELAYOUT ? matches : null;
+  // Fetched only once a search needs it: most visits never search.
+  const { data: relatedEdges } = useSWR<MapRelated>(relaySubset ? '/api/v1/map/related' : null, publicJson, {
     revalidateOnFocus: false,
   });
-  const relaySubset = onlyMatches && matches && matches.length <= MAX_RELAYOUT ? matches : null;
   const [layout, setLayout] = useState<{ of: number[]; positions: Float32Array; settled: boolean } | null>(null);
   // One worker for the page, made on first use; a new job supersedes the last.
   const worker = useRef<Worker | null>(null);
@@ -271,7 +288,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
   const clusterName = (p: Point) => (p.cluster !== null ? derived?.clusterNames.get(p.cluster) : undefined);
   const empty = error
     ? 'The map could not be loaded.'
-    : data?.points.length === 0
+    : data?.slugs.length === 0
       ? 'No map has been supplied yet.'
       : null;
 
@@ -303,7 +320,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
           className="pointer-events-none absolute z-20 max-w-[380px] bg-ink px-2 py-1 font-sans text-xs text-white"
           style={{ left: hover.x + 14, top: hover.y + 10 }}
         >
-          {points[hover.index].title}
+          {titleOf(hover.index)}
           <span className="block opacity-70">
             {[clusterName(points[hover.index]), headlineText(points[hover.index].headline)].filter(Boolean).join(' · ')}
           </span>
@@ -393,7 +410,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
                   {matches.slice(0, SEARCH_HITS).map((i) => (
                     <li key={i}>
                       <button type="button" className={`${ui.linkBtn} text-left`} onClick={() => go(i)}>
-                        {points![i].title}
+                        {titleOf(i)}
                       </button>{' '}
                       <Odds headline={points![i].headline} />
                     </li>
@@ -405,7 +422,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
             {selectedPoint && (
               <div className="border-t border-rule-soft pt-2.5">
                 <div className="font-serif text-[15px] leading-snug">
-                  <Link href={`/papers/${selectedPoint.slug}`}>{selectedPoint.title}</Link>
+                  <Link href={`/papers/${selectedPoint.slug}`}>{titleOf(selected!)}</Link>
                 </div>
                 <p className="mt-1 text-xs text-subtle">
                   <Odds headline={selectedPoint.headline} />
@@ -559,30 +576,30 @@ function Legend({ colourBy, areas }: { colourBy: ColourBy; areas: string[] }) {
 
 /** Everything that depends only on the map, computed once per fetch. */
 function derive(data: PaperMap) {
-  const positions = normalise(data.points);
+  const points: Point[] = data.slugs.map((slug, i) => ({
+    slug,
+    primaryArea: data.area[i] === null ? null : data.areas[data.area[i]],
+    x: data.x[i],
+    y: data.y[i],
+    region: data.region[i],
+    cluster: data.cluster[i],
+    headline: data.headline[i],
+  }));
+  const positions = normalise(points);
   const regionNames = new Map(data.regions.map((t) => [t.number, t.label]));
   const clusterNames = new Map(data.clusters.map((t) => [t.number, t.label]));
-  const areas = [...new Set(data.points.map((p) => p.primaryArea ?? ''))].sort();
+  // '' is "none given" in the legend, first.
+  const areas = data.area.includes(null) ? ['', ...data.areas] : data.areas;
   return {
-    points: data.points,
+    points,
     positions,
     regionNames,
     clusterNames,
     areas,
     areaIndex: new Map(areas.map((a, i) => [a, i])),
-    bySlug: new Map(data.points.map((p, i) => [p.slug, i])),
-    regionLabels: topicLabels(
-      positions,
-      data.points.map((p) => p.region),
-      regionNames,
-      MIN_LABELLED.region,
-    ),
-    clusterLabels: topicLabels(
-      positions,
-      data.points.map((p) => p.cluster),
-      clusterNames,
-      MIN_LABELLED.cluster,
-    ),
+    bySlug: new Map(data.slugs.map((slug, i) => [slug, i])),
+    regionLabels: topicLabels(positions, data.region, regionNames, MIN_LABELLED.region),
+    clusterLabels: topicLabels(positions, data.cluster, clusterNames, MIN_LABELLED.cluster),
   };
 }
 

@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- response bodies are checked field by field */
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { markets } from '@/db/schema';
 import { marketHeadline } from '@/lib/headline';
+import * as mapTitlesRoute from '@/app/api/v1/map/titles/route';
 import { MINIMAP_NEAREST } from '@/lib/map';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
@@ -15,7 +17,7 @@ import {
   resolveListing,
   sparklines,
 } from '@/server/views';
-import { api, trader } from './api-client';
+import { api, ORIGIN, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
@@ -427,23 +429,74 @@ describe('the paper map', () => {
 
     const got = await getMap();
     expect(got.status).toBe(200);
-    expect(got.headers.get('cache-control')).toBe('public, max-age=300');
-    expect(got.body.points.map((p: any) => [p.slug, p.x, p.y, p.region, p.cluster])).toEqual([
-      ['a', 1, 2, 0, 3],
-      ['b', -1, 5, 1, null],
-    ]);
-    expect(got.body.points[0].title).toBe('Paper a');
-    expect(got.body.points[0].primaryArea).toBe('area');
-    expect(got.body.points[0].headline).toBeCloseTo(0.5);
-    expect(got.body.points[1].headline).toBeNull();
+    expect(got.headers.get('cache-control')).toBe('public, max-age=300, stale-while-revalidate=3600');
+    const { slugs, x, y, region, cluster, area, areas, headline } = got.body;
+    expect({ slugs, x, y, region, cluster, area, areas }).toEqual({
+      slugs: ['a', 'b'],
+      x: [1, -1],
+      y: [2, 5],
+      region: [0, 1],
+      cluster: [3, null],
+      area: [0, 0],
+      areas: ['area'],
+    });
+    expect(headline[0]).toBeCloseTo(0.5);
+    expect(headline[1]).toBeNull();
     expect(got.body.regions).toEqual([
       { number: 0, label: 'first region' },
       { number: 1, label: 'second region' },
     ]);
     expect(got.body.clusters).toEqual([{ number: 3, label: 'a cluster' }]);
 
+    // Titles are their own request, by slug.
+    const titles = await api('GET', '/map/titles');
+    expect(titles.status).toBe(200);
+    expect(titles.body).toEqual({ titles: { a: 'Paper a', b: 'Paper b' } });
+
     await post({ slug: 'not-yet', title: 'Later' });
-    expect((await getMap()).body.points.map((p: any) => p.slug)).toEqual(['a', 'b', 'not-yet']);
+    const later = await getMap();
+    expect(later.body.slugs).toEqual(['a', 'b', 'not-yet']);
+    expect(later.body.area).toEqual([0, 0, null]);
+    expect((await api('GET', '/map/titles')).body.titles['not-yet']).toBe('Later');
+  });
+
+  it('sends a large body compressed when the client accepts it', async () => {
+    const slugs = Array.from({ length: 60 }, (_, i) => `paper-${i}`);
+    for (const slug of slugs) await post({ slug, title: `A paper with a long enough title, number ${slug}` });
+    await put({ points: slugs.map((slug, i) => ({ slug, x: i, y: -i })) });
+    const plain = await api('GET', '/map/titles');
+    expect(plain.headers.get('content-encoding')).toBeNull();
+
+    for (const [accept, encoding, decode] of [
+      ['gzip, deflate, br', 'br', brotliDecompressSync],
+      ['gzip', 'gzip', gunzipSync],
+      ['br;q=0, gzip', 'gzip', gunzipSync],
+    ] as const) {
+      // The handler itself: `api()` reads the body as text.
+      const req = new Request(new URL('/api/v1/map/titles', ORIGIN), { headers: { 'accept-encoding': accept } });
+      const res = await mapTitlesRoute.GET(req, { params: Promise.resolve({}) });
+      expect(res.headers.get('content-encoding')).toBe(encoding);
+      expect(res.headers.get('vary')).toBe('Accept-Encoding');
+      expect(res.headers.get('etag')).toBe(plain.headers.get('etag'));
+      expect(JSON.parse(decode(Buffer.from(await res.arrayBuffer())).toString())).toEqual(plain.body);
+    }
+  });
+
+  it('answers a revalidation with 304 until the map changes', async () => {
+    await post({ slug: 'a', title: 'a' });
+    await put({ points: [{ slug: 'a', x: 0, y: 0 }] });
+    const first = await getMap();
+    const etag = first.headers.get('etag')!;
+    expect(etag).toMatch(/^".+"$/);
+    const again = await api('GET', '/map', { headers: { 'if-none-match': etag } });
+    expect(again.status).toBe(304);
+    expect(again.body).toBeNull();
+    // A write bumps the cache: the next read is the new map, under a new tag.
+    await put({ points: [{ slug: 'a', x: 1, y: 1 }] });
+    const changed = await api('GET', '/map', { headers: { 'if-none-match': etag } });
+    expect(changed.status).toBe(200);
+    expect(changed.body.x).toEqual([1]);
+    expect(changed.headers.get('etag')).not.toBe(etag);
   });
 
   it('is replaced whole, and empty clears it', async () => {
@@ -451,10 +504,10 @@ describe('the paper map', () => {
     await put({ points: [{ slug: 'a', x: 0, y: 0 }], regions: [{ number: 0, label: 'old' }] });
     await put({ points: [{ slug: 'b', x: 1, y: 1 }] });
     const got = await getMap();
-    expect(got.body.points.map((p: any) => p.slug)).toEqual(['b']);
+    expect(got.body.slugs).toEqual(['b']);
     expect(got.body.regions).toEqual([]);
     await put({ points: [] });
-    expect((await getMap()).body.points).toEqual([]);
+    expect((await getMap()).body.slugs).toEqual([]);
   });
 
   it('needs the admin scope to write and refuses a non-finite coordinate', async () => {
@@ -490,6 +543,25 @@ describe('a paper’s minimap', () => {
   it('is null off the map', async () => {
     await post({ slug: 'c', title: 'c' });
     expect(await minimap('c')).toBeNull();
+    expect((await api('GET', '/listings/c/minimap')).status).toBe(404);
+  });
+
+  it('is served by the API, public and cached, and follows a change to the related list', async () => {
+    for (const slug of ['c', 'd', 'e']) await post({ slug, title: slug });
+    await putMap([
+      { slug: 'c', x: 0, y: 0 },
+      { slug: 'd', x: 1, y: 0 },
+      { slug: 'e', x: 2, y: 0 },
+    ]);
+    await putRelated('c', ['d']);
+    const got = await api('GET', '/listings/c/minimap');
+    expect(got.status).toBe(200);
+    expect(got.headers.get('cache-control')).toMatch(/^public, /);
+    expect(got.body).toEqual(JSON.parse(JSON.stringify(await minimap('c'))));
+    expect(got.body.related.map((i: number) => got.body.points[i].slug)).toEqual(['d']);
+    await putRelated('c', ['e']);
+    const after = await api('GET', '/listings/c/minimap');
+    expect(after.body.related.map((i: number) => after.body.points[i].slug)).toEqual(['e']);
   });
 
   it('takes in the nearest papers and the related ones wherever they lie, with the related pairs among them', async () => {
