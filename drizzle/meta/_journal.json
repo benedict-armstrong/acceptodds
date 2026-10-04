@@ -204,6 +204,20 @@
       "when": 1791107427134,
       "tag": "0028_paper_map",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791124156302,
+      "tag": "0029_map_vectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791125851597,
+      "tag": "0030_listing_transitions",
+      "breakpoints": true
     }
   ]
 }

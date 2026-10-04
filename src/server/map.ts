@@ -15,6 +15,8 @@ export interface MapPointInput {
   y: number;
   region?: number | null;
   cluster?: number | null;
+  /** The service's compressed embedding; every point's the same length. Only cosine distances are read. */
+  vector?: number[] | null;
 }
 
 export interface MapTopicInput {
@@ -28,7 +30,7 @@ export interface MapInput {
   clusters: MapTopicInput[];
 }
 
-/** Rows per insert: five parameters a row, well under Postgres's 65,535. */
+/** Rows per insert: six parameters a row, well under Postgres's 65,535. */
 const CHUNK = 5000;
 
 /**
@@ -53,6 +55,7 @@ export async function setMap(input: MapInput, database: Database = getDb()): Pro
           y: p.y,
           region: p.region ?? null,
           cluster: p.cluster ?? null,
+          vector: p.vector ?? null,
         })),
       );
     }

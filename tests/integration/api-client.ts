@@ -25,6 +25,9 @@ import * as listingViewRoute from '@/app/api/v1/listings/[id]/view/route';
 import * as listingCitationsRoute from '@/app/api/v1/listings/[id]/citations/route';
 import * as listingRelatedRoute from '@/app/api/v1/listings/[id]/related/route';
 import * as mapRoute from '@/app/api/v1/map/route';
+import * as mapSearchRoute from '@/app/api/v1/map/search/route';
+import * as mapRelatedRoute from '@/app/api/v1/map/related/route';
+import * as transitionsRoute from '@/app/api/v1/transitions/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
 import * as groupsRoute from '@/app/api/v1/groups/route';
 import * as groupJoinRoute from '@/app/api/v1/groups/join/route';
@@ -79,6 +82,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/listings/[id]/citations', listingCitationsRoute],
   ['/listings/[id]/related', listingRelatedRoute],
   ['/map', mapRoute],
+  ['/map/search', mapSearchRoute],
+  ['/map/related', mapRelatedRoute],
+  ['/transitions', transitionsRoute],
   ['/leaderboard', leaderboardRoute],
   ['/groups', groupsRoute],
   // A static segment wins over a dynamic one, as in Next.

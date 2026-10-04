@@ -462,6 +462,15 @@ describe('the paper map', () => {
     expect((await put({ points: [] }, reader.token)).status).toBe(403);
     expect((await put({ points: [{ slug: 'a', x: 'far', y: 0 }] })).status).toBe(400);
   });
+
+  it('refuses vectors of different lengths', async () => {
+    const points = [
+      { slug: 'a', x: 0, y: 0, vector: [1, 2, 3] },
+      { slug: 'b', x: 1, y: 1, vector: [1, 2] },
+    ];
+    expect((await put({ points })).status).toBe(400);
+    expect((await put({ points: [points[0], { ...points[1], vector: null }] })).status).toBe(200);
+  });
 });
 
 describe('a paper’s minimap', () => {
@@ -471,7 +480,7 @@ describe('a paper’s minimap', () => {
       token: admin.token,
       body: { related: slugs.map((slug) => ({ slug, score: 1 })) },
     });
-  const putMap = (points: { slug: string; x: number; y: number; cluster?: number }[]) =>
+  const putMap = (points: { slug: string; x: number; y: number; cluster?: number; vector?: number[] }[]) =>
     api('PUT', '/map', { token: admin.token, body: { points, clusters: [{ number: 1, label: 'near' }] } });
   const minimap = async (slug: string) => {
     const listing = await resolveListing(slug);
@@ -515,5 +524,31 @@ describe('a paper’s minimap', () => {
     expect(m.clusters).toEqual([{ number: 1, label: 'near' }]);
     const pair = ([a, b]: [number, number]) => `${m.points[a].slug}>${m.points[b].slug}`;
     expect(m.edges.map(pair).sort()).toEqual(['c>far', 'c>n0', 'far>c', 'far>n1']);
+    // No vectors were supplied: nothing to redraw from.
+    expect(m.vectors).toBeNull();
+  });
+
+  it('picks the nearest papers by vector from the nearest on the map, and sends every vector', async () => {
+    // On the map n0 is nearest; by vector the first ten are the farthest from the paper.
+    const line = Array.from({ length: MINIMAP_NEAREST + 10 }, (_, k) => ({
+      slug: `n${k}`,
+      x: k + 1,
+      y: 0,
+      vector: k < 10 ? [0, 1] : [1000, k],
+    }));
+    for (const slug of ['c', 'far', ...line.map((p) => p.slug)]) await post({ slug, title: slug });
+    await putMap([{ slug: 'c', x: 0, y: 0, vector: [1, 0] }, { slug: 'far', x: 1000, y: 0, vector: [0, -1] }, ...line]);
+    await putRelated('c', ['far', 'n0']);
+
+    const m = (await minimap('c'))!;
+    const slugs = m.points.map((p) => p.slug);
+    expect(slugs.filter((s) => s.startsWith('n'))).toHaveLength(MINIMAP_NEAREST + 1);
+    // n0 is related, so it stays; n1–n9 are near on the map but far by vector.
+    expect(slugs).toContain('n0');
+    for (let k = 1; k < 10; k++) expect(slugs).not.toContain(`n${k}`);
+    expect(slugs).toContain(`n${MINIMAP_NEAREST + 9}`);
+    expect(m.vectors).toEqual(
+      m.points.map((p) => (p.slug === 'c' ? [1, 0] : (line.find((l) => l.slug === p.slug)?.vector ?? [0, -1]))),
+    );
   });
 });

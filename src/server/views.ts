@@ -19,11 +19,12 @@ import {
 } from '@/db/schema';
 import { headlinePrice } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
-import { MINIMAP_NEAREST } from '@/lib/map';
+import { MINIMAP_CANDIDATES, MINIMAP_NEAREST } from '@/lib/map';
 import { percentAhead } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import { containsPattern, parseSearch, requiredText, websearchOf, type SearchNode } from '@/lib/query';
 import { normalizeSearch, prefixTsquery } from '@/lib/search';
+import { cosineDistance } from '@/lib/vectors';
 import { ApiError } from './api/errors';
 import { standingsGeneration } from './standings-cache';
 import { valuations } from './valuation';
@@ -609,26 +610,33 @@ export async function paperMap(database: Database = getDb()): Promise<PaperMap> 
 }
 
 export interface Minimap {
-  /** The paper itself, its `MINIMAP_NEAREST` nearest papers on the map and its related papers on the map. */
+  /** The paper itself, its `MINIMAP_NEAREST` nearest papers and its related papers on the map. */
   points: MapPointView[];
+  /**
+   * The supplied vector of each point, in `points`' order: what the browser
+   * lays the piece out again from. `null` unless every point has one.
+   */
+  vectors: number[][] | null;
   /** Index of the paper itself in `points`. */
   self: number;
   /** Indexes into `points` of its related papers, in the service's order. */
   related: number[];
   /** Related papers that are listed but not on the map. */
   relatedElsewhere: number;
-  /** Every related pair between `points`, each listing's best `MAP_RELATED_DEPTH`, as indexes: what groups them in a redraw. */
+  /** Every related pair between `points`, each listing's best `MAP_RELATED_DEPTH`, as indexes: tied close in a redraw. */
   edges: [number, number][];
   clusters: { number: number; label: string }[];
 }
 
 /**
- * The paper page's minimap: the paper among the papers nearest it on the
- * supplied map and its related papers wherever they lie, with the related
- * pairs between them all, for the
- * browser to lay out again round the paper (`lib/map-layout.ts`
- * `settleAround`). Positions and
- * relatedness are both other services'; nothing is computed from the papers
+ * The paper page's minimap: the paper among the papers nearest it and its
+ * related papers wherever they lie on the supplied map, with their vectors
+ * and the related pairs between them all, for the browser to lay out again
+ * round the paper (`lib/map-layout.ts` `embedAround`). "Nearest" is by
+ * vector when the paper has one: of its `MINIMAP_CANDIDATES` nearest on the
+ * map, the `MINIMAP_NEAREST` with the smallest cosine distance, since the 2D
+ * map has flattened what the vectors still hold. Positions, vectors and
+ * relatedness are all other services'; nothing is computed from the papers
  * here. `null` when the paper is not on the map. `related` is
  * `listingRelatedTo(listing)`.
  */
@@ -641,37 +649,54 @@ export async function listingMinimap(
   if (!centre) return null;
   const relatedSlugs = related.map((r) => r.listing.slug);
   const d2 = sql`(${mapPoints.x} - ${centre.x}) ^ 2 + (${mapPoints.y} - ${centre.y}) ^ 2`;
-  const [nearest, clusters] = await Promise.all([
+  const [candidates, clusters] = await Promise.all([
     database
-      .select({ slug: mapPoints.slug })
+      .select({ slug: mapPoints.slug, vector: mapPoints.vector })
       .from(mapPoints)
       .innerJoin(listings, eq(listings.slug, mapPoints.slug))
+      .where(ne(mapPoints.slug, listing.slug))
       .orderBy(d2)
-      .limit(MINIMAP_NEAREST + 1),
+      .limit(centre.vector ? MINIMAP_CANDIDATES : MINIMAP_NEAREST),
     database
       .select({ number: mapTopics.number, label: mapTopics.label })
       .from(mapTopics)
       .where(eq(mapTopics.level, 'cluster'))
       .orderBy(asc(mapTopics.number)),
   ]);
+  const nearest = centre.vector
+    ? candidates
+        .filter((c) => c.vector)
+        .map((c) => ({ slug: c.slug, d: cosineDistance(centre.vector!, c.vector!) }))
+        .sort((a, b) => a.d - b.d || (a.slug < b.slug ? -1 : 1))
+        .slice(0, MINIMAP_NEAREST)
+    : candidates;
   const wanted = [...new Set([listing.slug, ...nearest.map((r) => r.slug), ...relatedSlugs])];
-  const points = await mapPointRows(database).where(inArray(mapPoints.slug, wanted)).orderBy(asc(mapPoints.slug));
-  const index = new Map(points.map((p, i) => [p.slug, i]));
-  const pairs = await database
-    .select({ from: listings.slug, to: listingRelated.relatedSlug })
-    .from(listingRelated)
-    .innerJoin(listings, eq(listings.id, listingRelated.listingId))
-    .where(
-      and(
-        inArray(listings.slug, wanted),
-        inArray(listingRelated.relatedSlug, wanted),
-        sql`${listingRelated.position} < ${MAP_RELATED_DEPTH}`,
+  const [points, vectorRows, pairs] = await Promise.all([
+    mapPointRows(database).where(inArray(mapPoints.slug, wanted)).orderBy(asc(mapPoints.slug)),
+    database
+      .select({ slug: mapPoints.slug, vector: mapPoints.vector })
+      .from(mapPoints)
+      .where(inArray(mapPoints.slug, wanted)),
+    database
+      .select({ from: listings.slug, to: listingRelated.relatedSlug })
+      .from(listingRelated)
+      .innerJoin(listings, eq(listings.id, listingRelated.listingId))
+      .where(
+        and(
+          inArray(listings.slug, wanted),
+          inArray(listingRelated.relatedSlug, wanted),
+          sql`${listingRelated.position} < ${MAP_RELATED_DEPTH}`,
+        ),
       ),
-    );
+  ]);
+  const vectorOf = new Map(vectorRows.map((r) => [r.slug, r.vector]));
+  const vectors = points.every((p) => vectorOf.get(p.slug)) ? points.map((p) => vectorOf.get(p.slug)!) : null;
+  const index = new Map(points.map((p, i) => [p.slug, i]));
   const on = relatedSlugs.flatMap((slug) => index.get(slug) ?? []);
   const here = new Set(points.map((p) => p.cluster));
   return {
     points,
+    vectors,
     self: index.get(listing.slug)!,
     related: on,
     relatedElsewhere: related.length - on.length,
@@ -706,6 +731,25 @@ export async function mapRelated(database: Database = getDb()): Promise<{ from: 
      order by l.slug, lr.position
   `);
   return result.rows;
+}
+
+/**
+ * How many visitors read one listing and then another (`listing_transitions`),
+ * by slug, most first. Only totals exist to be read.
+ */
+export async function listingTransitionCounts(
+  min: number,
+  database: Database = getDb(),
+): Promise<{ from: string; to: string; count: number }[]> {
+  const result = await database.execute<{ from: string; to: string; count: number }>(sql`
+    select a.slug as "from", b.slug as "to", t.count
+      from listing_transitions t
+      join listings a on a.id = t.from_listing_id
+      join listings b on b.id = t.to_listing_id
+     where t.count >= ${min}
+     order by t.count desc, a.slug, b.slug
+  `);
+  return result.rows.map((r) => ({ ...r, count: Number(r.count) }));
 }
 
 /** Listings, newest first; or, with a non-blank `q`, by search rank (`searchListings`). */

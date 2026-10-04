@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { relatedGroups, settleAround } from '@/lib/map-layout';
+import { embedAround } from '@/lib/map-layout';
 import { MAP_SIZE } from '@/lib/map';
+import { cosineDistance } from '@/lib/vectors';
 
 const last = <T>(frames: Generator<T>): T => {
   let out: T | undefined;
@@ -9,91 +10,89 @@ const last = <T>(frames: Generator<T>): T => {
   return out!;
 };
 
-/** A piece of a map: `n` points scattered by `seed`. */
-function piece(n: number, seed: number): Float32Array {
+/** A seeded stream in [0, 1). */
+function stream(seed: number): () => number {
   let s = seed;
-  return Float32Array.from({ length: 2 * n }, () => ((s = (s * 16807) % 2147483647) / 2147483647) * 100);
+  return () => (s = (s * 16807) % 2147483647) / 2147483647;
 }
 
-/** Every pair within each of `cliques` (lists of indexes), as related pairs. */
-const tie = (cliques: number[][]): [number, number][] =>
-  cliques.flatMap((c) => c.flatMap((a) => c.filter((b) => b !== a).map((b) => [a, b] as [number, number])));
+/** A piece of a map: `n` points scattered by `seed`. */
+function piece(n: number, seed: number): Float32Array {
+  const r = stream(seed);
+  return Float32Array.from({ length: 2 * n }, () => r() * 100);
+}
 
-describe('relatedGroups', () => {
-  it('finds papers that name each other as groups, leaves the centre out and folds strays into the nearest', () => {
-    // 0 is the centre; 1–5 and 6–10 name each other; 11 names no one and sits by 6–10 on the map.
-    const positions = Float32Array.from([
-      50,
-      50,
-      ...[1, 2, 3, 4, 5].flatMap((k) => [k, 0]),
-      ...[1, 2, 3, 4, 5].flatMap((k) => [90 + k, 90]),
-      97,
-      90,
-    ]);
-    const g = relatedGroups(
-      positions,
-      [
-        ...tie([
-          [1, 2, 3, 4, 5],
-          [6, 7, 8, 9, 10],
-        ]),
-        [0, 1],
-      ],
-      0,
-    );
-    expect(g[0]).toBe(-1);
-    expect(new Set([1, 2, 3, 4, 5].map((i) => g[i])).size).toBe(1);
-    expect(new Set([6, 7, 8, 9, 10, 11].map((i) => g[i])).size).toBe(1);
-    expect(g[1]).not.toBe(g[6]);
-  });
+/** `n` vectors in `dims` dimensions, each near one of `topics` random directions (`topicOf`). */
+function vectors(n: number, dims: number, topicOf: (i: number) => number, seed: number): number[][] {
+  const r = stream(seed);
+  const topics = Array.from({ length: 8 }, () => Array.from({ length: dims }, () => r() - 0.5));
+  return Array.from({ length: n }, (_, i) => topics[topicOf(i)].map((v) => v + (r() - 0.5) * 0.15));
+}
 
-  it('puts everything in one group when no group is big enough', () => {
-    const g = relatedGroups(piece(6, 3), [[1, 2]], 0);
-    expect([...g]).toEqual([-1, 0, 0, 0, 0, 0]);
+describe('cosineDistance', () => {
+  it('is 0 for one direction at any scale, 2 for opposite, 1 for a zero vector', () => {
+    expect(cosineDistance([1, 2], [3, 6])).toBeCloseTo(0);
+    expect(cosineDistance([1, 2], [-2, -4])).toBeCloseTo(2);
+    expect(cosineDistance([1, 0], [0, 1])).toBeCloseTo(1);
+    expect(cosineDistance([0, 0], [1, 1])).toBe(1);
   });
 });
 
-describe('settleAround', () => {
-  it('keeps the paper at the centre and each group tighter than the piece, deterministically', () => {
-    const start = piece(40, 7);
-    const groups = [
-      Array.from({ length: 13 }, (_, k) => k + 1),
-      Array.from({ length: 13 }, (_, k) => k + 14),
-      Array.from({ length: 13 }, (_, k) => k + 27),
-    ];
-    const related = tie(groups);
-    const out = last(settleAround(start, 0, [1, 14, 27], related));
+describe('embedAround', () => {
+  // 0 is the paper; 1–20 share its topic, 21–40 and 41–60 two others. The map scatters them all evenly.
+  const n = 61;
+  const topic = (i: number) => (i <= 20 ? 0 : i <= 40 ? 1 : 2);
+  const vs = vectors(n, 32, topic, 5);
+  const start = piece(n, 7);
+  const d = (out: Float32Array, a: number, b: number) =>
+    Math.hypot(out[2 * a] - out[2 * b], out[2 * a + 1] - out[2 * b + 1]);
+  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+
+  it('keeps the paper at the centre, gathers what its vectors gather, deterministically', () => {
+    const out = last(embedAround(start, vs, 0, [], []));
     expect([out[0], out[1]]).toEqual([MAP_SIZE / 2, MAP_SIZE / 2]);
-    const d = (a: number, b: number) => Math.hypot(out[2 * a] - out[2 * b], out[2 * a + 1] - out[2 * b + 1]);
-    const mean = (pairs: [number, number][]) => pairs.reduce((s, [a, b]) => s + d(a, b), 0) / pairs.length;
-    const inside = groups.flatMap((g) =>
-      g.flatMap((a) => g.filter((b) => b > a).map((b) => [a, b] as [number, number])),
+    const own = Array.from({ length: 20 }, (_, k) => d(out, 0, k + 1));
+    const others = Array.from({ length: 40 }, (_, k) => d(out, 0, k + 21));
+    expect(mean(own)).toBeLessThan(mean(others) / 2);
+    expect(last(embedAround(start, vs, 0, [], []))).toEqual(out);
+  });
+
+  it('draws the paper’s related papers in, even from another topic', () => {
+    const ranked = [45, 50, 55];
+    const plain = last(embedAround(start, vs, 0, [], []));
+    const drawn = last(
+      embedAround(
+        start,
+        vs,
+        0,
+        ranked,
+        ranked.map((r) => [0, r]),
+      ),
     );
-    const across = groups[0].flatMap((a) => [...groups[1], ...groups[2]].map((b) => [a, b] as [number, number]));
-    expect(mean(inside)).toBeLessThan(mean(across) / 2);
-    expect(last(settleAround(start, 0, [1, 14, 27], related))).toEqual(out);
+    expect(mean(ranked.map((r) => d(drawn, 0, r)))).toBeLessThan(mean(ranked.map((r) => d(plain, 0, r))));
   });
 
   it('gives every paper a finite place of its own, whatever the ties', () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 3, max: 80 }),
+        fc.integer({ min: 1, max: 80 }),
         fc.integer({ min: 1, max: 1e6 }),
         fc.array(fc.tuple(fc.nat(), fc.nat()), { maxLength: 200 }),
-        (n, seed, pairs) => {
-          const related = pairs.map(([a, b]) => [a % n, b % n] as [number, number]);
+        (count, seed, pairs) => {
+          const related = pairs.map(([a, b]) => [a % count, b % count] as [number, number]);
           const out = last(
-            settleAround(
-              piece(n, seed),
+            embedAround(
+              piece(count, seed),
+              vectors(count, 8, (i) => i % 3, seed),
               0,
-              [1, 2].filter((i) => i < n),
+              [1, 2].filter((i) => i < count),
               related,
             ),
           );
+          expect(out).toHaveLength(2 * count);
           expect(out.every(Number.isFinite)).toBe(true);
-          for (let a = 0; a < n; a++)
-            for (let b = a + 1; b < n; b++)
-              expect(Math.hypot(out[2 * a] - out[2 * b], out[2 * a + 1] - out[2 * b + 1])).toBeGreaterThan(1);
+          if (count < 4) return;
+          for (let a = 0; a < count; a++) for (let b = a + 1; b < count; b++) expect(d(out, a, b)).toBeGreaterThan(1);
         },
       ),
       { numRuns: 30 },

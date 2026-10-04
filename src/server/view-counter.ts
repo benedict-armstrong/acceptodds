@@ -20,6 +20,10 @@ import { ipNetwork } from '@/lib/ip-network';
  * Counted by a beacon from the browser, not on render: a page served from
  * Cloudflare's cache never reaches the origin, and a crawler that runs no
  * script is not a viewer. Not a source of truth (§1.4): it writes no events.
+ *
+ * The same beacon may name the listing the visitor read just before
+ * (`countTransition`), for the similarity service: counted the same way, per
+ * ordered pair, and kept only as a total per pair.
  */
 
 /** Who is viewing: the account when there is one, else the client's network. */
@@ -28,10 +32,23 @@ export interface Viewer {
   ip: string | null;
 }
 
+function who(viewer: Viewer): string {
+  return viewer.accountId ? `account:${viewer.accountId}` : `net:${ipNetwork(viewer.ip) ?? ''}`;
+}
+
+function hmac(message: string): string {
+  return createHmac('sha256', process.env.BETTER_AUTH_SECRET ?? '')
+    .update(message)
+    .digest('hex');
+}
+
 export function visitorHash(day: string, viewer: Viewer): string {
-  const who = viewer.accountId ? `account:${viewer.accountId}` : `net:${ipNetwork(viewer.ip) ?? ''}`;
-  const key = process.env.BETTER_AUTH_SECRET ?? '';
-  return createHmac('sha256', key).update(`view\0${day}\0${who}`).digest('hex');
+  return hmac(`view\0${day}\0${who(viewer)}`);
+}
+
+/** The pair is inside the hash, so a row joins neither to a view nor to the visitor's other pairs. */
+export function transitionHash(day: string, viewer: Viewer, fromListingId: string, toListingId: string): string {
+  return hmac(`transition\0${day}\0${who(viewer)}\0${fromListingId}\0${toListingId}`);
 }
 
 /** A date in UTC, as `YYYY-MM-DD`. */
@@ -75,4 +92,42 @@ export async function countView(
   }
   const row = result.rows[0];
   return row ? Number(row.view_count) : null;
+}
+
+/**
+ * Count the visitor as having read `toListingId` after `fromListingId` today:
+ * once a day per visitor and ordered pair, summed into `listing_transitions`.
+ * Nothing is counted for a listing to itself or from a listing that does not
+ * exist. Returns whether the count went up.
+ */
+export async function countTransition(
+  fromListingId: string,
+  toListingId: string,
+  viewer: Viewer,
+  now: Date = new Date(),
+  database: Database = getDb(),
+): Promise<boolean> {
+  if (fromListingId === toListingId) return false;
+  const day = utcDay(now);
+  const visitor = transitionHash(day, viewer, fromListingId, toListingId);
+  const result = await database.execute(sql`
+    with ins as (
+      insert into listing_transition_visits (day, visitor)
+      select ${day}::date, ${visitor}
+       where exists (select 1 from listings where id = ${fromListingId}::uuid)
+         and exists (select 1 from listings where id = ${toListingId}::uuid)
+      on conflict do nothing
+      returning 1
+    )
+    insert into listing_transitions (from_listing_id, to_listing_id, count)
+    select ${fromListingId}::uuid, ${toListingId}::uuid, 1 from ins
+    on conflict (from_listing_id, to_listing_id) do update set count = listing_transitions.count + 1
+    returning 1
+  `);
+  if (Math.random() < 0.01) {
+    await database.execute(
+      sql`delete from listing_transition_visits where day < ${utcDay(new Date(now.getTime() - 86_400_000))}::date`,
+    );
+  }
+  return result.rows.length > 0;
 }

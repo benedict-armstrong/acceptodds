@@ -12,6 +12,7 @@ import {
   pgSequence,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -249,6 +250,9 @@ export const listingRelated = pgTable(
  * never by a foreign key. `x`/`y` are in the service's own units (the client
  * scales them); `region` and `cluster` are its coarse and fine groupings,
  * named in `map_topics`. None of it is interpreted here.
+ * `vector` is the service's embedding of the paper, compressed (a few dozen
+ * dimensions, any scale): only cosine distances between vectors are read,
+ * to pick a paper's neighbourhood and lay it out again (the minimap).
  */
 export const mapPoints = pgTable('map_points', {
   slug: text('slug').primaryKey(),
@@ -256,6 +260,7 @@ export const mapPoints = pgTable('map_points', {
   y: doublePrecision('y').notNull(),
   region: integer('region'),
   cluster: integer('cluster'),
+  vector: real('vector').array(),
 });
 
 /** The names of the map's groupings, replaced with `map_points`. `level` is `region` or `cluster`. */
@@ -778,6 +783,38 @@ export const listingViews = pgTable(
     visitor: text('visitor').notNull(),
   },
   (t) => [primaryKey({ columns: [t.listingId, t.day, t.visitor] }), index('listing_views_day_idx').on(t.day)],
+);
+
+/**
+ * How many visitors read one listing and then another (`server/view-counter.ts`):
+ * unique per visitor per day per ordered pair, summed, like `view_count`. Only
+ * the count is kept, never who or when, so nothing here is any one person's
+ * reading. Read by the similarity service (`GET /transitions`), never
+ * interpreted here. No foreign keys, like `listing_views`.
+ */
+export const listingTransitions = pgTable(
+  'listing_transitions',
+  {
+    fromListingId: uuid('from_listing_id').notNull(),
+    toListingId: uuid('to_listing_id').notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.fromListingId, t.toListingId] })],
+);
+
+/**
+ * Who went from one listing to another today, so a visitor counts once a day
+ * per pair. `visitor` is an HMAC of the day, the visitor and the pair, so a
+ * row cannot be joined to `listing_views` or to the same visitor's other
+ * pairs. Only the last two days' rows are kept.
+ */
+export const listingTransitionVisits = pgTable(
+  'listing_transition_visits',
+  {
+    day: date('day', { mode: 'string' }).notNull(),
+    visitor: text('visitor').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.visitor] })],
 );
 
 /**

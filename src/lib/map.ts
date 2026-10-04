@@ -140,8 +140,10 @@ export function sparseScale(shown: number, total: number): number {
   return Math.min(4, (total / shown) ** 0.25);
 }
 
-/** Nearest papers on the map a paper's minimap (the paper page's) takes in, besides its related papers. */
-export const MINIMAP_NEAREST = 60;
+/** Nearest papers a paper's minimap (the paper page's) takes in, besides its related papers. */
+export const MINIMAP_NEAREST = 100;
+/** Nearest papers on the map a minimap picks its `MINIMAP_NEAREST` from, by vector, when the paper has one. */
+export const MINIMAP_CANDIDATES = 400;
 /** A related paper this many times the nearest papers' distance or nearer widens a minimap to take it in. */
 export const MINIMAP_STRETCH = 2.5;
 

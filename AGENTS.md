@@ -813,6 +813,11 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   nothing here interprets them or the groupings. Slugs are matched when
   read; an unlisted one is skipped until it is listed. The research side's
   build and push scripts are in `../scraping/tags/map/`.
+- **Each point may carry a `vector`**: the service's embedding, compressed
+  (PCA to 64 dims, int8-range integers, so a minimap's page stays small),
+  every one the same length. Stored as `real[]` on `map_points`. Only
+  cosine distances between vectors are ever read (`lib/vectors.ts`), and
+  only for the minimap, below. A point without one is still on the map.
 - `GET /map` (`views.paperMap`) is the whole map in one response, each
   point with its listing's title and primary area and its main market's
   headline (void: `null`). Prices, never values (§1.1). Public, with
@@ -849,24 +854,30 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **The paper page's minimap** (`components/map/Minimap`, inside "Related
   papers") is a few papers from the same map around one paper, drawn by
   the same `MapCanvas`. `views.listingMinimap` picks them: the paper, its
-  `MINIMAP_NEAREST` (60) nearest papers on the map, and its related papers
-  wherever they lie. It also sends the related pairs among them. The
-  browser redraws them by default, in its own worker (the same one,
-  running `settleAround`), as **groups round the paper**:
-  1. `relatedGroups` finds groups by label propagation over the related
-     pairs. A group under 3 papers joins the big group it has most ties
-     to, or else its nearest one on the map, so no strays float off.
-  2. Each group is laid out on its own: related pairs short, map distances
-     only between papers near each other on the map, collision only.
-  3. The groups, as discs, are set round the paper in the direction each
-     lies on the map, as close in as they fit.
+  `MINIMAP_NEAREST` (100) nearest papers, and its related papers wherever
+  they lie. "Nearest" is by vector: of its `MINIMAP_CANDIDATES` (400)
+  nearest on the map, the 100 closest by cosine (by the map alone when the
+  paper has no vector). It sends their vectors (`null` unless every paper
+  has one) and the related pairs among them.
+- **The minimap is redrawn from the vectors, not the 2D map**, by default,
+  in the map's worker (`lib/map-layout.ts` `embedAround`): UMAP
+  (`umap-js`) over the piece alone, as the service builds its own map. The
+  kNN graph is by cosine distance, over few neighbours (7) with a low
+  `minDist` (0.02), so the piece breaks into groups rather than one even
+  blob, and every related pair (and the paper's
+  own related papers) counts as near as either end's nearest paper, so it
+  is always an edge: the related lists are the better judge, as they are
+  for the service. It is seeded from the map positions (so it keeps the
+  map's orientation) with a fixed RNG (so a paper always looks the same),
+  then dots are pushed apart, animated from the map and framed round the
+  paper (`lib/map.ts` `frameAround`). Without vectors there is no redraw,
+  only "as on the map".
 
-  Two things don't work, and both were tried: a graph layout of the whole
-  piece with repulsion (it settles into an even ball), and a stress layout
-  of map distances. Locally the map is an even spread, so the groups have
-  to come from relatedness. The redraw is animated from the map positions
-  and framed round the paper (`lib/map.ts` `frameAround`). "As on the map"
-  shows the supplied positions instead.
+  What was tried first and failed, all from 2D map positions: a graph
+  layout of the whole piece with repulsion (an even ball), a stress layout
+  of map distances, and groups by label propagation set round the paper as
+  discs (related papers ended up on the far side of their disc). Locally
+  the map is an even spread; the structure is only in the vectors.
 
 ### Crawlers and agents
 
@@ -899,6 +910,19 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   signed-in viewer's bucket), so a page
   Cloudflare cached still counts and a crawler without JS does not. Shown on
   the paper page and as `views` on the listing. Unlisted markets have no count.
+- **Which paper people read next is a total per ordered pair, nothing
+  more** (`listing_transitions`, for the similarity service). The beacon
+  adds `?from=<listing id>`: the paper this tab showed before, within 30
+  minutes, kept in `sessionStorage` (`document.referrer` is unchanged by a
+  client-side navigation). `countTransition` counts each (from, to) once
+  per visitor per day, like views, but the dedupe hash
+  (`listing_transition_visits`, two days) has the pair inside it, so a row
+  joins neither to `listing_views` nor to the same visitor's other pairs:
+  no one's path can be rebuilt. **Never store a sequence, a session id or a
+  timestamp per transition.** A bad or unknown `from` is ignored and never
+  costs the view. Read whole, with slugs, by `GET /transitions?min=`
+  (`admin`); the venue computes nothing from it — blending it into the
+  related lists is the similarity service's job, like the lists themselves.
 
 ### Following and the morning digest (#9)
 

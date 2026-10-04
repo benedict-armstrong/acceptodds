@@ -1,0 +1,1 @@
+ALTER TABLE "map_points" ADD COLUMN "vector" real[];

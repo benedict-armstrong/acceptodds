@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '@/db';
-import { listingViews } from '@/db/schema';
+import { listingTransitionVisits, listingViews } from '@/db/schema';
 import { upsertListing } from '@/server/listings';
-import { countView } from '@/server/view-counter';
+import { countTransition, countView } from '@/server/view-counter';
 import { api, signUp, trader } from './api-client';
 import { closePool, resetDatabase } from './helpers';
 
@@ -75,5 +76,70 @@ describe('POST /listings/{id}/view', () => {
   it('is a 404 for an unknown listing', async () => {
     const res = await view('nope', '203.0.113.1');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('transitions (?from= on the view beacon)', () => {
+  const after = (slug: string, from: string, ip: string) =>
+    api('POST', `/listings/${slug}/view?from=${from}`, {
+      headers: { 'cf-connecting-ip': ip, 'user-agent': 'Mozilla/5.0' },
+    });
+  const transitions = async (query = '') => {
+    const admin = await trader('similarity', ['admin']);
+    return api('GET', `/transitions${query}`, { token: admin.token });
+  };
+
+  it('counts each ordered pair once per visitor per day, and keeps only the total', async () => {
+    const { listing: a } = await upsertListing({ slug: 'a', title: 'A' });
+    const { listing: b } = await upsertListing({ slug: 'b', title: 'B' });
+    await after('b', a.id, '203.0.113.1');
+    await after('b', a.id, '203.0.113.1');
+    await after('b', a.id, '203.0.113.2');
+    await after('a', b.id, '203.0.113.1');
+    const res = await transitions();
+    expect(res.status).toBe(200);
+    expect(res.body.transitions).toEqual([
+      { from: 'a', to: 'b', count: 2 },
+      { from: 'b', to: 'a', count: 1 },
+    ]);
+    const visits = JSON.stringify(await db.select().from(listingTransitionVisits));
+    expect(visits).not.toContain('203.0.113');
+    expect(visits).not.toContain(a.id);
+  });
+
+  it('hashes each pair apart, so a visitor’s pairs and views cannot be joined', async () => {
+    const { listing: a } = await upsertListing({ slug: 'a', title: 'A' });
+    const { listing: b } = await upsertListing({ slug: 'b', title: 'B' });
+    const { listing: c } = await upsertListing({ slug: 'c', title: 'C' });
+    const viewer = { ip: '203.0.113.1' };
+    await countTransition(a.id, c.id, viewer);
+    await countTransition(b.id, c.id, viewer);
+    await countView(c.id, viewer);
+    const hashes = [
+      ...(await db.select().from(listingTransitionVisits)).map((r) => r.visitor),
+      ...(await db.select().from(listingViews)).map((r) => r.visitor),
+    ];
+    expect(new Set(hashes).size).toBe(3);
+  });
+
+  it('counts the view whatever `from` is, and no transition to itself, from junk or from an unknown listing', async () => {
+    const { listing: a } = await upsertListing({ slug: 'a', title: 'A' });
+    expect((await after('a', a.id, '203.0.113.1')).body.views).toBe(1);
+    expect((await after('a', 'not-a-uuid', '203.0.113.2')).body.views).toBe(2);
+    expect((await after('a', randomUUID(), '203.0.113.3')).body.views).toBe(3);
+    expect((await transitions()).body.transitions).toEqual([]);
+  });
+
+  it('filters by `min`, and is admin-only', async () => {
+    const { listing: a } = await upsertListing({ slug: 'a', title: 'A' });
+    const { listing: b } = await upsertListing({ slug: 'b', title: 'B' });
+    await upsertListing({ slug: 'c', title: 'C' });
+    await after('b', a.id, '203.0.113.1');
+    await after('b', a.id, '203.0.113.2');
+    await after('c', b.id, '203.0.113.1');
+    expect((await transitions('?min=2')).body.transitions).toEqual([{ from: 'a', to: 'b', count: 2 }]);
+    expect((await api('GET', '/transitions')).status).toBe(401);
+    const reader = await trader('reader', ['read']);
+    expect((await api('GET', '/transitions', { token: reader.token })).status).toBe(403);
   });
 });

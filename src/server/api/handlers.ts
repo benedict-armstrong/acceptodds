@@ -21,7 +21,7 @@ import {
 } from '../groups';
 import { setRelated, upsertListing } from '../listings';
 import { setMap } from '../map';
-import { countView } from '../view-counter';
+import { countTransition, countView } from '../view-counter';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
@@ -39,6 +39,7 @@ import {
   listListings as listListingsView,
   listingCitations,
   listingRelatedTo,
+  listingTransitionCounts,
   listMarkets as listMarketsView,
   listingView,
   marketTape,
@@ -171,14 +172,27 @@ export const getListing = route(async (req, params) => {
  * Count the caller as having viewed a listing today (unique per visitor per
  * day, `server/view-counter.ts`). Public, sent by the paper page from the
  * browser: a signed-in viewer is counted by account, anyone else by network.
- * Nothing about the visitor is stored but a daily hash.
+ * Nothing about the visitor is stored but a daily hash. `?from=` names the
+ * listing read just before, counted as a transition for the similarity service.
  */
 export const postListingView = route(async (req, params) => {
   const principal = await authenticate(req);
   const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
-  const views = await countView(listing.id, { accountId: principal?.account.id, ip: clientIp(req) });
+  const { from } = parseQuery(req, S.ViewQuery);
+  const viewer = { accountId: principal?.account.id, ip: clientIp(req) };
+  const views = await countView(listing.id, viewer);
   if (views === null) throw new ApiError(404, 'not_found', `no listing ${listing.id}`);
+  // A stale or mangled `from` must never cost the view: it is just not counted.
+  const fromId = S.Id.safeParse(from);
+  if (fromId.success) await countTransition(fromId.data, listing.id, viewer);
   return respond(S.ViewState, { listingId: listing.id, views }, { principal });
+});
+
+/** Totals of visitors who read one listing and then another, for the similarity service. */
+export const getTransitions = route(async (req) => {
+  const principal = await requireAuth(req, 'admin');
+  const { min } = parseQuery(req, S.TransitionsQuery);
+  return respond(S.Transitions, { transitions: await listingTransitionCounts(min) }, { principal });
 });
 
 /** A listing's bibliography and the listings citing it (#38). */

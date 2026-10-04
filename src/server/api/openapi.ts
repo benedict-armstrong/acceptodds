@@ -266,6 +266,21 @@ export function buildRegistry(): OpenAPIRegistry {
 
   r.registerPath(
     op({
+      method: 'get',
+      path: '/transitions',
+      tags: ['listings'],
+      summary: 'Which listings visitors read after which',
+      description:
+        'Per ordered pair of listings, how many visitors read the second after the first (once per visitor per day, summed), most first. Only totals are kept. For a similarity service; the venue computes nothing from it.',
+      scope: 'admin',
+      request: { query: S.TransitionsQuery },
+      ok: { status: 200, schema: S.Transitions, description: 'The pairs.' },
+      errors: { 400: 'validation_error' },
+    }),
+  );
+
+  r.registerPath(
+    op({
       method: 'put',
       path: '/map',
       tags: ['listings'],
@@ -671,8 +686,8 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'Count a view of a listing',
       description:
-        'Public. Counts the caller once per day: the visitor is a daily hash of IP and user agent, never stored in the clear. Sent by the paper page from the browser; a bot has no reason to call it.',
-      request: { params: listingIdParam },
+        'Public. Counts the caller once per day: the visitor is a daily hash of IP and user agent, never stored in the clear. Sent by the paper page from the browser; a bot has no reason to call it. `?from=` names the listing read just before, counted the same way per ordered pair.',
+      request: { params: listingIdParam, query: S.ViewQuery },
       ok: { status: 200, schema: S.ViewState, description: 'The listing’s views after this one.' },
       errors: { 404: 'not_found' },
     }),

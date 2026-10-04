@@ -336,6 +336,33 @@ export const ViewState = z
   })
   .meta({ id: 'ViewState' });
 
+export const ViewQuery = z.object({
+  from: z.string().max(100).optional().meta({
+    description:
+      'The id of the listing the visitor read just before, if any. Counted as a transition (`GET /transitions`); ignored when it is not a listing id.',
+  }),
+});
+
+export const TransitionsQuery = z.object({
+  min: z.coerce.number().int().min(1).default(1).meta({ description: 'Leave out pairs counted fewer times.' }),
+});
+
+export const Transitions = z
+  .object({
+    transitions: z.array(
+      z.object({
+        from: z.string().meta({ description: 'Slug of the listing read first.' }),
+        to: z.string().meta({ description: 'Slug of the listing read next.' }),
+        count: z.number().int().min(1).meta({ description: 'Unique visitors per day who did, summed.' }),
+      }),
+    ),
+  })
+  .meta({
+    id: 'Transitions',
+    description:
+      'How many visitors read one listing and then another, per ordered pair, most first. Totals only: no visitor, time or sequence is kept. For a similarity service; the venue interprets none of it.',
+  });
+
 export const HeadlineMove = z
   .object({
     marketId: Id,
@@ -979,6 +1006,9 @@ export const SetRelatedRequest = z
   })
   .meta({ id: 'SetRelatedRequest' });
 
+/** Longest map vector: compressed, it is sent to the browser for every paper in a minimap. */
+const MAX_MAP_VECTOR = 256;
+
 const MapTopicInput = z.object({ number: z.number().int().min(0), label: z.string().min(1).max(200) });
 
 export const SetMapRequest = z
@@ -991,9 +1021,16 @@ export const SetMapRequest = z
           y: z.number().finite(),
           region: z.number().int().min(0).nullable().optional(),
           cluster: z.number().int().min(0).nullable().optional(),
+          vector: z.array(z.number().finite()).min(2).max(MAX_MAP_VECTOR).nullable().optional().meta({
+            description:
+              'The paper’s embedding, compressed to a few dozen dimensions (int8-range integers keep pages small). Any scale: only cosine distances are read, to lay out a paper’s neighbourhood.',
+          }),
         }),
       )
       .max(200_000)
+      .refine((points) => new Set(points.flatMap((p) => (p.vector ? [p.vector.length] : []))).size <= 1, {
+        message: 'every vector must have the same length',
+      })
       .meta({
         description: 'One per listing; a repeated slug keeps its first point. Replaced whole; empty clears it.',
       }),
