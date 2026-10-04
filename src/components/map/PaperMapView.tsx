@@ -67,8 +67,11 @@ const UNMATCHED_ALPHA = 22;
  * named as related (`GET /listings/{id}/related`), so the map and the paper
  * page never disagree about what is related. The search is the home page's
  * (`GET /map/search`): what it finds stays lit, the rest fades.
+ * `initialPaper` (`?paper=<slug>`) opens on that paper, selected; the
+ * selection is then kept in the URL, so it can be shared and survives a
+ * reload.
  */
-export function PaperMapView({ signedIn }: { signedIn: boolean }) {
+export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; initialPaper: string | null }) {
   const { data, error } = useSWR<PaperMap>('/api/v1/map', publicJson, { revalidateOnFocus: false });
   const [colourBy, setColourBy] = useState<ColourBy>('region');
   const [labelMode, setLabelMode] = useState<LabelMode>('auto');
@@ -245,6 +248,25 @@ export function PaperMapView({ signedIn }: { signedIn: boolean }) {
     setFocus({ index: i });
   };
 
+  // `?paper=` once the map has loaded, then the selection back into the URL (without a navigation).
+  // Adjusted while rendering, once, as React advises for state that follows other state.
+  const [opened, setOpened] = useState(initialPaper === null);
+  if (!opened && derived) {
+    setOpened(true);
+    const i = derived.bySlug.get(initialPaper!);
+    if (i !== undefined) {
+      setSelected(i);
+      setFocus({ index: i });
+    }
+  }
+  useEffect(() => {
+    if (!opened) return;
+    const url = new URL(location.href);
+    if (selectedPoint) url.searchParams.set('paper', selectedPoint.slug);
+    else url.searchParams.delete('paper');
+    if (url.href !== location.href) history.replaceState(history.state, '', url);
+  }, [opened, selectedPoint]);
+
   const regionName = (p: Point) => (p.region !== null ? derived?.regionNames.get(p.region) : undefined);
   const clusterName = (p: Point) => (p.cluster !== null ? derived?.clusterNames.get(p.cluster) : undefined);
   const empty = error
@@ -270,6 +292,7 @@ export function PaperMapView({ signedIn }: { signedIn: boolean }) {
           focus={focus}
           onHover={setHover}
           onSelect={setSelected}
+          onOpen={(i) => window.open(`/papers/${encodeURIComponent(points![i].slug)}`, '_blank', 'noopener')}
         />
       )}
       {(empty || !data) && (
@@ -283,6 +306,10 @@ export function PaperMapView({ signedIn }: { signedIn: boolean }) {
           {points[hover.index].title}
           <span className="block opacity-70">
             {[clusterName(points[hover.index]), headlineText(points[hover.index].headline)].filter(Boolean).join(' · ')}
+          </span>
+          {/* Only ever rendered in the browser (a hover), so `navigator` is there. */}
+          <span className="mt-0.5 block opacity-50">
+            {/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}-click to open the paper
           </span>
         </div>
       )}

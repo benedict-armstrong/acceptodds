@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Deck, LinearInterpolator, OrthographicView, type OrthographicViewState } from '@deck.gl/core';
+import {
+  Deck,
+  LinearInterpolator,
+  OrthographicController,
+  OrthographicView,
+  type OrthographicViewState,
+} from '@deck.gl/core';
 import { LineLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import {
   CollisionFilterExtension,
@@ -19,6 +25,18 @@ const ACCENT: [number, number, number] = [179, 27, 27];
 const INK: [number, number, number, number] = [29, 29, 29, 230];
 const PAGE: [number, number, number, number] = [251, 250, 247, 230];
 const FILTER = new DataFilterExtension({ filterSize: 1 });
+
+/**
+ * deck's controller, except that a drag always pans. Its own turns a drag
+ * with ⌘, Ctrl, Alt or Shift held into a rotation, which a flat
+ * (orthographic) view cannot do, so the drag did nothing — and the minimap
+ * zooms with ⌘ held, so a drag straight after a zoom would be lost.
+ */
+class PanController extends OrthographicController {
+  isFunctionKeyPressed(event: Parameters<OrthographicController['isFunctionKeyPressed']>[0]): boolean {
+    return event.type === 'panstart' ? false : super.isFunctionKeyPressed(event);
+  }
+}
 
 /**
  * The map itself, in WebGL (deck.gl). Client-only: `PaperMapView` loads it
@@ -39,6 +57,10 @@ export default function MapCanvas({
   focus,
   onHover,
   onSelect,
+  onOpen,
+  dotRadius = 1.6,
+  dimmed: dimmedOpacity = 0.2,
+  embedded = false,
 }: {
   /** Interleaved x, y in `[0, MAP_SIZE]` (`lib/map.ts` `normalise`). */
   positions: Float32Array;
@@ -58,16 +80,31 @@ export default function MapCanvas({
   focus: { index: number } | null;
   onHover: (hover: { index: number; x: number; y: number } | null) => void;
   onSelect: (index: number | null) => void;
+  /** A paper clicked with ⌘ or Ctrl held, as a link would open in a new tab; without it, such a click selects. */
+  onOpen?: (index: number) => void;
+  /** A dot's radius in pixels at the opening view: small for the whole map, bigger for a piece of it. */
+  dotRadius?: number;
+  /** The other papers' opacity while one is selected. */
+  dimmed?: number;
+  /** Set in a page that scrolls (the paper page's minimap): the wheel scrolls the page, and zooms only with ⌘ or Ctrl. */
+  embedded?: boolean;
 }) {
   const parent = useRef<HTMLDivElement>(null);
   const deck = useRef<Deck<OrthographicView> | null>(null);
   const opening = useRef(0);
   const [zoom, setZoom] = useState<number | null>(null);
   const everyPoint = useMemo(() => new Float32Array(positions.length / 2).fill(1), [positions]);
-  const handlers = useRef({ onHover, onSelect });
+  const handlers = useRef({ onHover, onSelect, onOpen });
   useEffect(() => {
-    handlers.current = { onHover, onSelect };
+    handlers.current = { onHover, onSelect, onOpen };
   });
+
+  // ⌘- or Ctrl-click opens, like a link; a plain click selects.
+  const click = (index: number, e: Event) => {
+    const { onOpen, onSelect } = handlers.current;
+    if (onOpen && e instanceof MouseEvent && (e.metaKey || e.ctrlKey)) onOpen(index);
+    else onSelect(index);
+  };
 
   useEffect(() => {
     const el = parent.current!;
@@ -82,7 +119,7 @@ export default function MapCanvas({
       parent: el,
       views: new OrthographicView({ flipY: false }),
       initialViewState,
-      controller: { doubleClickZoom: true, inertia: true },
+      controller: { type: PanController, doubleClickZoom: true, inertia: true },
       getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
       onViewStateChange: ({ viewState }) => setZoom((viewState as OrthographicViewState).zoom as number),
       onClick: (info) => {
@@ -97,6 +134,19 @@ export default function MapCanvas({
       el.replaceChildren();
     };
   }, []);
+
+  // Embedded, the wheel scrolls the page and zooms only with ⌘ or Ctrl held (a trackpad pinch
+  // arrives as Ctrl + wheel), as an embedded Google map does. Caught on the way down, before
+  // deck's own listener on the canvas: a plain wheel is stopped there, and not prevented, so the page scrolls.
+  useEffect(() => {
+    if (!embedded) return;
+    const el = parent.current!;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
+    };
+    el.addEventListener('wheel', onWheel, { capture: true });
+    return () => el.removeEventListener('wheel', onWheel, { capture: true });
+  }, [embedded]);
 
   useEffect(() => {
     if (!focus || !deck.current) return;
@@ -144,13 +194,13 @@ export default function MapCanvas({
         filterEnabled: shown !== null,
         filterRange: [0.5, 1],
         radiusUnits: 'pixels',
-        getRadius: 1.6,
+        getRadius: dotRadius,
         radiusScale: scale,
         radiusMinPixels: 1,
-        opacity: dimmed ? 0.2 : 1,
+        opacity: dimmed ? dimmedOpacity : 1,
         pickable: true,
         onHover: ({ index, x, y }) => handlers.current.onHover(index >= 0 ? { index, x, y } : null),
-        onClick: ({ index }) => handlers.current.onSelect(index),
+        onClick: ({ index }, event) => click(index, event.srcEvent),
       }),
       held.length > 0 &&
         new ScatterplotLayer<number>({
@@ -163,8 +213,8 @@ export default function MapCanvas({
           lineWidthUnits: 'pixels',
           getLineWidth: 1.5,
           radiusUnits: 'pixels',
-          getRadius: 1.6 * scale + 3,
-          updateTriggers: { getPosition: positions, getRadius: scale },
+          getRadius: dotRadius * scale + 3,
+          updateTriggers: { getPosition: positions, getRadius: [scale, dotRadius] },
         }),
       starred.length > 0 &&
         new TextLayer<number>({
@@ -189,6 +239,8 @@ export default function MapCanvas({
           getTargetPosition: (j) => at(j),
           getColor: [...ACCENT, 140],
           getWidth: 1.2,
+          // The data is the same array while a redraw moves the points: without these the lines stay where they were.
+          updateTriggers: { getSourcePosition: [positions, selected], getTargetPosition: positions },
         }),
       selected !== null &&
         new ScatterplotLayer<number>({
@@ -207,8 +259,9 @@ export default function MapCanvas({
           pickable: true,
           onHover: ({ object, x, y }) =>
             handlers.current.onHover(object !== undefined ? { index: object, x, y } : null),
-          onClick: ({ object }) => handlers.current.onSelect(object ?? null),
-          updateTriggers: { getFillColor: [selected, colours], getRadius: selected },
+          onClick: ({ object }, event) =>
+            object === undefined ? handlers.current.onSelect(null) : click(object, event.srcEvent),
+          updateTriggers: { getPosition: positions, getFillColor: [selected, colours], getRadius: selected },
         }),
       labels.length > 0 &&
         new TextLayer<TopicLabel, CollisionFilterExtensionProps<TopicLabel>>({
@@ -228,7 +281,22 @@ export default function MapCanvas({
         }),
     ];
     deck.current.setProps({ layers });
-  }, [positions, colours, shown, everyPoint, starred, held, regions, clusters, labelMode, selected, neighbours, zoom]);
+  }, [
+    positions,
+    colours,
+    shown,
+    everyPoint,
+    starred,
+    held,
+    regions,
+    clusters,
+    labelMode,
+    selected,
+    neighbours,
+    zoom,
+    dotRadius,
+    dimmedOpacity,
+  ]);
 
   return <div ref={parent} className="relative h-full w-full" />;
 }

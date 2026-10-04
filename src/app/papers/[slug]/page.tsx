@@ -24,7 +24,15 @@ import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
-import { listingCitations, listingRelatedTo, listingView, resolveListing, type MarketView } from '@/server/views';
+import {
+  listingCitations,
+  listingMinimap,
+  listingRelatedTo,
+  listingView,
+  resolveListing,
+  type MarketView,
+} from '@/server/views';
+import { marketLiveFigures } from '../../markets/[slug]/figures';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
 import { SharePanel } from './SharePanel';
@@ -95,6 +103,7 @@ export default async function PaperPage({
     listingCitations(listing),
     listingRelatedTo(listing),
   ]);
+  const minimap = await listingMinimap(listing, related);
   const wanted = Array.isArray(sp.market) ? sp.market[0] : sp.market;
   const selected = markets.find((m) => m.market.slug === wanted) ?? markets[0];
 
@@ -102,6 +111,14 @@ export default async function PaperPage({
   const initial = selected ? await loadMarketLive(selected.market, viewer) : null;
   const following = viewer ? (await followedListingIds(viewer.account.id)).has(listing.id) : false;
   events.log('listing.read', { accountId: viewer?.account.id ?? null });
+  // Before the discussion, its figure numbered after the market's own.
+  const relatedPapers = (
+    <RelatedPapers
+      related={related}
+      minimap={minimap}
+      figure={(initial ? marketLiveFigures(initial.market, initial.venue !== null) : 0) + 1}
+    />
+  );
 
   return (
     <main className={ui.page}>
@@ -201,11 +218,17 @@ export default async function PaperPage({
         </section>
       )}
 
-      {initial && (
-        <MarketLive key={initial.market.id} initial={initial} embedded firstTable={markets.length > 1 ? 2 : 1} />
+      {initial ? (
+        <MarketLive
+          key={initial.market.id}
+          initial={initial}
+          embedded
+          firstTable={markets.length > 1 ? 2 : 1}
+          beforeDiscussion={relatedPapers}
+        />
+      ) : (
+        relatedPapers
       )}
-
-      <RelatedPapers related={related} />
 
       <Citations citations={citations} />
 

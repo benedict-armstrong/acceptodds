@@ -19,6 +19,7 @@ export const ANALYTICS_PARAMS: ReadonlySet<string> = new Set([
   'fpage',
   'hpage',
   'market',
+  'paper',
   'basis',
   'following',
   'tldr',

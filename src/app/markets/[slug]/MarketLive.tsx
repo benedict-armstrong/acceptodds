@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,7 @@ import { welcomeBetHref } from '@/lib/onboarding';
 import type { VenueField } from '@/server/venue-field';
 import type * as S from '@/server/api/schemas';
 import { Comments } from './Comments';
+import { showsVenueStanding } from './figures';
 import { TAPE_LIMIT } from './tape';
 import { TapeTable } from './TapeTable';
 import { FirstTrade } from './FirstTrade';
@@ -54,17 +55,20 @@ const POLL_MS = 3000;
  * A market's board, chart, trade box, tape and comments, kept live by polling.
  * `embedded` when it sits under a listing's own title (the paper page): the
  * question is then a sub-heading rather than the page title. Its tables are
- * numbered from `firstTable`.
+ * numbered from `firstTable`. `beforeDiscussion` goes between the board and
+ * the comments (the paper page's related papers).
  */
 export function MarketLive({
   initial,
   embedded = false,
   firstTable = 1,
+  beforeDiscussion,
 }: {
   initial: Initial;
   embedded?: boolean;
   /** The number of its first table: the page may have numbered tables above it. */
   firstTable?: number;
+  beforeDiscussion?: ReactNode;
 }) {
   const router = useRouter();
   const id = initial.market.id;
@@ -272,9 +276,11 @@ export function MarketLive({
       </div>
 
       {/* Only once it has traded: before that, its price is the opening one, not a belief. */}
-      {initial.venue && headline !== null && !untraded && market.status !== 'settled' && (
+      {initial.venue && headline !== null && showsVenueStanding(market, true) && (
         <VenueStanding field={initial.venue} headline={headline} />
       )}
+
+      {beforeDiscussion}
 
       <Comments
         marketId={id}

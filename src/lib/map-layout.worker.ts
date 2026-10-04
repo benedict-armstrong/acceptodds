@@ -1,4 +1,4 @@
-import { settle } from './map-layout';
+import { settle, settleAround } from './map-layout';
 
 /**
  * Runs `settle` off the main thread, so the map stays smooth while a subset
@@ -15,6 +15,8 @@ export type LayoutRequest =
       /** The supplier's cluster per point, -1 for none. */
       groups: Int32Array;
     }
+  /** Round one paper (`settleAround`, the paper page's minimap) rather than spread over the map (`settle`). */
+  | { id: number; start: Float32Array; around: { self: number; ranked: number[]; related: [number, number][] } }
   | { id: number; stop: true };
 export type LayoutFrame = { id: number; positions: Float32Array; settled: boolean };
 
@@ -24,7 +26,10 @@ self.onmessage = async (e: MessageEvent<LayoutRequest>) => {
   const job = e.data;
   current = job.id;
   if ('stop' in job) return;
-  const frames = settle(job.start, job.related, job.groups);
+  const frames =
+    'around' in job
+      ? settleAround(job.start, job.around.self, job.around.ranked, job.around.related)
+      : settle(job.start, job.related, job.groups);
   let next = frames.next();
   while (!next.done) {
     const following = frames.next();

@@ -139,3 +139,47 @@ export function sparseScale(shown: number, total: number): number {
   if (shown <= 0 || shown >= total) return 1;
   return Math.min(4, (total / shown) ** 0.25);
 }
+
+/** Nearest papers on the map a paper's minimap (the paper page's) takes in, besides its related papers. */
+export const MINIMAP_NEAREST = 60;
+/** A related paper this many times the nearest papers' distance or nearer widens a minimap to take it in. */
+export const MINIMAP_STRETCH = 2.5;
+
+/**
+ * A minimap's radius round its paper: the distance to its
+ * `MINIMAP_NEAREST`th nearest paper (`near`), widened to take in each related
+ * paper up to `MINIMAP_STRETCH` times that, with a margin. A related paper
+ * farther out is left off rather than shrink the rest. Any units.
+ */
+export function minimapRadius(near: number, related: readonly number[]): number {
+  return related.filter((d) => d <= near * MINIMAP_STRETCH).reduce((m, d) => Math.max(m, d * 1.1), near);
+}
+
+/**
+ * Interleaved positions moved so point `self` is at the centre of the map
+ * and `minimapRadius` round it fills half its span, which the canvas fits to
+ * the shorter side of its box: sized by its `take` nearest papers (by
+ * default `MINIMAP_NEAREST`). `related` are indexes. Points outside stay,
+ * past the edge, for a wide box and for panning.
+ */
+export function frameAround(
+  positions: Float32Array,
+  self: number,
+  related: readonly number[],
+  take: number = MINIMAP_NEAREST,
+): Float32Array {
+  const n = positions.length / 2;
+  const sx = positions[2 * self];
+  const sy = positions[2 * self + 1];
+  const dist = (i: number) => Math.hypot(positions[2 * i] - sx, positions[2 * i + 1] - sy);
+  const all = Float64Array.from({ length: n }, (_, i) => dist(i)).sort();
+  // `all[0]` is the paper itself; with fewer papers than wanted, the farthest sets it.
+  const near = all[Math.max(1, Math.min(take, n - 1))] || 1;
+  const scale = MAP_SIZE / 2 / minimapRadius(near, related.map(dist));
+  const out = new Float32Array(positions.length);
+  for (let i = 0; i < n; i++) {
+    out[2 * i] = MAP_SIZE / 2 + (positions[2 * i] - sx) * scale;
+    out[2 * i + 1] = MAP_SIZE / 2 + (positions[2 * i + 1] - sy) * scale;
+  }
+  return out;
+}

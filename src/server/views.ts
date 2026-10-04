@@ -19,6 +19,7 @@ import {
 } from '@/db/schema';
 import { headlinePrice } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
+import { MINIMAP_NEAREST } from '@/lib/map';
 import { percentAhead } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import { containsPattern, parseSearch, requiredText, websearchOf, type SearchNode } from '@/lib/query';
@@ -571,6 +572,27 @@ export interface PaperMap {
   clusters: { number: number; label: string }[];
 }
 
+/** Map points joined to their listing (an unlisted slug is skipped) and its main market's headline. */
+function mapPointRows(database: Database) {
+  return database
+    .select({
+      slug: listings.slug,
+      title: listings.title,
+      primaryArea: listings.primaryArea,
+      x: mapPoints.x,
+      y: mapPoints.y,
+      region: mapPoints.region,
+      cluster: mapPoints.cluster,
+      headline: sql<
+        number | null
+      >`case when ${markets.status} = 'void' then null else round(${markets.headline}::numeric, 4)::float8 end`,
+    })
+    .from(mapPoints)
+    .innerJoin(listings, eq(listings.slug, mapPoints.slug))
+    .leftJoin(markets, and(eq(markets.listingId, listings.id), eq(markets.isMain, true)))
+    .$dynamic();
+}
+
 /**
  * The supplied paper map, each point joined to its listing by slug (a point
  * with no listing here is skipped) and to its main market's headline. One
@@ -578,28 +600,89 @@ export interface PaperMap {
  */
 export async function paperMap(database: Database = getDb()): Promise<PaperMap> {
   const [points, topics] = await Promise.all([
-    database
-      .select({
-        slug: listings.slug,
-        title: listings.title,
-        primaryArea: listings.primaryArea,
-        x: mapPoints.x,
-        y: mapPoints.y,
-        region: mapPoints.region,
-        cluster: mapPoints.cluster,
-        headline: sql<
-          number | null
-        >`case when ${markets.status} = 'void' then null else round(${markets.headline}::numeric, 4)::float8 end`,
-      })
-      .from(mapPoints)
-      .innerJoin(listings, eq(listings.slug, mapPoints.slug))
-      .leftJoin(markets, and(eq(markets.listingId, listings.id), eq(markets.isMain, true)))
-      .orderBy(asc(mapPoints.slug)),
+    mapPointRows(database).orderBy(asc(mapPoints.slug)),
     database.select().from(mapTopics).orderBy(asc(mapTopics.level), asc(mapTopics.number)),
   ]);
   const topic = (level: string) =>
     topics.filter((t) => t.level === level).map(({ number, label }) => ({ number, label }));
   return { points, regions: topic('region'), clusters: topic('cluster') };
+}
+
+export interface Minimap {
+  /** The paper itself, its `MINIMAP_NEAREST` nearest papers on the map and its related papers on the map. */
+  points: MapPointView[];
+  /** Index of the paper itself in `points`. */
+  self: number;
+  /** Indexes into `points` of its related papers, in the service's order. */
+  related: number[];
+  /** Related papers that are listed but not on the map. */
+  relatedElsewhere: number;
+  /** Every related pair between `points`, each listing's best `MAP_RELATED_DEPTH`, as indexes: what groups them in a redraw. */
+  edges: [number, number][];
+  clusters: { number: number; label: string }[];
+}
+
+/**
+ * The paper page's minimap: the paper among the papers nearest it on the
+ * supplied map and its related papers wherever they lie, with the related
+ * pairs between them all, for the
+ * browser to lay out again round the paper (`lib/map-layout.ts`
+ * `settleAround`). Positions and
+ * relatedness are both other services'; nothing is computed from the papers
+ * here. `null` when the paper is not on the map. `related` is
+ * `listingRelatedTo(listing)`.
+ */
+export async function listingMinimap(
+  listing: Listing,
+  related: CitedListing[],
+  database: Database = getDb(),
+): Promise<Minimap | null> {
+  const [centre] = await database.select().from(mapPoints).where(eq(mapPoints.slug, listing.slug));
+  if (!centre) return null;
+  const relatedSlugs = related.map((r) => r.listing.slug);
+  const d2 = sql`(${mapPoints.x} - ${centre.x}) ^ 2 + (${mapPoints.y} - ${centre.y}) ^ 2`;
+  const [nearest, clusters] = await Promise.all([
+    database
+      .select({ slug: mapPoints.slug })
+      .from(mapPoints)
+      .innerJoin(listings, eq(listings.slug, mapPoints.slug))
+      .orderBy(d2)
+      .limit(MINIMAP_NEAREST + 1),
+    database
+      .select({ number: mapTopics.number, label: mapTopics.label })
+      .from(mapTopics)
+      .where(eq(mapTopics.level, 'cluster'))
+      .orderBy(asc(mapTopics.number)),
+  ]);
+  const wanted = [...new Set([listing.slug, ...nearest.map((r) => r.slug), ...relatedSlugs])];
+  const points = await mapPointRows(database).where(inArray(mapPoints.slug, wanted)).orderBy(asc(mapPoints.slug));
+  const index = new Map(points.map((p, i) => [p.slug, i]));
+  const pairs = await database
+    .select({ from: listings.slug, to: listingRelated.relatedSlug })
+    .from(listingRelated)
+    .innerJoin(listings, eq(listings.id, listingRelated.listingId))
+    .where(
+      and(
+        inArray(listings.slug, wanted),
+        inArray(listingRelated.relatedSlug, wanted),
+        sql`${listingRelated.position} < ${MAP_RELATED_DEPTH}`,
+      ),
+    );
+  const on = relatedSlugs.flatMap((slug) => index.get(slug) ?? []);
+  const here = new Set(points.map((p) => p.cluster));
+  return {
+    points,
+    self: index.get(listing.slug)!,
+    related: on,
+    relatedElsewhere: related.length - on.length,
+    // A slug that is wanted but not on the map has no index: skip its pairs.
+    edges: pairs.flatMap(({ from, to }) => {
+      const a = index.get(from);
+      const b = index.get(to);
+      return a === undefined || b === undefined || a === b ? [] : [[a, b] as [number, number]];
+    }),
+    clusters: clusters.filter((c) => here.has(c.number)),
+  };
 }
 
 /** How many of each listing's related entries the map draws on: the best few carry the structure. */

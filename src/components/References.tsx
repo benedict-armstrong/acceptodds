@@ -30,12 +30,13 @@ export function References({
   idPrefix = 'ref',
 }: {
   items: ReactNode[];
-  heading?: ReactNode;
+  /** `null` for a list set under a heading of its own. */
+  heading?: ReactNode | null;
   idPrefix?: string;
 }) {
   return (
     <section>
-      <h2 className={ui.backHeading}>{heading}</h2>
+      {heading !== null && <h2 className={ui.backHeading}>{heading}</h2>}
       <ol className="space-y-1.5 text-sm leading-snug">
         {items.map((item, i) => (
           <li key={i} id={`${idPrefix}-${i + 1}`} className="grid grid-cols-[2.2em_1fr]">

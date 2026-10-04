@@ -4,9 +4,17 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { markets } from '@/db/schema';
 import { marketHeadline } from '@/lib/headline';
+import { MINIMAP_NEAREST } from '@/lib/map';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
-import { browseListings, marketKinds, sparklines } from '@/server/views';
+import {
+  browseListings,
+  listingMinimap,
+  listingRelatedTo,
+  marketKinds,
+  resolveListing,
+  sparklines,
+} from '@/server/views';
 import { api, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -453,5 +461,59 @@ describe('the paper map', () => {
     const reader = await trader('reader', ['read']);
     expect((await put({ points: [] }, reader.token)).status).toBe(403);
     expect((await put({ points: [{ slug: 'a', x: 'far', y: 0 }] })).status).toBe(400);
+  });
+});
+
+describe('a paper’s minimap', () => {
+  const post = (body: Record<string, unknown>) => api('POST', '/listings', { token: admin.token, body });
+  const putRelated = (ref: string, slugs: string[]) =>
+    api('PUT', `/listings/${ref}/related`, {
+      token: admin.token,
+      body: { related: slugs.map((slug) => ({ slug, score: 1 })) },
+    });
+  const putMap = (points: { slug: string; x: number; y: number; cluster?: number }[]) =>
+    api('PUT', '/map', { token: admin.token, body: { points, clusters: [{ number: 1, label: 'near' }] } });
+  const minimap = async (slug: string) => {
+    const listing = await resolveListing(slug);
+    return listingMinimap(listing, await listingRelatedTo(listing));
+  };
+
+  it('is null off the map', async () => {
+    await post({ slug: 'c', title: 'c' });
+    expect(await minimap('c')).toBeNull();
+  });
+
+  it('takes in the nearest papers and the related ones wherever they lie, with the related pairs among them', async () => {
+    // Papers at distance 1, 2, … from the paper: only the nearest MINIMAP_NEAREST belong.
+    const line = Array.from({ length: MINIMAP_NEAREST + 10 }, (_, k) => ({
+      slug: `n${k}`,
+      x: k + 1,
+      y: 0,
+      cluster: 1,
+    }));
+    for (const slug of ['c', 'far', 'theirs', 'unmapped', ...line.map((p) => p.slug)])
+      await post({ slug, title: slug });
+    await putMap([
+      { slug: 'c', x: 0, y: 0, cluster: 1 },
+      { slug: 'far', x: 1000, y: 0 },
+      { slug: 'theirs', x: 0, y: 2000 },
+      ...line,
+    ]);
+    await putRelated('c', ['far', 'unmapped', 'n0']);
+    // A related paper's own related papers stay out unless they are near anyway.
+    await putRelated('far', ['theirs', 'c', 'n1']);
+
+    const m = (await minimap('c'))!;
+    expect(m.points[m.self].slug).toBe('c');
+    expect(m.related.map((i) => m.points[i].slug)).toEqual(['far', 'n0']);
+    expect(m.relatedElsewhere).toBe(1);
+    const slugs = m.points.map((p) => p.slug);
+    expect(slugs).toContain('far');
+    expect(slugs).not.toContain('theirs');
+    expect(slugs.filter((s) => s.startsWith('n'))).toHaveLength(MINIMAP_NEAREST);
+    expect(slugs).not.toContain(`n${MINIMAP_NEAREST}`);
+    expect(m.clusters).toEqual([{ number: 1, label: 'near' }]);
+    const pair = ([a, b]: [number, number]) => `${m.points[a].slug}>${m.points[b].slug}`;
+    expect(m.edges.map(pair).sort()).toEqual(['c>far', 'c>n0', 'far>c', 'far>n1']);
   });
 });

@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { dotScale, headlineRgb, LIKELIHOOD_RGB, MAP_NONE, MAP_SIZE, normalise, topicLabels } from '@/lib/map';
+import {
+  dotScale,
+  frameAround,
+  headlineRgb,
+  LIKELIHOOD_RGB,
+  MAP_NONE,
+  MAP_SIZE,
+  MINIMAP_NEAREST,
+  MINIMAP_STRETCH,
+  minimapRadius,
+  normalise,
+  topicLabels,
+} from '@/lib/map';
 
 describe('normalise', () => {
   it('fills the longer axis, keeps the aspect and centres the shorter', () => {
@@ -66,5 +78,42 @@ describe('colours and dots', () => {
     expect(dotScale(0, 0)).toBe(1);
     expect(dotScale(2, 0)).toBeCloseTo(2.25);
     expect(dotScale(20, 0)).toBe(6);
+  });
+});
+
+describe('minimapRadius', () => {
+  it('takes in related papers not far beyond the nearest, with a margin, and leaves the far ones off', () => {
+    expect(minimapRadius(10, [])).toBe(10);
+    expect(minimapRadius(10, [5])).toBe(10);
+    expect(minimapRadius(10, [20])).toBeCloseTo(22);
+    expect(minimapRadius(10, [10 * MINIMAP_STRETCH + 1])).toBe(10);
+  });
+});
+
+describe('frameAround', () => {
+  it('centres the paper and puts its radius at half the map', () => {
+    const n = MINIMAP_NEAREST + 5;
+    // The paper at (3, 4), the others on a line to its right at 1, 2, … n−1.
+    const positions = Float32Array.from([3, 4, ...Array.from({ length: n - 1 }, (_, k) => [3 + k + 1, 4]).flat()]);
+    const out = frameAround(positions, 0, []);
+    expect([out[0], out[1]]).toEqual([MAP_SIZE / 2, MAP_SIZE / 2]);
+    // The MINIMAP_NEAREST-th nearest is at distance MINIMAP_NEAREST: it lands on the edge.
+    expect(out[2 * MINIMAP_NEAREST]).toBeCloseTo(MAP_SIZE);
+    expect(out[2 * MINIMAP_NEAREST + 1]).toBeCloseTo(MAP_SIZE / 2);
+  });
+
+  it('keeps every point, past the edge too, and the order of distances', () => {
+    fc.assert(
+      fc.property(fc.array(fc.double({ min: -100, max: 100, noNaN: true }), { minLength: 4, maxLength: 60 }), (xs) => {
+        const coords = xs.length % 2 ? xs.slice(1) : xs;
+        const positions = Float32Array.from(coords);
+        const out = frameAround(positions, 0, [1]);
+        expect(out).toHaveLength(positions.length);
+        const d = (p: Float32Array, i: number) => Math.hypot(p[2 * i] - p[0], p[2 * i + 1] - p[1]);
+        for (let i = 2; i < positions.length / 2; i++) {
+          if (d(positions, i) < d(positions, 1) - 1e-3) expect(d(out, i)).toBeLessThanOrEqual(d(out, 1) + 1e-2);
+        }
+      }),
+    );
   });
 });

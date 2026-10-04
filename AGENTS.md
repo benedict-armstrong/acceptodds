@@ -798,9 +798,10 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   skipped until it is listed. Self and repeated slugs are dropped at write.
   Directional: A naming B says nothing about B.
 - `GET /listings/{id}/related` and the paper page's "Related papers"
-  (`components/RelatedPapers`, before Citations) show each with its main
-  market's odds, in the service's order, not alphabetical. Prices, never
-  values.
+  (`components/RelatedPapers`, a numbered section just before the
+  Discussion, via `MarketLive`'s `beforeDiscussion`) show each with its
+  main market's odds, in the service's order, not alphabetical. Prices,
+  never values.
 
 ### The paper map (`/map`)
 
@@ -822,6 +823,11 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   copies the likelihood tokens, the same way `TIER_HEX` does, so keep them
   in step. Selecting a paper draws lines to `GET /listings/{id}/related`,
   so the map and the paper page always agree on what is related.
+  `?paper=<slug>` opens the map on that paper, selected and flown to, and
+  the selection is kept in the URL (`history.replaceState`, no
+  navigation), so it can be shared. `paper` is on the analytics allowlist:
+  it is a public slug, like `market`. The paper page's minimap links every
+  paper there.
 - **The map's search is the home page's**: `GET /map/search?q=` runs
   `views.mapSearch` through the same `browseQuery` as `browseListings`
   (every status unless the query says `status:`) and returns every match's
@@ -837,8 +843,30 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   (`lib/map-layout.worker.ts`, one job at a time, a newer search ends the
   last) and is drawn as it settles. The cost is d3's many-body repulsion
   (about 0.7 s per 100 ticks at 4k papers, 4.4 s at 15k), so above
-  `MAX_RELAYOUT` (10,000) the matches are shown in place instead. If that cap starts to matter, move the
-  simulation to the GPU (cosmos.gl), not into more CPU tuning.
+  `MAX_RELAYOUT` (10,000) the matches are shown in place instead. If that
+  cap starts to matter, move the simulation to the GPU (cosmos.gl), not
+  into more CPU tuning.
+- **The paper page's minimap** (`components/map/Minimap`, inside "Related
+  papers") is a few papers from the same map around one paper, drawn by
+  the same `MapCanvas`. `views.listingMinimap` picks them: the paper, its
+  `MINIMAP_NEAREST` (60) nearest papers on the map, and its related papers
+  wherever they lie. It also sends the related pairs among them. The
+  browser redraws them by default, in its own worker (the same one,
+  running `settleAround`), as **groups round the paper**:
+  1. `relatedGroups` finds groups by label propagation over the related
+     pairs. A group under 3 papers joins the big group it has most ties
+     to, or else its nearest one on the map, so no strays float off.
+  2. Each group is laid out on its own: related pairs short, map distances
+     only between papers near each other on the map, collision only.
+  3. The groups, as discs, are set round the paper in the direction each
+     lies on the map, as close in as they fit.
+
+  Two things don't work, and both were tried: a graph layout of the whole
+  piece with repulsion (it settles into an even ball), and a stress layout
+  of map distances. Locally the map is an even spread, so the groups have
+  to come from relatedness. The redraw is animated from the map positions
+  and framed round the paper (`lib/map.ts` `frameAround`). "As on the map"
+  shows the supplied positions instead.
 
 ### Crawlers and agents
 
