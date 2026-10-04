@@ -78,6 +78,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </Link>
           <span className="flex-1" />
           <nav className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1 text-sm narrow:gap-x-3.5">
+            <Link href="/map">map</Link>
             <Link href="/leaderboard">leaderboard</Link>
             {viewer ? (
               <>

@@ -7,6 +7,8 @@ import {
   listingReferences,
   listingRelated,
   listings,
+  mapPoints,
+  mapTopics,
   markets,
   orders,
   outcomes,
@@ -549,6 +551,78 @@ export async function listingRelatedTo(listing: Listing, database: Database = ge
     listing: l,
     main: views.find((v) => v.listing.id === l.id)?.markets[0] ?? null,
   }));
+}
+
+export interface MapPointView {
+  slug: string;
+  title: string;
+  primaryArea: string | null;
+  x: number;
+  y: number;
+  region: number | null;
+  cluster: number | null;
+  /** The main market's headline cache (#12): a price, never a value; `null` when void or there is none. */
+  headline: number | null;
+}
+
+export interface PaperMap {
+  points: MapPointView[];
+  regions: { number: number; label: string }[];
+  clusters: { number: number; label: string }[];
+}
+
+/**
+ * The supplied paper map, each point joined to its listing by slug (a point
+ * with no listing here is skipped) and to its main market's headline. One
+ * pass over the whole map: it is drawn whole.
+ */
+export async function paperMap(database: Database = getDb()): Promise<PaperMap> {
+  const [points, topics] = await Promise.all([
+    database
+      .select({
+        slug: listings.slug,
+        title: listings.title,
+        primaryArea: listings.primaryArea,
+        x: mapPoints.x,
+        y: mapPoints.y,
+        region: mapPoints.region,
+        cluster: mapPoints.cluster,
+        headline: sql<
+          number | null
+        >`case when ${markets.status} = 'void' then null else round(${markets.headline}::numeric, 4)::float8 end`,
+      })
+      .from(mapPoints)
+      .innerJoin(listings, eq(listings.slug, mapPoints.slug))
+      .leftJoin(markets, and(eq(markets.listingId, listings.id), eq(markets.isMain, true)))
+      .orderBy(asc(mapPoints.slug)),
+    database.select().from(mapTopics).orderBy(asc(mapTopics.level), asc(mapTopics.number)),
+  ]);
+  const topic = (level: string) =>
+    topics.filter((t) => t.level === level).map(({ number, label }) => ({ number, label }));
+  return { points, regions: topic('region'), clusters: topic('cluster') };
+}
+
+/** How many of each listing's related entries the map draws on: the best few carry the structure. */
+export const MAP_RELATED_DEPTH = 10;
+
+/**
+ * The related lists between papers on the map, for the browser to re-lay out
+ * a subset (`components/map`). Only pairs where both ends are on the map and
+ * listed, each listing's best `MAP_RELATED_DEPTH`, as slug pairs in the
+ * supplier's order. The similarity is the service's; nothing is computed here.
+ */
+export async function mapRelated(database: Database = getDb()): Promise<{ from: string; to: string }[]> {
+  const result = await database.execute<{ from: string; to: string }>(sql`
+    select l.slug as "from", lr.related_slug as "to"
+      from listing_related lr
+      join listings l on l.id = lr.listing_id
+      join map_points a on a.slug = l.slug
+      join map_points b on b.slug = lr.related_slug
+      join listings lb on lb.slug = lr.related_slug
+     where lr.position < ${MAP_RELATED_DEPTH}
+     order by l.slug, lr.position
+  `);
+  return result.rows;
 }
 
 /** Listings, newest first; or, with a non-blank `q`, by search rank (`searchListings`). */
@@ -1132,14 +1206,84 @@ export async function browseListings(
   },
   database: Database = getDb(),
 ): Promise<BrowsePage> {
+  const limit = q.limit ?? 50;
+  const offset = q.offset ?? 0;
+  const { from, order } = browseQuery(q);
+  const result = await database.execute<{
+    id: string;
+    volume: string;
+    order_count: number;
+    last_trade_at: string | null;
+    markets: number;
+    total: number;
+  }>(sql`
+    select m.id,
+           (m.volume_micro + coalesce(sec.volume_micro, 0))::text as volume,
+           (m.order_count + coalesce(sec.order_count, 0))::int as order_count,
+           greatest(m.last_trade_at, sec.last_trade_at)::text as last_trade_at,
+           (1 + coalesce(sec.markets, 0))::int as markets,
+           (count(*) over ())::int as total
+    ${from}
+     order by ${sql.join([...order, sql`m.id desc`], sql`, `)}
+     limit ${limit} offset ${offset}
+  `);
+
+  const found = result.rows;
+  if (found.length === 0) {
+    // Past the end, or nothing at all: the page is empty, the total is not.
+    const total =
+      offset === 0
+        ? 0
+        : ((await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0);
+    return { rows: [], total };
+  }
+  const total = found[0].total;
+
+  const loaded = await database
+    .select({ market: markets, listing: listings })
+    .from(markets)
+    .leftJoin(listings, eq(listings.id, markets.listingId))
+    .where(
+      inArray(
+        markets.id,
+        found.map((r) => r.id),
+      ),
+    );
+  const byId = new Map(loaded.map((r) => [r.market.id, r]));
+  const inOrder = found.map((r) => byId.get(r.id)!);
+  const views = await marketViews(
+    inOrder.map((r) => r.market),
+    database,
+  );
+  return {
+    total,
+    rows: views.map((v, i) => ({
+      ...v,
+      listing: inOrder[i].listing,
+      marketCount: found[i].markets,
+      // `sum(bigint)` is `numeric`: read as text, never as a JS number (§1.6).
+      totalVolumeMicro: BigInt(found[i].volume),
+      totalOrderCount: found[i].order_count,
+      lastTradeAt: found[i].last_trade_at ? new Date(found[i].last_trade_at) : null,
+    })),
+  };
+}
+
+type BrowseFilter = Omit<Parameters<typeof browseListings>[0], 'offset' | 'limit'>;
+
+/**
+ * The home list's rows as SQL: `from` (markets `m`, the search hits `hit`
+ * and, when searching, listings `l`, through the `where`) and `order` for
+ * the sort. Shared by `browseListings` and `mapSearch`, so the map's search
+ * is the home page's.
+ */
+function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
   const text = normalizeSearch(q.q);
   const node = text === null ? null : parseSearch(text).node;
   const required = requiredText(node);
   const tq = required === null ? null : tsquery(websearchOf(required));
   const predicate = node === null ? null : searchPredicate(node, required);
   const status = q.status ?? 'open';
-  const limit = q.limit ?? 50;
-  const offset = q.offset ?? 0;
 
   // A row's key: its listing, or the standalone market itself.
   const followed = (account: string) =>
@@ -1205,64 +1349,30 @@ export async function browseListings(
          group by s.listing_id
       ) sec on sec.listing_id = m.listing_id
      where ${sql.join(where, sql` and `)}`;
-  const result = await database.execute<{
-    id: string;
-    volume: string;
-    order_count: number;
-    last_trade_at: string | null;
-    markets: number;
-    total: number;
-  }>(sql`
-    select m.id,
-           (m.volume_micro + coalesce(sec.volume_micro, 0))::text as volume,
-           (m.order_count + coalesce(sec.order_count, 0))::int as order_count,
-           greatest(m.last_trade_at, sec.last_trade_at)::text as last_trade_at,
-           (1 + coalesce(sec.markets, 0))::int as markets,
-           (count(*) over ())::int as total
-    ${from}
+  return { from, order };
+}
+
+/**
+ * Every listing the home page's search (`lib/query.ts` syntax: words,
+ * filters, `OR`, groups) finds, in relevance order, for the map to light up.
+ * Every status unless the query says `status:`. Slugs only: the map already
+ * holds the rest. `errors` are the terms the parser dropped.
+ */
+export async function mapSearch(
+  q: string | null | undefined,
+  database: Database = getDb(),
+): Promise<{ slugs: string[]; errors: string[] }> {
+  const text = normalizeSearch(q);
+  if (text === null) return { slugs: [], errors: [] };
+  // Nothing usable ("(", "author:", "-"): no terms, so no match — not every paper.
+  const { node, errors } = parseSearch(text);
+  if (node === null) return { slugs: [], errors };
+  const { from, order } = browseQuery({ q: text, status: 'all', sort: 'relevance' });
+  const result = await database.execute<{ slug: string }>(sql`
+    select l.slug ${from} and l.slug is not null
      order by ${sql.join([...order, sql`m.id desc`], sql`, `)}
-     limit ${limit} offset ${offset}
   `);
-
-  const found = result.rows;
-  if (found.length === 0) {
-    // Past the end, or nothing at all: the page is empty, the total is not.
-    const total =
-      offset === 0
-        ? 0
-        : ((await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0);
-    return { rows: [], total };
-  }
-  const total = found[0].total;
-
-  const loaded = await database
-    .select({ market: markets, listing: listings })
-    .from(markets)
-    .leftJoin(listings, eq(listings.id, markets.listingId))
-    .where(
-      inArray(
-        markets.id,
-        found.map((r) => r.id),
-      ),
-    );
-  const byId = new Map(loaded.map((r) => [r.market.id, r]));
-  const inOrder = found.map((r) => byId.get(r.id)!);
-  const views = await marketViews(
-    inOrder.map((r) => r.market),
-    database,
-  );
-  return {
-    total,
-    rows: views.map((v, i) => ({
-      ...v,
-      listing: inOrder[i].listing,
-      marketCount: found[i].markets,
-      // `sum(bigint)` is `numeric`: read as text, never as a JS number (§1.6).
-      totalVolumeMicro: BigInt(found[i].volume),
-      totalOrderCount: found[i].order_count,
-      lastTradeAt: found[i].last_trade_at ? new Date(found[i].last_trade_at) : null,
-    })),
-  };
+  return { slugs: result.rows.map((r) => r.slug), errors };
 }
 
 /** Every `kind` with at least one visible row, most rows first. A listing counts once, by its main market. */

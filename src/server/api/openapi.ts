@@ -229,6 +229,59 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'get',
+      path: '/map',
+      tags: ['listings'],
+      summary: 'The paper map',
+      description:
+        'Every listing on the supplied 2D layout, with its title, groupings and main market’s headline price. Laid out by a separate service; the venue computes no layout. Public, cached for five minutes.',
+      ok: { status: 200, schema: S.PaperMap, description: 'The whole map.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/map/search',
+      tags: ['listings'],
+      summary: 'Search the paper map',
+      description:
+        'The home page’s search syntax over every listing: words (titles, authors, abstracts), `key:value` filters (`title author keyword area venue status accept volume trades`), `OR`, parentheses and `-`. Returns every match’s slug, most relevant first.',
+      request: { query: S.MapSearchQuery },
+      ok: { status: 200, schema: S.MapSearch, description: 'The matching slugs.' },
+      errors: { 400: 'validation_error' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/map/related',
+      tags: ['listings'],
+      summary: 'Related lists between papers on the map',
+      description:
+        'Every listing on the map with its best related entries that are also on the map, as index pairs into a slug list. For a client that re-lays out a subset of the map. Public, cached for five minutes.',
+      ok: { status: 200, schema: S.MapRelated, description: 'The edges.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'put',
+      path: '/map',
+      tags: ['listings'],
+      summary: 'Set the paper map',
+      description:
+        'Replaces the whole map and its grouping names in one transaction; empty clears it. Slugs are matched when read, so one need not be listed yet.',
+      scope: 'admin',
+      request: { body: { content: { 'application/json': { schema: S.SetMapRequest } } } },
+      ok: { status: 200, schema: S.SetMapResult, description: 'How many points were kept.' },
+      errors: { 400: 'validation_error' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',

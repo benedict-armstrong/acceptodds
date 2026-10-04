@@ -6,6 +6,7 @@ import { MathText } from '@/components/MathText';
 import { FilterIcon, MoreIcon } from '@/components/icons';
 import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
+import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { Sparkline } from '@/components/Sparkline';
 import { TitleBlock } from '@/components/TitleBlock';
@@ -15,7 +16,7 @@ import { pct, rep, REP } from '@/lib/format';
 import { marketHeadline } from '@/lib/headline';
 import { REPO_URL } from '@/lib/links';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
-import { FIELD_HELP, parseSearch, peopleText } from '@/lib/query';
+import { parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
@@ -325,7 +326,7 @@ export default async function Home({
             <details className="border-t border-rule pt-2.5">
               <summary className={`${ui.runIn} cursor-pointer`}>Search syntax</summary>
               <div className="mt-2 text-xs leading-normal text-muted">
-                <SearchSyntax />
+                <SearchSyntax people />
               </div>
             </details>
           </PopoverContent>
@@ -518,45 +519,9 @@ function SearchHelp() {
         ?
       </PopoverTrigger>
       <PopoverContent align="end" className="text-xs leading-normal text-muted">
-        <SearchSyntax />
+        <SearchSyntax people />
       </PopoverContent>
     </Popover>
-  );
-}
-
-/** The search syntax, for the desktop `?` and the phone's filter menu. */
-function SearchSyntax() {
-  return (
-    <>
-      <p>
-        Words search titles, authors and abstracts; the last one may be half-typed. <code>&quot;a phrase&quot;</code>{' '}
-        matches in order, <code>-word</code> excludes. Words alone also find people. Terms are ANDed; use{' '}
-        <code>OR</code> and <code>( )</code> to group, and <code>-</code> before a filter or group to negate it.
-      </p>
-      <table className={ui.table}>
-        <thead>
-          <tr>
-            <th className={ui.th()}>Filter</th>
-            <th className={ui.th()}>Means</th>
-            <th className={`${ui.th()} narrow:hidden`}>Also</th>
-          </tr>
-        </thead>
-        <tbody>
-          {FIELD_HELP.map((f) => (
-            <tr key={f.field}>
-              <td className={`${ui.td} font-mono text-ink`}>{f.example}</td>
-              <td className={ui.td}>{f.means}</td>
-              <td className={`${ui.td} text-faint narrow:hidden`}>{f.aliases.map((a) => `${a}:`).join(' ')}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-1.5">
-        Numbers take <code>: = != &gt; &lt; &gt;= &lt;=</code>; text filters take <code>:</code> and <code>!=</code>.
-        Quote a value with spaces. For example:{' '}
-        <code>(venue:iclr OR venue:neurips) diffusion accept&gt;=60 -status:settled</code>
-      </p>
-    </>
   );
 }
 

@@ -253,6 +253,67 @@ export const SetRelatedResult = z
   .object({ listingId: Id, count: z.number().int().min(0) })
   .meta({ id: 'SetRelatedResult' });
 
+const MapTopic = z.object({ number: z.number().int(), label: z.string() }).meta({ id: 'MapTopic' });
+
+export const PaperMap = z
+  .object({
+    points: z.array(
+      z
+        .object({
+          slug: z.string(),
+          title: z.string(),
+          primaryArea: z.string().nullable(),
+          x: z.number(),
+          y: z.number(),
+          region: z.number().int().nullable(),
+          cluster: z.number().int().nullable(),
+          headline: z.number().nullable().meta({
+            description:
+              'The main market’s headline price (accepted in any form, for a paper); 1/0 once settled; `null` when void or there is no market. A price, never a value.',
+          }),
+        })
+        .meta({ id: 'MapPoint' }),
+    ),
+    regions: z.array(MapTopic).meta({ description: 'Names of the coarse groupings.' }),
+    clusters: z.array(MapTopic).meta({ description: 'Names of the fine groupings.' }),
+  })
+  .meta({
+    id: 'PaperMap',
+    description:
+      'A 2D layout of the listings, supplied by a separate service. Coordinates are in its own units; the venue computes no layout.',
+  });
+
+export const MapSearchQuery = z.object({
+  q: SearchQuery.meta({ description: 'The home page’s search syntax (see `/map/search`). Blank finds nothing.' }),
+});
+
+export const MapSearch = z
+  .object({
+    slugs: z.array(z.string()).meta({ description: 'Every matching listing’s slug, most relevant first.' }),
+    errors: z.array(z.string()).meta({ description: 'Terms the parser could not use and left out.' }),
+  })
+  .meta({
+    id: 'MapSearch',
+    description:
+      'The home page’s search syntax (words, `key:value` filters, `OR`, groups, `-` negation) over every listing, for the map to highlight. Every status unless the query names one.',
+  });
+
+export const MapRelated = z
+  .object({
+    slugs: z.array(z.string()).meta({ description: 'The listings the edges name, each once.' }),
+    edges: z.array(z.number().int().min(0)).meta({
+      description:
+        'Flattened pairs `[from, to, from, to, …]` of indexes into `slugs`: each listing’s best related entries, directional, in the supplier’s order.',
+    }),
+  })
+  .meta({
+    id: 'MapRelated',
+    description:
+      'The related lists between papers on the map, compactly, for a client that re-lays out a subset. Supplied by the similarity service; the venue computes none.',
+  });
+
+export const SetMapResult = z.object({ count: z.number().int().min(0) }).meta({ id: 'SetMapResult' });
+
 export const ListingListQuery = PaginationQuery.extend({
   kind: z.string().max(100).optional().meta({ description: 'Filter by the opaque `kind` string.' }),
   q: SearchQuery,
@@ -917,6 +978,29 @@ export const SetRelatedRequest = z
       .meta({ description: 'Best match first. Replaced whole; empty clears it.' }),
   })
   .meta({ id: 'SetRelatedRequest' });
+
+const MapTopicInput = z.object({ number: z.number().int().min(0), label: z.string().min(1).max(200) });
+
+export const SetMapRequest = z
+  .object({
+    points: z
+      .array(
+        z.object({
+          slug: Slug,
+          x: z.number().finite(),
+          y: z.number().finite(),
+          region: z.number().int().min(0).nullable().optional(),
+          cluster: z.number().int().min(0).nullable().optional(),
+        }),
+      )
+      .max(200_000)
+      .meta({
+        description: 'One per listing; a repeated slug keeps its first point. Replaced whole; empty clears it.',
+      }),
+    regions: z.array(MapTopicInput).max(1000).default([]).meta({ description: 'Names of the coarse groupings.' }),
+    clusters: z.array(MapTopicInput).max(10_000).default([]).meta({ description: 'Names of the fine groupings.' }),
+  })
+  .meta({ id: 'SetMapRequest' });
 
 export const UpsertedListing = z.object({ listing: Listing, created: z.boolean() }).meta({ id: 'UpsertedListing' });
 

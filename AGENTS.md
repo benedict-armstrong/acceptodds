@@ -802,6 +802,44 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   market's odds, in the service's order, not alphabetical. Prices, never
   values.
 
+### The paper map (`/map`)
+
+- **The layout is supplied, never computed**, like related papers. A
+  separate service lays the papers out in 2D and names its coarse
+  `regions` and fine `clusters`, then sends the whole map with
+  `PUT /map` (`admin`), replaced in one transaction (`server/map.ts`,
+  `map_points` + `map_topics`). Coordinates are in its own units and
+  nothing here interprets them or the groupings. Slugs are matched when
+  read; an unlisted one is skipped until it is listed. The research side's
+  build and push scripts are in `../scraping/tags/map/`.
+- `GET /map` (`views.paperMap`) is the whole map in one response, each
+  point with its listing's title and primary area and its main market's
+  headline (void: `null`). Prices, never values (§1.1). Public, with
+  `Cache-Control: public, max-age=300`.
+- The page fetches it anonymously and draws it in WebGL with deck.gl
+  (`components/map/MapCanvas`, loaded with `ssr: false`). The display maths
+  (scaling, label placement, colours) is `lib/map.ts`. `LIKELIHOOD_RGB`
+  copies the likelihood tokens, the same way `TIER_HEX` does, so keep them
+  in step. Selecting a paper draws lines to `GET /listings/{id}/related`,
+  so the map and the paper page always agree on what is related.
+- **The map's search is the home page's**: `GET /map/search?q=` runs
+  `views.mapSearch` through the same `browseQuery` as `browseListings`
+  (every status unless the query says `status:`) and returns every match's
+  slug, best first. The map keeps those lit and fades the rest.
+  `components/SearchSyntax` is the help text for both pages.
+- **"Redraw" (on by default) hides what a search did not find and lays
+  the matches out again, in the browser** —
+  display only: never stored or sent, and the supplied map is untouched.
+  `lib/map-layout.ts` is a d3-force layout seeded from the supplied
+  positions, linked by the similarity service's related lists between
+  matches (`GET /map/related`, each listing's best 10, as index pairs) and
+  each match's 6 nearest matches on the map. It runs in a Web Worker
+  (`lib/map-layout.worker.ts`, one job at a time, a newer search ends the
+  last) and is drawn as it settles. The cost is d3's many-body repulsion
+  (about 0.7 s per 100 ticks at 4k papers, 4.4 s at 15k), so above
+  `MAX_RELAYOUT` (10,000) the matches are shown in place instead. If that cap starts to matter, move the
+  simulation to the GPU (cosmos.gl), not into more CPU tuning.
+
 ### Crawlers and agents
 
 - **Private pages are one list**, `lib/private-paths.ts`: disallowed in
@@ -1009,9 +1047,9 @@ unpaginated, and 5 s for that search.
 volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `-` on a word, filter or group, `OR` and parentheses. A key that is not a
   field is text, so "BERT: pre-training" still searches; a bad value drops
-  the term with a visible error. Never throws. Only the home page speaks
-  it: the API's `?q=` on `/listings` and `/markets` is still plain
-  websearch.
+  the term with a visible error. Never throws. Only the home page and the map
+  (`GET /map/search`, the same `browseQuery`) speak it: the API's `?q=` on
+  `/listings` and `/markets` is still plain websearch.
   - **Words in one AND merge into one websearch string**, so a stop word
     among them is dropped rather than matching nothing, and the last word
     stays a prefix. `-(a b)` is "not both", so a multi-word text node only

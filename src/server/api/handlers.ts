@@ -20,6 +20,7 @@ import {
   updateGroup,
 } from '../groups';
 import { setRelated, upsertListing } from '../listings';
+import { setMap } from '../map';
 import { countView } from '../view-counter';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
@@ -42,6 +43,9 @@ import {
   listingView,
   marketTape,
   marketView,
+  mapRelated,
+  mapSearch,
+  paperMap,
   priceHistory,
   publicAccount,
   resolveListing,
@@ -198,6 +202,43 @@ export const putListingRelated = route(async (req, params) => {
   const body = await parseBody(req, S.SetRelatedRequest);
   const count = await setRelated(listing, body.related);
   return respond(S.SetRelatedResult, { listingId: listing.id, count }, { principal });
+});
+
+/** The supplied paper map, drawn whole by `/map`. Public, and cached like badges. */
+export const getMap = route(async (req) => {
+  const principal = await authenticate(req);
+  return respond(S.PaperMap, await paperMap(), {
+    principal,
+    headers: { 'Cache-Control': 'public, max-age=300' },
+  });
+});
+
+/** The listings the home page's search finds, for the map to light up. */
+export const getMapSearch = route(async (req) => {
+  const principal = await authenticate(req);
+  const { q } = parseQuery(req, S.MapSearchQuery);
+  return respond(S.MapSearch, await mapSearch(q), { principal });
+});
+
+/** The related lists between papers on the map, compactly. Public, and cached like the map. */
+export const getMapRelated = route(async (req) => {
+  const principal = await authenticate(req);
+  const slugs: string[] = [];
+  const index = new Map<string, number>();
+  const at = (slug: string) => {
+    let i = index.get(slug);
+    if (i === undefined) index.set(slug, (i = slugs.push(slug) - 1));
+    return i;
+  };
+  const edges = (await mapRelated()).flatMap((e) => [at(e.from), at(e.to)]);
+  return respond(S.MapRelated, { slugs, edges }, { principal, headers: { 'Cache-Control': 'public, max-age=300' } });
+});
+
+/** Replace the paper map. Written by `map.ts`; not market state. */
+export const putMap = route(async (req) => {
+  const principal = await requireAuth(req, 'admin');
+  const body = await parseBody(req, S.SetMapRequest);
+  return respond(S.SetMapResult, { count: await setMap(body) }, { principal });
 });
 
 export const getLeaderboard = route(async (req) => {

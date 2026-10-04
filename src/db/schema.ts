@@ -242,6 +242,37 @@ export const listingRelated = pgTable(
 );
 
 /**
+ * The paper map (`/map`): a 2D position per listing, laid out by a separate
+ * service and supplied whole through `PUT /map`, never computed here. Written
+ * only by `server/map.ts`, in one transaction that replaces every row. Like
+ * `listing_related`, `slug` is matched against `listings.slug` when read,
+ * never by a foreign key. `x`/`y` are in the service's own units (the client
+ * scales them); `region` and `cluster` are its coarse and fine groupings,
+ * named in `map_topics`. None of it is interpreted here.
+ */
+export const mapPoints = pgTable('map_points', {
+  slug: text('slug').primaryKey(),
+  x: doublePrecision('x').notNull(),
+  y: doublePrecision('y').notNull(),
+  region: integer('region'),
+  cluster: integer('cluster'),
+});
+
+/** The names of the map's groupings, replaced with `map_points`. `level` is `region` or `cluster`. */
+export const mapTopics = pgTable(
+  'map_topics',
+  {
+    level: text('level').notNull(),
+    number: integer('number').notNull(),
+    label: text('label').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.level, t.number] }),
+    check('map_topics_level', sql`${t.level} in ('region', 'cluster')`),
+  ],
+);
+
+/**
  * A market is a question, a set of outcomes, an id and a resolution rule.
  *
  * It is not a paper. There is no arXiv id, no venue client and no corpus

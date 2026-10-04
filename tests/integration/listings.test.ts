@@ -391,3 +391,67 @@ describe('related listings', () => {
     expect((await related('nope')).status).toBe(404);
   });
 });
+
+describe('the paper map', () => {
+  const post = (body: Record<string, unknown>) => api('POST', '/listings', { token: admin.token, body });
+  const put = (body: unknown, token = admin.token) => api('PUT', '/map', { token, body });
+  const getMap = () => api('GET', '/map');
+
+  it('matches slugs when read, skips unlisted ones and carries the main market’s headline', async () => {
+    for (const slug of ['a', 'b']) await post({ slug, title: `Paper ${slug}`, primaryArea: 'area' });
+    expect((await market('a-accept', { listingSlug: 'a' })).status).toBe(201);
+
+    const res = await put({
+      points: [
+        { slug: 'a', x: 1, y: 2, region: 0, cluster: 3 },
+        { slug: 'not-yet', x: 0, y: 0 },
+        { slug: 'b', x: -1, y: 5, region: 1, cluster: null },
+        { slug: 'a', x: 9, y: 9 },
+      ],
+      regions: [
+        { number: 0, label: 'first region' },
+        { number: 1, label: 'second region' },
+      ],
+      clusters: [{ number: 3, label: 'a cluster' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(3);
+
+    const got = await getMap();
+    expect(got.status).toBe(200);
+    expect(got.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(got.body.points.map((p: any) => [p.slug, p.x, p.y, p.region, p.cluster])).toEqual([
+      ['a', 1, 2, 0, 3],
+      ['b', -1, 5, 1, null],
+    ]);
+    expect(got.body.points[0].title).toBe('Paper a');
+    expect(got.body.points[0].primaryArea).toBe('area');
+    expect(got.body.points[0].headline).toBeCloseTo(0.5);
+    expect(got.body.points[1].headline).toBeNull();
+    expect(got.body.regions).toEqual([
+      { number: 0, label: 'first region' },
+      { number: 1, label: 'second region' },
+    ]);
+    expect(got.body.clusters).toEqual([{ number: 3, label: 'a cluster' }]);
+
+    await post({ slug: 'not-yet', title: 'Later' });
+    expect((await getMap()).body.points.map((p: any) => p.slug)).toEqual(['a', 'b', 'not-yet']);
+  });
+
+  it('is replaced whole, and empty clears it', async () => {
+    for (const slug of ['a', 'b']) await post({ slug, title: slug });
+    await put({ points: [{ slug: 'a', x: 0, y: 0 }], regions: [{ number: 0, label: 'old' }] });
+    await put({ points: [{ slug: 'b', x: 1, y: 1 }] });
+    const got = await getMap();
+    expect(got.body.points.map((p: any) => p.slug)).toEqual(['b']);
+    expect(got.body.regions).toEqual([]);
+    await put({ points: [] });
+    expect((await getMap()).body.points).toEqual([]);
+  });
+
+  it('needs the admin scope to write and refuses a non-finite coordinate', async () => {
+    const reader = await trader('reader', ['read']);
+    expect((await put({ points: [] }, reader.token)).status).toBe(403);
+    expect((await put({ points: [{ slug: 'a', x: 'far', y: 0 }] })).status).toBe(400);
+  });
+});

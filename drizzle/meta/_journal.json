@@ -197,6 +197,13 @@
       "when": 1791040737226,
       "tag": "0027_listing_related",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791107427134,
+      "tag": "0028_paper_map",
+      "breakpoints": true
     }
   ]
 }
