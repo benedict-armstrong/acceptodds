@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import type { z } from 'zod';
+import type * as S from '@/server/api/schemas';
+import { presentListing } from '@/server/api/present';
 import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
@@ -28,7 +31,7 @@ import {
   marketKinds,
   searchPeople,
   sparklines,
-  tradingMarketIds,
+  listingViews,
   type BrowsePage,
   type BrowseRow,
   type BrowseSort,
@@ -172,7 +175,8 @@ export default async function Home({
   // A search that is only words may be a name: traders above the papers, on
   // the first page.
   const who = peopleText(parsed?.node ?? null);
-  const [all, followed, held, people] = await Promise.all([
+  const tutorialKind = kind ?? defaultMarketKind();
+  const [all, followed, held, people, tutorial] = await Promise.all([
     pageOf(sp.page, PAGE, {
       ...browse,
       kind: kindFilter,
@@ -185,6 +189,7 @@ export default async function Home({
     pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me, exceptHeldBy: me }) : null,
     pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
+    browseListings({ kind: tutorialKind, status: 'open', sort: 'volume', limit: 5 }),
   ]);
   const cookieJar = await cookies();
   const followingOpen = cookieJar.get(FOLLOWING_COOKIE)?.value !== '0';
@@ -219,9 +224,9 @@ export default async function Home({
     `${href({ ...pages, [key]: String(p) })}${anchor}`;
   const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
-  const tutorialRows = [...all.rows, ...(held?.rows ?? []), ...(followed?.rows ?? [])];
-  const tutorialMarketIds = await tradingMarketIds(tutorialRows.map((r) => r.market.id));
-  const tutorialRow = tutorialRows.find((r) => tutorialMarketIds.includes(r.market.id));
+  const tutorialSuggestions = (await listingViews(tutorial.rows.flatMap((r) => (r.listing ? [r.listing] : [])))).map(
+    presentListing,
+  ) as z.output<typeof S.Listing>[];
   // Shown on the ⋯ trigger when not the defaults.
   const activeFilters = [status !== 'open' && status, onlyFollowed && '★', showTldr && 'tldr']
     .filter(Boolean)
@@ -243,22 +248,8 @@ export default async function Home({
       >
         <TutorialModal
           startingBalanceMicro={startingBalanceMicro().toString()}
-          market={
-            tutorialRow
-              ? {
-                  title: tutorialRow.listing?.title ?? tutorialRow.market.question,
-                  href: tutorialRow.listing
-                    ? `/papers/${tutorialRow.listing.slug}`
-                    : `/markets/${tutorialRow.market.slug}`,
-                  b: tutorialRow.market.b,
-                  outcomes: tutorialRow.outcomes.map((o) => ({
-                    label: o.label,
-                    price: o.price,
-                    sharesMicro: o.sharesMicro.toString(),
-                  })),
-                }
-              : null
-          }
+          kind={tutorialKind}
+          suggestions={tutorialSuggestions}
         />
       </TitleBlock>
       {/* A plain GET form, so search works without JavaScript. */}

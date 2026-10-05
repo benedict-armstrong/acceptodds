@@ -1,3 +1,6 @@
+import * as listingReadRoute from '@/app/api/v1/listings/[id]/read/route';
+import * as groupReadingListRoute from '@/app/api/v1/groups/[id]/reading-list/route';
+import * as groupReadingItemRoute from '@/app/api/v1/groups/[id]/reading-list/[listingId]/route';
 /* eslint-disable @typescript-eslint/no-explicit-any -- response bodies are checked field by field */
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
@@ -79,6 +82,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/markets/[id]/settle', settleRoute],
   ['/listings', listingsRoute],
   ['/listings/[id]', listingRoute],
+  ['/listings/[id]/read', listingReadRoute],
+  ['/groups/[id]/reading-list', groupReadingListRoute],
+  ['/groups/[id]/reading-list/[listingId]', groupReadingItemRoute],
   ['/listings/[id]/follow', listingFollowRoute],
   ['/listings/[id]/view', listingViewRoute],
   ['/listings/[id]/citations', listingCitationsRoute],

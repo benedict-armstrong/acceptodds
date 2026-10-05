@@ -689,6 +689,58 @@ export function buildRegistry(): OpenAPIRegistry {
   );
 
   const listingIdParam = z.object({ id: S.ListingRef });
+  for (const method of ['get', 'put', 'delete'] as const) {
+    r.registerPath(
+      op({
+        method,
+        path: '/listings/{id}/read',
+        tags: ['listings'],
+        summary:
+          method === 'get'
+            ? 'Read status of a listing'
+            : method === 'put'
+              ? 'Mark a listing read'
+              : 'Mark a listing unread',
+        description:
+          'Read markers are global per account. Includes only readers who are fellow reading-group members. Writes are idempotent.',
+        scope: method === 'get' ? undefined : 'read',
+        request: { params: listingIdParam },
+        ok: { status: 200, schema: S.ReadingStatus, description: 'Read status.' },
+        errors: { 404: 'not_found' },
+      }),
+    );
+  }
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/groups/{id}/reading-list',
+      tags: ['groups'],
+      summary: 'A reading group’s shared reading list',
+      request: { params: groupIdParam },
+      ok: {
+        status: 200,
+        schema: S.ReadingList,
+        description: 'Listings, newest additions first, with global read markers.',
+      },
+      errors: { 404: 'not_found' },
+    }),
+  );
+  for (const method of ['put', 'delete'] as const) {
+    r.registerPath(
+      op({
+        method,
+        path: '/groups/{id}/reading-list/{listingId}',
+        tags: ['groups'],
+        summary: method === 'put' ? 'Add a listing to a reading list' : 'Remove a listing from a reading list',
+        description: 'Any current member can add or remove. Idempotent. Institutions have no reading list.',
+        scope: 'read',
+        request: { params: z.object({ id: S.Id, listingId: S.ListingRef }) },
+        ok: { status: 200, schema: S.ReadingListState, description: 'Reading-list membership.' },
+        errors: { 403: 'forbidden: not a group member or missing read scope', 404: 'not_found' },
+      }),
+    );
+  }
+
   for (const method of ['put', 'delete'] as const) {
     r.registerPath(
       op({
@@ -986,7 +1038,10 @@ export function openApiDocument() {
       { name: 'listings', description: 'Opaque subjects that group markets.' },
       { name: 'trading', description: 'Quotes and orders.' },
       { name: 'accounts', description: 'Public profiles and the leaderboard.' },
-      { name: 'groups', description: 'Leaderboard groups: traders ranked among themselves, joined by invite code.' },
+      {
+        name: 'groups',
+        description: 'Reading groups: shared reading lists and traders ranked among themselves, joined by invite code.',
+      },
       { name: 'me', description: 'The authenticated account.' },
       { name: 'onboarding', description: 'Signing up: plainly, or by choosing a first bet.' },
       { name: 'admin', description: 'Requires the `admin` scope.' },

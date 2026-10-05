@@ -1264,3 +1264,32 @@ export const SetPasswordRequest = z
   .meta({ id: 'SetPasswordRequest' });
 
 export const PasswordSet = z.object({ ok: z.literal(true) }).meta({ id: 'PasswordSet' });
+
+const ReadingPerson = z.object({ accountId: Id, handle: z.string(), displayName: z.string() });
+export const ReadingStatus = z
+  .object({
+    listingId: Id,
+    read: z.boolean(),
+    readers: z.array(ReadingPerson).meta({ description: 'Reading-group members with a global read marker.' }),
+    memberCount: z.number().int().min(0).meta({ description: 'Number of members in the reading group or groups.' }),
+  })
+  .meta({ id: 'ReadingStatus' });
+export const ReadingList = z
+  .object({
+    entries: z.array(
+      z.object({
+        listingId: Id,
+        slug: z.string(),
+        title: z.string(),
+        headline: z.number().min(0).max(1).nullable().meta({
+          description:
+            'The main visible market’s headline probability; its result once settled, null without a visible market or when void.',
+        }),
+        status: ReadingStatus,
+      }),
+    ),
+  })
+  .meta({ id: 'ReadingList' });
+export const ReadingListState = z
+  .object({ groupId: Id, listingId: Id, added: z.boolean() })
+  .meta({ id: 'ReadingListState' });

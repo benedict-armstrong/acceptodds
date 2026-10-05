@@ -89,7 +89,7 @@ export function PositionsTable({
                 >
                   Value ({absolute ? REP : '%'})
                 </button>
-                <sup className={ui.mark}>c</sup>
+                <sup className={ui.mark}>b</sup>
               </th>
               <th className={ui.th()} />
             </tr>
@@ -112,7 +112,7 @@ export function PositionsTable({
       <TableNotes
         notes={[
           ['a', 'Average price paid per share.'],
-          ['c', <>Profit or loss if sold now. Click the heading to switch between % and {REP}.</>],
+          ['b', <>Profit or loss if sold now. Click the heading to switch between % and {REP}.</>],
         ]}
       />
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}

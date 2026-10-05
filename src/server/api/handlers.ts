@@ -1,3 +1,4 @@
+import { readingList, readingStatuses, setListingRead, setReadingList } from '../reading';
 import { isUniqueViolation } from '@/db/errors';
 import { authenticate, requireAuth, requireSession, requireTradingEligibility, type Principal } from '../auth';
 import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts';
@@ -887,3 +888,38 @@ export const postSettle = route(async (req, params) => {
   }
   return respond(S.Market, presentMarket(await marketView(after)), { principal });
 });
+
+export const getListingRead = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const [status] = await readingStatuses([listing.id], accountIdOf(principal));
+  return respond(S.ReadingStatus, status, { principal });
+});
+
+async function setRead(req: Request, id: unknown, read: boolean) {
+  const principal = await requireAuth(req, 'read');
+  const listing = await resolveListing(parseParam(id, S.ListingRef, 'id'));
+  await setListingRead(principal.account.id, listing.id, read);
+  const [status] = await readingStatuses([listing.id], principal.account.id);
+  return respond(S.ReadingStatus, status, { principal });
+}
+export const putListingRead = route((req, params) => setRead(req, params.id, true));
+export const deleteListingRead = route((req, params) => setRead(req, params.id, false));
+
+export const getGroupReadingList = route(async (req, params) => {
+  const principal = await authenticate(req);
+  const id = parseParam(params.id, S.Id, 'id');
+  if (!(await groupById(id))) throw new ApiError(404, 'not_found', 'no such reading group');
+  return respond(S.ReadingList, await readingList(id, accountIdOf(principal)), { principal });
+});
+
+async function setGroupReadingList(req: Request, params: Record<string, string | string[]>, added: boolean) {
+  const principal = await requireAuth(req, 'read');
+  const id = parseParam(params.id, S.Id, 'id');
+  if (!(await groupById(id))) throw new ApiError(404, 'not_found', 'no such reading group');
+  const listing = await resolveListing(parseParam(params.listingId, S.ListingRef, 'listingId'));
+  await setReadingList(principal.account.id, id, listing.id, added);
+  return respond(S.ReadingListState, { groupId: id, listingId: listing.id, added }, { principal });
+}
+export const putGroupReadingList = route((req, params) => setGroupReadingList(req, params, true));
+export const deleteGroupReadingList = route((req, params) => setGroupReadingList(req, params, false));

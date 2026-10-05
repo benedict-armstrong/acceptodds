@@ -225,6 +225,13 @@
       "when": 1791131739540,
       "tag": "0031_map_points_knn",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791193890018,
+      "tag": "0032_reading_lists",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { NavGroups, type NavGroup } from './NavGroups';
 import { PopoverClose } from './Popover';
 
 /** Navigation inside the shared account popover on narrow screens. */
-export function MobileNav() {
+export function MobileNav({ groups, onNavigate }: { groups: NavGroup[]; onNavigate: () => void }) {
   const links = [
     ['/profile', 'profile'],
     ['/portfolio', 'portfolio'],
@@ -26,6 +27,11 @@ export function MobileNav() {
             </Link>
           </PopoverClose>
         ))}
+        <NavGroups
+          groups={groups}
+          onNavigate={onNavigate}
+          className="flex min-h-11 items-center px-1 py-1.5 focus-visible:underline"
+        />
       </nav>
     </div>
   );

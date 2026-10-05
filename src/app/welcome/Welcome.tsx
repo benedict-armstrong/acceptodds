@@ -8,10 +8,9 @@ import type { z } from 'zod';
 import { BetSummary } from '@/components/BetSummary';
 import { MathText } from '@/components/MathText';
 import { OnboardingCard } from '@/components/OnboardingCard';
+import { PaperSearch, tradableListingMarket } from '@/components/PaperSearch';
 import { MESSAGES } from '@/components/orders';
 import { ui } from '@/components/ui';
-import { pct } from '@/lib/format';
-import { marketHeadline } from '@/lib/headline';
 import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
@@ -53,12 +52,6 @@ const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
   bet: 'pick',
   email: 'choice',
 };
-
-/** A listing can be bet on in onboarding when its main market is open. */
-function tradable(l: Listing): Market | null {
-  const m = l.markets[0];
-  return m && m.status === 'open' && new Date(m.closesAt).getTime() > Date.now() ? m : null;
-}
 
 /**
  * The onboarding flow: one step on screen at a time (`OnboardingCard`), in
@@ -151,7 +144,7 @@ export function Welcome({
             kind={kind}
             suggestions={suggestions}
             onPick={(l) => {
-              const market = tradable(l) ?? l.markets[0];
+              const market = tradableListingMarket(l) ?? l.markets[0];
               setPick({ market, title: l.title, href: marketHref({ marketSlug: market.slug, listingSlug: l.slug }) });
               setChoice(null);
               go('bet');
@@ -193,62 +186,6 @@ export function Welcome({
         />,
       );
   }
-}
-
-/** Search the venue's papers; before anything is typed, the most traded ones. */
-function PaperSearch({
-  kind,
-  suggestions,
-  onPick,
-}: {
-  kind: string;
-  suggestions: Listing[];
-  onPick: (l: Listing) => void;
-}) {
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(q.trim()), 250);
-    return () => clearTimeout(t);
-  }, [q]);
-  const { data, isLoading } = useSWR<z.output<typeof S.ListingList>>(
-    debounced ? `/api/v1/listings?kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(debounced)}&limit=8` : null,
-    publicJson,
-  );
-  const shown = (debounced ? (data?.listings ?? []) : suggestions).filter((l) => tradable(l));
-
-  return (
-    <>
-      <input
-        autoFocus
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Title or author"
-        aria-label="Search papers"
-        className={ui.input}
-      />
-      {!debounced && shown.length > 0 && <div className="mt-2 text-xs text-faint">Most traded</div>}
-      <ul className="mt-1">
-        {shown.map((l) => {
-          const h = marketHeadline(l.markets[0]);
-          return (
-            <li key={l.id}>
-              <button
-                className="flex w-full cursor-pointer items-baseline gap-3 border-b border-rule-soft py-2 text-left hover:text-accent"
-                onClick={() => onPick(l)}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  <MathText text={l.title} />
-                </span>
-                {h !== null && <span className="font-mono text-[13px] text-muted">{pct(h)}</span>}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {debounced && !isLoading && shown.length === 0 && <div className={ui.empty}>No open {kind} paper matches.</div>}
-    </>
-  );
 }
 
 /** The market's own trade box, kept live. A visitor's hands back the choice; a viewer's places the order. */

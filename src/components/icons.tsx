@@ -102,3 +102,42 @@ export function CheckIcon({ className = 'size-4' }: { className?: string }) {
     </svg>
   );
 }
+
+/** Remove an item: a trash can. The button supplies its accessible label. */
+export function TrashIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M3 5h14M7 5V3h6v2M5 5l1 12h8l1-12M8 8v6M12 8v6" />
+    </svg>
+  );
+}
+
+/** A deliberate read marker: reading glasses, with tinted lenses when read. */
+export function ReadingGlassesIcon({ read = false }: { read?: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 15 4 6h3M21.5 15 20 6h-3M10.5 14c1-1 2-1 3 0" />
+      <circle cx="6.5" cy="15" r="4" fill={read ? 'currentColor' : 'none'} fillOpacity="0.2" />
+      <circle cx="17.5" cy="15" r="4" fill={read ? 'currentColor' : 'none'} fillOpacity="0.2" />
+    </svg>
+  );
+}

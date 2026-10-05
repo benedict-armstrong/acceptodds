@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Amount } from './Amount';
 import { MiniCurve } from './MiniCurve';
+import type { NavGroup } from './NavGroups';
 import { MobileNav } from './MobileNav';
 import { Popover, PopoverContent, PopoverTrigger } from './Popover';
 import { ui } from './ui';
@@ -34,6 +35,7 @@ export function NavWorth({
   cash,
   pnlMicro,
   standing,
+  groups,
 }: {
   handle: string;
   worth: string;
@@ -41,6 +43,7 @@ export function NavWorth({
   /** Lifetime P&L, micro-units as a decimal string: unrealized plus realized. */
   pnlMicro: string;
   standing: NavStanding | null;
+  groups: NavGroup[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<'hover' | 'pinned' | null>(null);
@@ -112,7 +115,7 @@ export function NavWorth({
               lifetime P&L <Amount micro={pnlMicro} signed />
             </div>
           </div>
-          <MobileNav />
+          <MobileNav groups={groups} onNavigate={() => setOpen(null)} />
         </div>
       </PopoverContent>
     </Popover>

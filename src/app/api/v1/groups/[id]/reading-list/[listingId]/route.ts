@@ -1,0 +1,6 @@
+import * as h from '@/server/api/handlers';
+import { methodNotAllowed } from '@/server/api/http';
+export const dynamic = 'force-dynamic';
+export const PUT = h.putGroupReadingList;
+export const DELETE = h.deleteGroupReadingList;
+export const { GET, POST, PATCH } = methodNotAllowed('PUT', 'DELETE');

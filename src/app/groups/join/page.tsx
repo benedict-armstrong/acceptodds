@@ -12,7 +12,7 @@ import { groupByInviteCode, groupMembersOf, roleIn } from '@/server/groups';
 export const dynamic = 'force-dynamic';
 
 // The code is the invitation: keep it out of search engines and referrers.
-export const metadata: Metadata = { title: 'Join a group', robots: { index: false }, referrer: 'no-referrer' };
+export const metadata: Metadata = { title: 'Join a reading group', robots: { index: false }, referrer: 'no-referrer' };
 
 /**
  * A group's invite link (#25, `lib/links.groupInvitePath`): the group as its
@@ -35,8 +35,8 @@ export default async function JoinGroupPage({
       <main className={ui.page}>
         <TitleBlock title="Invite link not valid" />
         <p className="text-center">
-          This link does not open any group. Its admin may have replaced it with a new one: ask them for the current
-          link. <Link href="/leaderboard">See the leaderboard</Link>.
+          This link does not open any reading group. Its admin may have replaced it with a new one: ask them for the
+          current link. <Link href="/leaderboard">See the leaderboard</Link>.
         </p>
       </main>
     );
@@ -64,13 +64,13 @@ export default async function JoinGroupPage({
         <div className="mt-4 flex flex-col items-center font-sans text-sm">
           {role ? (
             <p>
-              You are in this group. <Link href={groupPath(group.id)}>See its board →</Link>
+              You are in this reading group. <Link href={groupPath(group.id)}>See its reading list and board →</Link>
             </p>
           ) : viewer ? (
             <>
               <p className="mb-1 text-muted">
-                Its members are ranked among themselves on a board of their own. You stay on the main leaderboard too,
-                and can leave at any time.
+                Everyone can add papers to its shared reading list and mark what they have read. Its members also have a
+                leaderboard of their own. You stay on the main leaderboard too.
               </p>
               <JoinGroupButton code={code} groupId={group.id} />
             </>

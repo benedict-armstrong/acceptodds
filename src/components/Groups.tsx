@@ -98,30 +98,39 @@ function GroupForm({
 export function NewGroupButton({
   className = ui.linkBtn,
   onCreated,
+  addListingId,
+  label = '+ Create reading group',
 }: {
   className?: string;
+  addListingId?: string;
+  label?: string;
   /** After the group is made, before its board opens. */
   onCreated?: () => void;
 }) {
   const router = useRouter();
   // Controlled: the new board is the same page with another `?group=`, so nothing unmounts the modal for us.
   const [open, setOpen] = useState(false);
+  const [createdId, setCreatedId] = useState<string | null>(null);
   return (
     <Modal open={open} onOpenChange={setOpen}>
-      <ModalTrigger className={className}>+ Create a group</ModalTrigger>
-      <ModalContent title="New group">
+      <ModalTrigger className={className}>{label}</ModalTrigger>
+      <ModalContent title="Create reading group">
         <p className="mb-3 text-muted">
-          A leaderboard of its own: you and whoever joins with its invite link, ranked among yourselves. You can rename
-          it, remove members or delete it later.
+          A shared reading list and a leaderboard of your own. Everyone who joins with your invite link can add papers,
+          remove them and mark what they have read.
         </p>
         <GroupForm
           initial={{ name: '', description: null }}
-          submit="Make group"
+          submit="Create reading group"
           onSubmit={async (v) => {
-            const group = await call('POST', '/groups', v);
+            const id = createdId ?? (await call('POST', '/groups', v))!.id!;
+            setCreatedId(id);
+            if (addListingId) await call('PUT', `/groups/${id}/reading-list/${addListingId}`);
             setOpen(false);
+            setCreatedId(null);
             onCreated?.();
-            router.push(groupPath(group!.id!));
+            router.push(groupPath(id));
+            router.refresh();
           }}
         />
       </ModalContent>
@@ -142,10 +151,11 @@ export function JoinGroupButton({ code, groupId }: { code: string; groupId: stri
           run(async () => {
             await call('POST', '/groups/join', { inviteCode: code });
             router.push(groupPath(groupId));
+            router.refresh();
           })
         }
       >
-        Join the group
+        Join the reading group
       </button>
       {error && <div className={ui.note(false)}>{error}</div>}
     </>
@@ -160,27 +170,47 @@ export interface GroupActionsProps {
 }
 
 /** A confirming modal behind a link-like button: `action` runs on "yes". */
-function Confirm({
+export function Confirm({
   trigger,
+  triggerLabel,
   title,
   children,
   yes,
   action,
 }: {
-  trigger: string;
+  trigger: ReactNode;
+  triggerLabel?: string;
   title: string;
   children: ReactNode;
   yes: string;
   action: () => Promise<void>;
 }) {
   const { busy, error, run, reset } = useWrite();
+  const [open, setOpen] = useState(false);
   return (
-    <Modal onOpenChange={reset}>
-      <ModalTrigger className={ui.linkBtn}>{trigger}</ModalTrigger>
+    <Modal
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        reset();
+      }}
+    >
+      <ModalTrigger className={ui.linkBtn} aria-label={triggerLabel}>
+        {trigger}
+      </ModalTrigger>
       <ModalContent title={title}>
         <div className="mb-2">{children}</div>
         <div className="flex gap-2">
-          <button className={ui.btn({ inline: true })} disabled={busy} onClick={() => run(action)}>
+          <button
+            className={ui.btn({ inline: true })}
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                await action();
+                setOpen(false);
+              })
+            }
+          >
             {yes}
           </button>
           <ModalClose className={ui.btn({ ghost: true, inline: true })}>Cancel</ModalClose>
@@ -217,6 +247,7 @@ export function GroupActions({ group, role, viewerHandle, members }: GroupAction
           action={async () => {
             await call('DELETE', `${base}/members/${encodeURIComponent(viewerHandle)}`);
             router.push('/leaderboard');
+            router.refresh();
           }}
         >
           You can join again with its invite link.
@@ -226,7 +257,7 @@ export function GroupActions({ group, role, viewerHandle, members }: GroupAction
         <>
           <Modal open={editing} onOpenChange={setEditing}>
             <ModalTrigger className={ui.linkBtn}>Edit</ModalTrigger>
-            <ModalContent title="Edit group">
+            <ModalContent title="Edit reading group">
               <GroupForm
                 initial={group}
                 submit="Save"
@@ -287,10 +318,11 @@ export function GroupActions({ group, role, viewerHandle, members }: GroupAction
           <Confirm
             trigger="Delete"
             title={`Delete ${group.name}?`}
-            yes="Delete group"
+            yes="Delete reading group"
             action={async () => {
               await call('DELETE', base);
               router.push('/leaderboard');
+              router.refresh();
             }}
           >
             The group and its board go for everyone in it. Nobody’s reputation or positions change.

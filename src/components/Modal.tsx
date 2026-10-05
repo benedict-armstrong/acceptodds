@@ -17,13 +17,16 @@ export const ModalClose = D.Close;
 
 export function ModalContent({
   title,
+  titleClassName = ui.runIn,
   wide = false,
   className = '',
   children,
   ...props
-}: ComponentProps<typeof D.Content> & {
+}: Omit<ComponentProps<typeof D.Content>, 'title'> & {
   /** Required: it is the dialog's accessible name, and shown as its heading. */
   title: ReactNode;
+  /** A title block for guided flows; defaults to the site's run-in heading. */
+  titleClassName?: string;
   /** For content with long lines (a code block): 640px rather than 380px. */
   wide?: boolean;
 }) {
@@ -36,7 +39,7 @@ export function ModalContent({
         {...props}
       >
         <div className="mb-3 flex items-baseline justify-between gap-3">
-          <D.Title className={ui.runIn}>{title}</D.Title>
+          <D.Title className={titleClassName}>{title}</D.Title>
           <D.Close aria-label="Close" className="cursor-pointer px-1 text-lg leading-none text-muted hover:text-ink">
             ×
           </D.Close>

@@ -900,6 +900,36 @@ export const groupMembers = pgTable(
 
 export type Group = typeof groups.$inferSelect;
 
+/** Shared reading lists; membership controls writes in server/reading.ts. */
+export const groupReadingList = pgTable(
+  'group_reading_list',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.listingId] }), index('group_reading_list_listing_idx').on(t.listingId)],
+);
+
+/** A deliberate read marker, global per account and listing; unrelated to page views. */
+export const listingReads = pgTable(
+  'listing_reads',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.listingId] }), index('listing_reads_listing_idx').on(t.listingId)],
+);
+
 /**
  * One row per digest mail, keyed by the account and the digest's calendar
  * day (in `DIGEST_TIMEZONE`). Inserted **before** the mail is sent, so a

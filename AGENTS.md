@@ -1195,7 +1195,7 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   the board's name is `components/BoardPicker`, a find box over the boards
   (global, the viewer's institutions and groups, and once typed any
   institution with traders, `views.traderInstitutions`; never a group the
-  viewer is not in). "+ New group" sits under the search.
+  viewer is not in). "+ Create reading group" sits under the search.
 - **Institutions are derived groups**: never a row, always
   `accounts.institutions`, so they cannot drift from the affiliations and
   nobody joins or leaves one by hand. Lab groups were deferred on the
@@ -1215,6 +1215,17 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `/groups/join?code=` (`lib/links.groupInvitePath`): in the query, which
   analytics never records, and joining is the page's POST button, never
   the GET. `group` is deliberately not in `ANALYTICS_PARAMS`.
+
+- **Reading groups have shared reading lists**, underneath the leaderboard;
+  institutions do not. `server/reading.ts` writes `group_reading_list` only
+  for current members (membership is locked through the write). Any member
+  may add or remove a listing. `listing_reads` stores deliberate, global
+  account/listing read markers, independent of page views and group membership.
+  The reading-list table and paper quick actions share a clickable reading-glasses icon;
+  only the group table shows a hover panel, naming readers in that group. Removing a listing confirms through a modal
+  and leaves read markers intact. The paper's "+ Reading list" uses the
+  existing group-creation modal with no groups, adds directly with one, or
+  offers a group chooser with several; existing entries are marked.
 
 ### Onboarding (`/welcome`)
 

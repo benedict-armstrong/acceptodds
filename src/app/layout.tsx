@@ -5,6 +5,8 @@ import { Analytics } from '@/components/Analytics';
 import { AuthNavLink } from '@/components/AuthLinks';
 import { ConfirmBanner } from '@/components/ConfirmBanner';
 import { LogoMark } from '@/components/Logo';
+import { NavGroups } from '@/components/NavGroups';
+import { groupsOf } from '@/server/groups';
 import { NavWorth, type NavStanding } from '@/components/NavWorth';
 import { rep, REP } from '@/lib/format';
 import { microToFloat } from '@/lib/money';
@@ -60,7 +62,10 @@ function navStanding(field: FieldSnapshot, mine: bigint): NavStanding | null {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const viewer = await viewerFromHeaders(await headers());
   // Liquidation value, not a mark (§1.1, §1.2): what the viewer would hold if they sold everything now.
-  const worth = viewer ? await valuation(viewer.account.id) : null;
+  const [worth, memberships] = viewer
+    ? await Promise.all([valuation(viewer.account.id), groupsOf(viewer.account.id)])
+    : [null, []];
+  const readingGroups = memberships.map(({ group }) => ({ id: group.id, name: group.name }));
   const standing = viewer
     ? navStanding(await fieldSnapshot(), worth?.netWorthMicro ?? viewer.account.balanceMicro)
     : null;
@@ -85,10 +90,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <Link href="/map">map</Link>
               <Link href="/leaderboard">leaderboard</Link>
               {viewer && <Link href="/portfolio">portfolio</Link>}
+              <NavGroups groups={readingGroups} />
             </div>
             {viewer ? (
               <>
                 <NavWorth
+                  groups={readingGroups}
                   handle={viewer.account.handle}
                   worth={`${rep(worth?.netWorthMicro ?? viewer.account.balanceMicro)} ${REP}`}
                   cash={`${rep(worth?.cashMicro ?? viewer.account.balanceMicro)} ${REP}`}

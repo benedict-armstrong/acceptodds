@@ -1,9 +1,12 @@
+import { readingGroupIdsForListing, readingStatuses } from '@/server/reading';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { Citations } from '@/components/Citations';
 import { RelatedPapers } from '@/components/RelatedPapers';
+import { AddToReadingList, ReadEye } from '@/components/ReadingList';
+import { groupsOf } from '@/server/groups';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { TableNotes } from '@/components/TableNotes';
@@ -111,6 +114,10 @@ export default async function PaperPage({
   const viewer = await viewerFromHeaders(await headers());
   const initial = selected ? await loadMarketLive(selected.market, viewer) : null;
   const following = viewer ? (await followedListingIds(viewer.account.id)).has(listing.id) : false;
+  const [myReadingGroups, alreadyListed] = viewer
+    ? await Promise.all([groupsOf(viewer.account.id), readingGroupIdsForListing(viewer.account.id, listing.id)])
+    : [[], new Set<string>()];
+  const [readStatus] = await readingStatuses([listing.id], viewer?.account.id ?? null);
   events.log('listing.read', { accountId: viewer?.account.id ?? null });
   // Before the discussion, its figure numbered after the market's own.
   const relatedPapers = (
@@ -144,16 +151,30 @@ export default async function PaperPage({
             ))}
           </div>
         )}
-        <div className="mt-2 flex items-center justify-center gap-4">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-4">
           <ViewCount listingId={listing.id} views={listing.viewCount} />
-          <FollowStar
-            listingId={listing.id}
-            following={following}
-            followers={followers}
-            showCount
-            signUpNext={viewer ? undefined : `/papers/${listing.slug}`}
-            className="text-[15px]"
-          />
+          {viewer && (
+            <>
+              <FollowStar
+                listingId={listing.id}
+                following={following}
+                followers={followers}
+                showCount
+                className="text-[15px]"
+              />
+              <ReadEye key={`read:${listing.id}`} status={readStatus} showReaders={false} signedIn={viewer !== null} />
+              <AddToReadingList
+                key={listing.id}
+                listingId={listing.id}
+                signedIn={viewer !== null}
+                groups={myReadingGroups.map(({ group }) => ({
+                  id: group.id,
+                  name: group.name,
+                  added: alreadyListed.has(group.id),
+                }))}
+              />
+            </>
+          )}
           {markets[0] && (
             <SharePanel
               title={listing.title}

@@ -1,3 +1,5 @@
+import { ReadingListTable } from '@/components/ReadingList';
+import { readingList } from '@/server/reading';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -82,6 +84,7 @@ export default async function LeaderboardPage({
     viewer ? groupsOf(viewer.account.id) : [],
     traderInstitutions(),
   ]);
+  const groupReading = group ? await readingList(group.id, viewer?.account.id ?? null) : null;
   const board = group !== null || institution !== null;
   // A group's or an institution's members by net worth: its author line, and its figure.
   const byWorth = board ? await leaderboardStandings({ basis: 'net_worth', institution, group: group?.id }) : null;
@@ -154,7 +157,7 @@ export default async function LeaderboardPage({
           })),
         },
         {
-          section: 'Your groups',
+          section: 'Your reading groups',
           options: myGroups.map((g) => ({
             key: `g:${g.group.id}`,
             label: g.group.name,
@@ -275,7 +278,12 @@ export default async function LeaderboardPage({
             </span>
           )}
         </div>
-        {viewer && <NewGroupButton className={`${ui.linkBtn} shrink-0`} />}
+        {viewer && (
+          <NewGroupButton
+            className={`${ui.linkBtn} shrink-0`}
+            label={group ? '+ Create another reading group' : '+ Create reading group'}
+          />
+        )}
       </div>
 
       {snapshot && (
@@ -356,6 +364,15 @@ export default async function LeaderboardPage({
           pages={pages}
           label={compact ? 'all traders:' : undefined}
           href={(p) => href({ page: String(p) })}
+        />
+      )}
+      {group && groupReading && (
+        <ReadingListTable
+          groupId={group.id}
+          initial={groupReading}
+          canEdit={role !== null}
+          signedIn={viewer !== null}
+          tableNumber={onScreen > 0 ? 2 : 1}
         />
       )}
     </main>

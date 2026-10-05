@@ -58,7 +58,7 @@ export function InviteFriends({
         <ShareButton service="x" href={links.x} onShared={onShared} />
         <ShareButton service="whatsapp" href={links.whatsapp} onShared={onShared} />
       </div>
-      <div className="mb-1 text-muted">Or invite them to a group, a leaderboard of your own:</div>
+      <div className="mb-1 text-muted">Or invite them to a reading group, a shared reading list and leaderboard:</div>
       <ul className="mb-2">
         {groups.map((g) => (
           <li key={g.id} className="flex items-baseline justify-between gap-3 py-0.5">
