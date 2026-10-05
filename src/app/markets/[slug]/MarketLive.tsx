@@ -128,10 +128,10 @@ export function MarketLive({
   const sorted =
     market.outcomes.length === 2 ? market.outcomes : [...market.outcomes].sort((a, b) => b.price - a.price);
   const lead = likelihoodClass(marketLikelihood(market)).text;
-  // Three or four ordered outcomes (a paper: oral, spotlight, poster, reject)
-  // while trading: the headline and the outcome bar, worst on the left.
+  // Two to four ordered outcomes while trading: the headline and the outcome
+  // bar, worst on the left (a binary paper market: reject, accept).
   const n = market.outcomes.length;
-  const barred = n > 2 && n <= MAX_BAR_OUTCOMES && (market.status === 'open' || market.status === 'closed');
+  const barred = n >= 2 && n <= MAX_BAR_OUTCOMES && (market.status === 'open' || market.status === 'closed');
   const headline = marketHeadline(market);
   // On a paper's page the question and the headline read as one sentence,
   // with the venue (`kind`) named once, in it.

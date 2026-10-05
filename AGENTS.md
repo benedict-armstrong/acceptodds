@@ -1018,9 +1018,9 @@ unpaginated, and 5 s for that search.
   holds only those few, so a row's volume and activity stay the whole
   listing's.
 
-### Four-outcome papers and sharing (#11)
+### Paper markets and sharing (#11)
 
-- **A paper has one market by default: `Oral, Spotlight, Poster, Reject`**,
+- **A paper has one market by default: `Accept, Reject`**,
   as its main market (rank 0), created by `../research`. The platform still
   attaches no meaning to the labels, and a listing may still carry more
   markets (the paper page lists them only when there is more than one).
@@ -1092,13 +1092,15 @@ unpaginated, and 5 s for that search.
   `share_copied`. `?step=` and `?error=` are allowlisted for the same funnels.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
-- **`npm run db:seed`** wipes every table, then gives a venue of invented
-  papers under `ICLR 2027` with four-outcome markets, and the admin. A field
-  of seed bots, each funded exactly as a signup is, trades them as a crowd, so
-  net worths stay around the starting balance. Only a local database without
-  `--allow-remote`; a remote one also needs `SEED_ADMIN_PASSWORD`. It back-dates their
-  fills so charts have a history — the only place anything but the engine
-  touches `orders`, and only timestamps. Never outside a seed.
+- **`npm run db:seed`** wipes every table, then loads submissions from
+  `data/iclr2027.sqlite` under `ICLR 2027` with `Accept, Reject` markets,
+  a 32% acceptance prior, and the admin. Liquidity defaults to an expected
+  field of 6 traders: a 100-unit Accept buy moves the opening price to about
+  39.4%; `--traders=<n>` overrides it. `--keep-listings` preserves existing
+  listings, bibliography, related papers, view data and the map, replacing
+  their markets without reading SQLite. All trading and account data is
+  still wiped; no bots or trades are seeded. Only a local database without
+  `--allow-remote`; a remote one also needs `SEED_ADMIN_PASSWORD`.
 
 ### Leaderboard, people search and search syntax (#10)
 

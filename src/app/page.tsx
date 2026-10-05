@@ -57,10 +57,10 @@ const PEOPLE = 5;
 /** What the site is, above the search; hidden while searching. */
 const abstract = () => (
   <>
-    A prediction market on peer review. Each paper has a market on its decision (oral, spotlight, poster or reject),
-    priced by researchers who stake $rep, an in app currency, on what they expect. Everyone who signs up receives{' '}
-    {rep(startingBalanceMicro())} {REP} to trade with. Prices are probabilities, and every market settles when the venue
-    publishes its decisions. It is a game made for fun, and has no connection to ICLR, OpenReview or any other
+    A prediction market on peer review. Each paper has a market on its decision (accept or reject), priced by
+    researchers who stake $rep, an in app currency, on what they expect. Everyone who signs up receives{' '}
+    {rep(startingBalanceMicro(), 0)} {REP} to trade with. Prices are probabilities, and every market settles when the
+    venue publishes its decisions. It is a game made for fun, and has no connection to ICLR, OpenReview or any other
     organisation. acceptodds is an open source project, open to contributions, at{' '}
     <a href={REPO_URL} className={ui.hyperref}>
       {REPO_URL.replace(/^https:\/\//, '')}
@@ -611,7 +611,7 @@ function authors(names: string[]): string {
 
 /**
  * The headline (`lib/headline.ts`: for a paper, accepted in any form), with
- * the outcome bar under it when there are more than two outcomes. Settled: the
+ * the outcome bar under it for two to four outcomes. Settled: the
  * winner. Void: nothing.
  */
 function headline(r: BrowseRow): React.ReactNode {
@@ -620,17 +620,14 @@ function headline(r: BrowseRow): React.ReactNode {
   }
   const h = marketHeadline({ ...r.market, outcomes: r.outcomes });
   if (h === null) return '—';
-  const n = r.outcomes.length;
   return (
     <span className="inline-flex flex-col items-end gap-1">
       {pct(h)}
-      {n > 2 && (
-        <OutcomeBar
-          prices={r.outcomes.map((o) => o.price)}
-          labels={r.outcomes.map((o) => o.label)}
-          className="h-1 w-14"
-        />
-      )}
+      <OutcomeBar
+        prices={r.outcomes.map((o) => o.price)}
+        labels={r.outcomes.map((o) => o.label)}
+        className="h-1 w-14"
+      />
     </span>
   );
 }

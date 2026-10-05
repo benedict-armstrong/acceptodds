@@ -2,8 +2,8 @@ import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, TIER_BG } from '@/lib/headline
 
 /**
  * A market's prices as one stacked bar, worst outcome on the left, in the
- * tier colours (`lib/headline.ts`): for a paper, reject · poster · spotlight
- * · oral. Prices, not values. Nothing for a market with more outcomes than the
+ * tier colours (`lib/headline.ts`): for a binary paper market, reject · accept.
+ * Prices, not values. Nothing for a market with more outcomes than the
  * palette has colours.
  */
 export function OutcomeBar({

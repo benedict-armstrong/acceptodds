@@ -9,6 +9,7 @@ import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { SUBSIDY_FRACTION } from '@/lib/lmsr';
 import { createDb, createPool, type Database } from './index';
+import { listings } from './schema';
 
 /**
  * The real venue (`npm run db:seed`). It **wipes every table first**, users and
@@ -18,8 +19,7 @@ import { createDb, createPool, type Database } from './index';
  * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is;
  * - one listing per ICLR 2027 submission in `data/iclr2027.sqlite` (the
  *   database `../research` builds from OpenReview; override with `--db=<path>`),
- *   each with the default single market, the four outcomes
- *   `Oral, Spotlight, Poster, Reject`, best first (issue #11 §4).
+ *   each with the default single market, `Accept, Reject`, best first.
  *
  * Nothing is traded and nobody else exists: the venue opens empty. The
  * platform still knows nothing about papers: everything here goes in through
@@ -28,10 +28,14 @@ import { createDb, createPool, type Database } from './index';
  * anonymous until the decision, so they carry no authors.
  *
  * `--limit=<n>` loads only the first n submissions. `--traders=<n>` is the
- * expected field that sizes every market's `b` (default 100). `--decision=<date>`
+ * expected field that sizes every market's `b` (default 6: a 100-unit Accept
+ * buy moves the opening price from 32% to about 39.4%). `--decision=<date>`
  * is when decisions are released (default 2026-12-15); the markets close the
  * day before. Markets open at {@link PRIOR}, last year's split of decisions,
  * not an even one.
+ * `--keep-listings` instead preserves the existing listings, bibliography,
+ * related papers and map, and recreates their markets without reading SQLite.
+ * All trading and account data is still wiped.
  *
  * Only a local database is wiped unless `--allow-remote` is passed; a remote
  * seed also needs `SEED_ADMIN_PASSWORD` (a local one defaults to
@@ -49,8 +53,14 @@ async function main() {
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || (local ? ADMIN_PASSWORD : '');
   if (!adminPassword) throw new Error('SEED_ADMIN_PASSWORD is required to seed a remote database');
 
-  const submissions = readSubmissions(flag('db') ?? path.join('data', 'iclr2027.sqlite'), Number(flag('limit') ?? 0));
-  const traders = Number(flag('traders') ?? 100);
+  const keepListings = process.argv.includes('--keep-listings');
+  if (keepListings && (flag('db') !== undefined || flag('limit') !== undefined)) {
+    throw new Error('--keep-listings cannot be combined with --db or --limit');
+  }
+  const submissions = keepListings
+    ? []
+    : readSubmissions(flag('db') ?? path.join('data', 'iclr2027.sqlite'), Number(flag('limit') ?? 0));
+  const traders = Number(flag('traders') ?? 6);
   const decisionAt = new Date(`${flag('decision') ?? '2026-12-15'}T00:00:00Z`);
   if (!Number.isFinite(traders) || traders < 1) throw new Error('--traders must be a positive number');
   if (Number.isNaN(decisionAt.getTime())) throw new Error('--decision must be a date like 2026-12-15');
@@ -58,15 +68,28 @@ async function main() {
 
   const pool = createPool(url);
   const db = createDb(pool);
+  const existingListings = keepListings
+    ? await db.select({ id: listings.id, slug: listings.slug, kind: listings.kind }).from(listings)
+    : [];
+  const marketCount = keepListings ? existingListings.length : submissions.length;
 
-  await wipeData(db);
+  await wipeData(db, keepListings);
   // A market opening at a prior costs the house b·ln(1/p_min), with b = SUBSIDY_FRACTION · balance · traders / ln(n)
   // (§1.7); a margin covers rounding.
   const b = (SUBSIDY_FRACTION * Number(startingBalanceMicro()) * traders) / Math.log(DECISIONS.length);
   const perMarket = b * Math.log(1 / Math.min(...PRIOR));
-  await createHouse(BigInt(Math.ceil(perMarket * submissions.length * 1.01)), db);
+  await createHouse(BigInt(Math.ceil(perMarket * marketCount * 1.01)), db);
   await seedAdmin(db, adminPassword);
-  await seedSubmissions(db, submissions, traders, closesAt);
+  if (keepListings) {
+    const started = Date.now();
+    for (const [i, listing] of existingListings.entries()) {
+      await seedMarket(db, listing, traders, closesAt);
+      reportProgress(i + 1, marketCount, started);
+    }
+    console.log(`papers preserved: ${marketCount}, markets: ${marketCount}`);
+  } else {
+    await seedSubmissions(db, submissions, traders, closesAt);
+  }
   await pool.end();
 }
 
@@ -78,10 +101,13 @@ function isLocal(url: string): boolean {
   return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(new URL(url).hostname);
 }
 
-/** Empties every table in `public` (users and sessions included) so the seed starts from nothing. */
-async function wipeData(db: Database) {
+/** Empties public tables (users and sessions included), optionally retaining paper data. */
+async function wipeData(db: Database, keepListings: boolean) {
   const { rows } = await db.execute<{ t: string }>(
-    sql`select format('%I', tablename) as t from pg_tables where schemaname = 'public'`,
+    sql`select format('%I', tablename) as t from pg_tables where schemaname = 'public'
+        and (not ${keepListings} or tablename not in (
+          'listings', 'listing_references', 'listing_related', 'listing_views', 'map_points', 'map_topics'
+        ))`,
   );
   if (rows.length > 0) {
     await db.execute(sql.raw(`truncate table ${rows.map((r) => r.t).join(', ')} restart identity cascade`));
@@ -127,8 +153,8 @@ async function seedAdmin(db: Database, password: string) {
 
 const KIND = 'ICLR 2027';
 
-/** The four outcomes of a paper's market, best first; the headline is 1 − P(Reject). */
-const DECISIONS = ['Oral', 'Spotlight', 'Poster', 'Reject'];
+/** The two outcomes of a paper's market, best first; the headline is P(Accept). */
+const DECISIONS = ['Accept', 'Reject'];
 
 /**
  * The decision market's contract, shown to traders on its page. Reject is
@@ -138,16 +164,15 @@ const DECISIONS = ['Oral', 'Spotlight', 'Poster', 'Reject'];
 const DECISION_CONTRACT = [
   "This market settles on the venue's final decision for the paper.",
   '',
-  '- **Oral, Spotlight, Poster**: the paper is accepted in that form.',
+  '- **Accept**: the paper is accepted to ICLR 2027 in any form (oral, spotlight or poster).',
   '- **Reject**: the paper is rejected. This also covers a paper that is withdrawn or desk-rejected before the decision.',
 ].join('\n');
 
 /**
- * Where a market opens, best first like {@link DECISIONS}: ICLR 2025's
- * decisions (213 orals, 380 spotlights, 3,112 posters of 11,565 submissions).
- * The headline therefore opens at about 32%, the acceptance rate.
+ * Where a market opens, best first like {@link DECISIONS}: the previous
+ * oral, spotlight and poster priors combined into a 32% acceptance prior.
  */
-const PRIOR = [0.018, 0.033, 0.269, 0.68];
+const PRIOR = [0.32, 0.68];
 
 interface Submission {
   id: string;
@@ -211,28 +236,41 @@ async function seedSubmissions(db: Database, submissions: Submission[], traders:
       },
       db,
     );
-    await createMarket(
-      {
-        slug: `${slug}-decision`,
-        question: `How will ${KIND} decide this paper?`,
-        contract: DECISION_CONTRACT,
-        kind: KIND,
-        outcomes: DECISIONS,
-        openingPrices: PRIOR,
-        closesAt,
-        startingBalanceMicro: startingBalanceMicro(),
-        expectedTraders: traders,
-        status: 'open',
-        listingId: listing.id,
-        listingRank: 0,
-      },
-      db,
-    );
-    if ((i + 1) % 1000 === 0) {
-      console.log(`  ${i + 1}/${submissions.length}  (${Math.round((Date.now() - started) / 1000)}s)`);
-    }
+    await seedMarket(db, listing, traders, closesAt);
+    reportProgress(i + 1, submissions.length, started);
   }
   console.log(`papers: ${submissions.length}, markets: ${submissions.length}`);
+}
+
+async function seedMarket(
+  db: Database,
+  listing: { id: string; slug: string; kind: string | null },
+  traders: number,
+  closesAt: Date,
+) {
+  await createMarket(
+    {
+      slug: `${listing.slug}-decision`,
+      question: 'Will this paper get accepted to ICLR 2027',
+      contract: DECISION_CONTRACT,
+      kind: listing.kind ?? KIND,
+      outcomes: DECISIONS,
+      openingPrices: PRIOR,
+      closesAt,
+      startingBalanceMicro: startingBalanceMicro(),
+      expectedTraders: traders,
+      status: 'open',
+      listingId: listing.id,
+      listingRank: 0,
+    },
+    db,
+  );
+}
+
+function reportProgress(done: number, total: number, started: number) {
+  if (done % 1000 === 0) {
+    console.log(`  ${done}/${total}  (${Math.round((Date.now() - started) / 1000)}s)`);
+  }
 }
 
 main().catch((err) => {
