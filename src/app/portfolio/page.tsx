@@ -65,7 +65,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           holdings={presentPortfolio(p).holdings}
           caption={
             <>
-              <b>Table 2.</b> Your open positions, one row per outcome held.
+              <b>Table 2.</b> Your open positions.
             </>
           }
           showMarket
@@ -85,8 +85,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           <div className={ui.tableScroll}>
             <table className={ui.table}>
               <caption className={ui.tableCaption}>
-                <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Outcomes you traded and no longer hold, over
-                all their fills, newest first.
+                <b>{p.holdings.length === 0 ? 'Table 2.' : 'Table 3.'}</b> Your closed positions, newest first.
               </caption>
               <thead>
                 <tr>
@@ -126,17 +125,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               </tbody>
             </table>
           </div>
-          <TableNotes
-            notes={[
-              [
-                'a',
-                <>
-                  What selling paid plus, if you held into settlement, 1 {REP} per winning share. Hover a figure for the
-                  split.
-                </>,
-              ],
-            ]}
-          />
+          <TableNotes notes={[['a', 'Sale proceeds plus settlement payouts.']]} />
           <Pager page={page} pages={pages} href={(n) => `/portfolio?page=${n}`} />
         </>
       )}

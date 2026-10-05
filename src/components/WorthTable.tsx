@@ -4,9 +4,9 @@ import { DetailsTable } from './DetailsTable';
 
 /** What the worth figures mean, as table notes. Liquidation value, never a mark (§1.1, §1.2). */
 export const WORTH_NOTES = {
-  netWorth: 'Cash plus what selling every holding now would pay — not holdings marked at the current price.',
-  unrealized: 'What selling now would make on markets not yet settled.',
-  realized: 'Profit on markets that have settled.',
+  netWorth: 'Cash plus the proceeds from selling all holdings now.',
+  unrealized: 'Profit or loss on unsettled markets if sold now.',
+  realized: 'Profit or loss on settled markets.',
 } as const;
 
 /**
@@ -30,14 +30,10 @@ export function WorthTable({
       rows={[
         ['Cash', <Amount key="cash" micro={worth.cashMicro} />],
         ['Net worth', <Amount key="nw" micro={worth.netWorthMicro} />, 'a'],
-        ['Unrealized P&L', <Amount key="u" micro={worth.unrealizedPnlMicro} signed />, 'b'],
-        ['Realized P&L', <Amount key="r" micro={worth.realizedPnlMicro} signed />, 'c'],
+        ['Unrealized P&L', <Amount key="u" micro={worth.unrealizedPnlMicro} signed />],
+        ['Realized P&L', <Amount key="r" micro={worth.realizedPnlMicro} signed />],
       ]}
-      notes={[
-        ['a', WORTH_NOTES.netWorth],
-        ['b', WORTH_NOTES.unrealized],
-        ['c', WORTH_NOTES.realized],
-      ]}
+      notes={[['a', WORTH_NOTES.netWorth]]}
     />
   );
 }

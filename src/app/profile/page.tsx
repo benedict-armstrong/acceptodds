@@ -7,7 +7,6 @@ import { MathText } from '@/components/MathText';
 import { ShareProfile } from '@/components/ShareProfile';
 import { SignOut } from '@/components/SignOut';
 import { TraderHeader } from '@/components/TraderHeader';
-import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { minMovePp, movePp } from '@/lib/digest';
 import { pct } from '@/lib/format';
@@ -79,12 +78,8 @@ export default async function ProfilePage() {
                 <tr>
                   <th className={ui.th()} />
                   <th className={ui.th()}>Paper</th>
-                  <th className={ui.th(true)}>
-                    Accept<sup className={ui.mark}>a</sup>
-                  </th>
-                  <th className={ui.th(true)}>
-                    24h<sup className={ui.mark}>b</sup>
-                  </th>
+                  <th className={ui.th(true)}>Accept</th>
+                  <th className={ui.th(true)}>±24h</th>
                 </tr>
               </thead>
               <tbody>
@@ -117,12 +112,6 @@ export default async function ProfilePage() {
                 })}
               </tbody>
             </table>
-            <TableNotes
-              notes={[
-                ['a', 'The chance, on its main market, that the paper is accepted in any form.'],
-                ['b', 'The change in that chance over the last 24 hours, in percentage points.'],
-              ]}
-            />
           </>
         )}
         {follows.length > 0 && (

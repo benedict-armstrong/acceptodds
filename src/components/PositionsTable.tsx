@@ -76,15 +76,11 @@ export function PositionsTable({
           <thead>
             <tr>
               <th className={ui.th()}>{showMarket ? 'Position' : 'Outcome'}</th>
+              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>Staked ({REP})</th>
               <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
-                Staked ({REP})<sup className={ui.mark}>a</sup>
+                Bought @<sup className={ui.mark}>a</sup>
               </th>
-              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
-                Bought @<sup className={ui.mark}>b</sup>
-              </th>
-              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
-                Payout ({REP})<sup className={ui.mark}>c</sup>
-              </th>
+              <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>Payout ({REP})</th>
               <th className={`${ui.th(true)} pl-6 whitespace-nowrap`}>
                 <button
                   className="cursor-pointer font-semibold hover:text-accent"
@@ -93,7 +89,7 @@ export function PositionsTable({
                 >
                   Value ({absolute ? REP : '%'})
                 </button>
-                <sup className={ui.mark}>d</sup>
+                <sup className={ui.mark}>c</sup>
               </th>
               <th className={ui.th()} />
             </tr>
@@ -115,16 +111,8 @@ export function PositionsTable({
       </div>
       <TableNotes
         notes={[
-          ['a', <>What the position cost you, in {REP}: the size of your bet.</>],
-          ['b', 'The average price you paid per share.'],
-          ['c', <>What the holding pays if the outcome wins: 1 {REP} per share.</>],
-          [
-            'd',
-            <>
-              What selling it all now would pay, against what it cost. It starts a little negative, because each share
-              you sell moves the price against you. Click the heading to switch between % and {REP}.
-            </>,
-          ],
+          ['a', 'Average price paid per share.'],
+          ['c', <>Profit or loss if sold now. Click the heading to switch between % and {REP}.</>],
         ]}
       />
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}

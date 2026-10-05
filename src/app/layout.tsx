@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="en">
       <body>
-        {/* One row on a phone too: signed in, the wordmark gives way to the mark and `profile` moves into NavWorth's panel. */}
+        {/* On a phone, keep the mini distribution beside a menu containing every navigation link. */}
         <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 px-6 pt-4 pb-2.5 narrow:px-4">
           <Link href="/" aria-label="acceptodds" className="text-[22px]">
             <LogoMark />
@@ -77,13 +77,19 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </span>
           </Link>
           <span className="flex-1" />
-          <nav className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1 text-sm narrow:gap-x-3.5">
-            <Link href="/map">map</Link>
-            <Link href="/leaderboard">leaderboard</Link>
+          <nav
+            aria-label="Main navigation"
+            className={`flex flex-wrap items-baseline gap-x-4.5 gap-y-1 text-sm ${viewer ? 'narrow:items-center narrow:gap-x-1' : 'narrow:gap-x-3.5'}`}
+          >
+            <div className={`flex items-baseline gap-x-4.5 ${viewer ? 'narrow:hidden' : 'narrow:gap-x-3.5'}`}>
+              <Link href="/map">map</Link>
+              <Link href="/leaderboard">leaderboard</Link>
+              {viewer && <Link href="/portfolio">portfolio</Link>}
+            </div>
             {viewer ? (
               <>
-                <Link href="/portfolio">portfolio</Link>
                 <NavWorth
+                  handle={viewer.account.handle}
                   worth={`${rep(worth?.netWorthMicro ?? viewer.account.balanceMicro)} ${REP}`}
                   cash={`${rep(worth?.cashMicro ?? viewer.account.balanceMicro)} ${REP}`}
                   pnlMicro={((worth?.unrealizedPnlMicro ?? 0n) + (worth?.realizedPnlMicro ?? 0n)).toString()}

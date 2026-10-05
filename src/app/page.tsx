@@ -10,6 +10,7 @@ import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { Sparkline } from '@/components/Sparkline';
 import { TitleBlock } from '@/components/TitleBlock';
+import { TutorialModal } from '@/components/TutorialModal';
 import { ui } from '@/components/ui';
 import { defaultMarketKind } from '@/lib/venue';
 import { pct, rep, REP } from '@/lib/format';
@@ -27,6 +28,7 @@ import {
   marketKinds,
   searchPeople,
   sparklines,
+  tradingMarketIds,
   type BrowsePage,
   type BrowseRow,
   type BrowseSort,
@@ -217,6 +219,9 @@ export default async function Home({
     `${href({ ...pages, [key]: String(p) })}${anchor}`;
   const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
+  const tutorialRows = [...all.rows, ...(held?.rows ?? []), ...(followed?.rows ?? [])];
+  const tutorialMarketIds = await tradingMarketIds(tutorialRows.map((r) => r.market.id));
+  const tutorialRow = tutorialRows.find((r) => tutorialMarketIds.includes(r.market.id));
   // Shown on the ⋯ trigger when not the defaults.
   const activeFilters = [status !== 'open' && status, onlyFollowed && '★', showTldr && 'tldr']
     .filter(Boolean)
@@ -235,7 +240,27 @@ export default async function Home({
         }
         abstract={q ? null : abstract()}
         abstractFull
-      />
+      >
+        <TutorialModal
+          startingBalanceMicro={startingBalanceMicro().toString()}
+          market={
+            tutorialRow
+              ? {
+                  title: tutorialRow.listing?.title ?? tutorialRow.market.question,
+                  href: tutorialRow.listing
+                    ? `/papers/${tutorialRow.listing.slug}`
+                    : `/markets/${tutorialRow.market.slug}`,
+                  b: tutorialRow.market.b,
+                  outcomes: tutorialRow.outcomes.map((o) => ({
+                    label: o.label,
+                    price: o.price,
+                    sharesMicro: o.sharesMicro.toString(),
+                  })),
+                }
+              : null
+          }
+        />
+      </TitleBlock>
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />

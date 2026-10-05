@@ -318,8 +318,8 @@ export default async function LeaderboardPage({
             {/* A paper's table caption sits above the table, its figure captions below. */}
             <caption className={ui.tableCaption}>
               <b>Table 1.</b> Traders{where}
-              {basis === 'net_worth' ? ' by net worth, if each sold everything now' : ' by profit on settled markets'}
-              {q ? `, matching “${q}”` : ''}. The best figure in each column is in bold.
+              {basis === 'net_worth' ? ' ranked by net worth' : ' ranked by settled profit'}
+              {q ? `, matching “${q}”` : ''}. Column leaders are bold.
             </caption>
             <thead>
               <tr>
@@ -329,12 +329,7 @@ export default async function LeaderboardPage({
                 <th className={ui.th(true)}>
                   Net worth<sup className={ui.mark}>a</sup>
                 </th>
-                <th className={ui.th(true)}>
-                  Unrealized<sup className={ui.mark}>b</sup>
-                </th>
-                <th className={ui.th(true)}>
-                  Settled<sup className={ui.mark}>c</sup>
-                </th>
+                <th className={ui.th(true)}>Unrealized P/L</th>
               </tr>
             </thead>
             <tbody>
@@ -353,18 +348,7 @@ export default async function LeaderboardPage({
           </table>
         </div>
       )}
-      {onScreen > 0 && (
-        <TableNotes
-          notes={[
-            [
-              'a',
-              'Cash plus what selling every open holding right now would actually pay — not holdings marked at the current price, which a trader could inflate by pushing the price themselves.',
-            ],
-            ['b', 'What selling now would make on markets not yet settled.'],
-            ['c', 'Profit on markets that have resolved.'],
-          ]}
-        />
-      )}
+      {onScreen > 0 && <TableNotes notes={[['a', 'Cash plus the proceeds from selling all holdings now.']]} />}
 
       {onScreen < list.length && (
         <Pager
@@ -378,7 +362,7 @@ export default async function LeaderboardPage({
   );
 }
 
-type Best = { netWorth: bigint | null; unrealized: bigint | null; settled: bigint | null };
+type Best = { netWorth: bigint | null; unrealized: bigint | null };
 
 /**
  * Each column's highest figure on the board, or null when nobody is above
@@ -392,7 +376,6 @@ function bestOf(field: readonly LeaderboardRow[]): Best {
   return {
     netWorth: max((r) => r.netWorthMicro),
     unrealized: max((r) => r.unrealizedPnlMicro),
-    settled: max((r) => r.settledPnlMicro),
   };
 }
 
@@ -421,7 +404,7 @@ function Segment({
     <>
       {gapBefore && (
         <tr aria-hidden>
-          <td colSpan={6} className={`${ui.td} text-center text-muted`}>
+          <td colSpan={5} className={`${ui.td} text-center text-muted`}>
             …
           </td>
         </tr>
@@ -457,9 +440,6 @@ function Segment({
               className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}
             >
               {signedRep(r.unrealizedPnlMicro)}
-            </td>
-            <td className={`${ui.td} ${ui.num} ${ui.pnl(r.settledPnlMicro)} ${bold(r.settledPnlMicro, best.settled)}`}>
-              {signedRep(r.settledPnlMicro)}
             </td>
           </tr>
         );

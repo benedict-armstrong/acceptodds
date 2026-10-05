@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { CopyField } from '@/components/CopyField';
-import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
 import { day } from '@/lib/format';
 
@@ -102,12 +101,8 @@ export function ApiKeys({ initial, n, canTrade }: { initial: ApiKeyRow[]; n: num
               <thead>
                 <tr>
                   <th className={ui.th()}>Name</th>
-                  <th className={ui.th()}>
-                    Key<sup className={ui.mark}>a</sup>
-                  </th>
-                  <th className={ui.th()}>
-                    Scopes<sup className={ui.mark}>b</sup>
-                  </th>
+                  <th className={ui.th()}>Key</th>
+                  <th className={ui.th()}>Scopes</th>
                   <th className={ui.th()}>Made</th>
                   <th className={ui.th()}>Last used</th>
                   <th className={ui.th()} />
@@ -133,12 +128,6 @@ export function ApiKeys({ initial, n, canTrade }: { initial: ApiKeyRow[]; n: num
               </tbody>
             </table>
           </div>
-          <TableNotes
-            notes={[
-              ['a', 'The first characters of the key, to tell keys apart. They are not the key.'],
-              ['b', '“read” sees your account, positions and orders; “trade” also places orders and comments.'],
-            ]}
-          />
         </>
       )}
 
