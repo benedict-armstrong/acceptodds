@@ -621,7 +621,7 @@ export const comments = pgTable(
 );
 
 /**
- * A commenter's pseudonym on one paper, OpenReview-style: "Reviewer k3xm".
+ * A commenter's pseudonym on one paper, OpenReview-style: "User k3xm".
  * The same account gets the same alias on every comment of a paper, so a
  * reader can follow one voice through a discussion and `@k3xm` it, but a
  * different, unrelated alias on every other paper.

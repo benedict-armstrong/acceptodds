@@ -4,7 +4,7 @@ import { getDb } from '@/db';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '@/db/schema';
 import { accounts, listings, markets, outcomes, positions, type Outcome } from '@/db/schema';
-import { microToFloat } from '@/lib/money';
+import { boardFromOutcomes } from './engine';
 
 type Database = NodePgDatabase<typeof schema>;
 
@@ -47,8 +47,7 @@ async function readHoldings(accountId: string, database: Database) {
     group.push(o);
     grouped.set(o.marketId, group);
   }
-  const boards = new Map(
-    [...grouped].map(([id, board]) => [id, { rows: board, q: board.map((o) => microToFloat(o.sharesMicro)) }]),
-  );
+  const marketRows = new Map(rows.map((r) => [r.market.id, r.market]));
+  const boards = new Map(ids.map((id) => [id, boardFromOutcomes(marketRows.get(id)!, grouped.get(id) ?? [])]));
   return { account, rows, boards };
 }

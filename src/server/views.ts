@@ -1236,7 +1236,10 @@ function rankedField(basis: LeaderboardBasis, database: Database): Promise<reado
   const generation = standingsGeneration();
   const hit = standingsCache.get(basis);
   if (hit && hit.generation === generation && Date.now() - hit.at < STANDINGS_TTL_MS) return hit.rows;
-  const entry = { generation, at: Date.now(), rows: computeField(basis, database) };
+  const rows = computeField(basis, database);
+  // Incremental fills must not extend the full valuation's expiry: otherwise
+  // an external writer can remain invisible while local trades keep arriving.
+  const entry = { generation, at: valuationCache?.fullAt ?? Date.now(), rows };
   standingsCache.set(basis, entry);
   // A failure is not cached: the next reader tries again.
   entry.rows.catch(() => {

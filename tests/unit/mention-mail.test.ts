@@ -14,8 +14,8 @@ const base = {
 describe('renderMentionMail', () => {
   it('names both by alias, quotes the comment and links back and to the setting', () => {
     const { subject, text } = renderMentionMail(base);
-    expect(subject).toBe('Reviewer k3xm mentioned you on “Attention Is All You Need”');
-    expect(text).toContain('Reviewer k3xm mentioned you (Reviewer ab2c)');
+    expect(subject).toBe('User k3xm mentioned you on “Attention Is All You Need”');
+    expect(text).toContain('User k3xm mentioned you (User ab2c)');
     expect(text).toContain('> line one\n> line two');
     expect(text).toContain(base.url);
     expect(text).toContain(base.settingsUrl);

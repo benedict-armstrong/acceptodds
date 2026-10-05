@@ -553,12 +553,21 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   client of the API" holds literally. Pages are Server Components that _read_
   through `server/views.ts` and render the same JSON shapes the API serves
   (via `server/api/present.ts`), which the client then keeps live.
-- **Polling, 3 s, with SWR** (§9). Public reads go out with
+- **Adaptive polling with SWR** (§9): active boards/tapes every 5 s,
+  untraded markets every 15 s; closed boards every 30 s for settlement,
+  no closed tape polling, and no settled/void board polling. Portfolio every
+  15 s and comments every 30 s; fills refresh immediately. Initial server
+  data skips a duplicate mount fetch. Public reads go out with
   `credentials: 'omit'`, so they are anonymous and don't spend the viewer's
   rate-limit bucket; only portfolio and comments are fetched as the viewer.
   The chart starts from the full server-side history and gains a point each
   time the tape shows a new fill (the board's prices after a fill are the
-  exact post-fill vector).
+  exact post-fill vector). `GET /me/portfolio?marketId=<uuid>` filters only
+  holdings and their cost-basis reads: summary and unsettled valuations
+  always cover the whole account. Boards are batch-read and validated by
+  `engine.boardFromOutcomes`; exit values use the engine's maths and rounding.
+  Viewer resolution, holding inputs and trade flows are memoized per RSC
+  render, never globally or inside a caller's transaction.
 - **Server Components identify the viewer with `viewerFromHeaders()`** in
   `server/auth.ts`: read-only, no rate limit, no Origin check. Anything that
   writes goes through the API.
@@ -730,7 +739,10 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **List sparklines are the headline, replayed from the fills**
   (`views.sparklines`): `orders.price_after` is only the traded outcome's
   price, which is not enough once the headline depends on the whole vector.
-  One query per page; they start at the opening headline (`1 − 1/n`).
+  One bounded query per page reads current vectors and only the recent fills
+  from the same SQL snapshot, subtracts those fills in reverse and reverses
+  the prices. Short tapes include the opening headline (including a prior).
+  Per-market results are cached for 30 s and invalidated after fills.
 - **The home page search box is a plain GET form** (`?q=`, works without
   JS). It carries the current venue and status, so a search stays inside
   them — the result line says where and links "search everything" — and
@@ -1151,14 +1163,20 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   seed). Correct for the single container of §11, like Better Auth's
   limiter. A new write path that moves a balance, a share vector or who is
   a trader must bump it. Not `ledger_entries.created_at` as a version: it
-  is not commit order.
+  is not commit order. Both bases share valuations. A bounded change journal
+  refreshes only current holders plus the trader after a fill; settlement
+  refreshes all historical participants, including sold-out traders. Account
+  changes, journal gaps and expiry rebuild the full field. Incremental
+  updates never extend the full valuation's 30 s lifetime.
 - **The curves share one snapshot**, `field_snapshots`
   (`server/field-snapshot.ts`), since the field's shape is the same for
   everyone: every trader's net worth, sorted, as `BIGINT` micro, and its
   density at 120 points, peaking at 1. Recomputed at most every
   `FIELD_SNAPSHOT_MAX_AGE_SECONDS` (300), stale-while-revalidate: an old row
   is served at once and one background refresh starts; only a missing row
-  makes a reader wait. An older computation never overwrites a newer row.
+  makes a reader wait. Reads share an in-process copy for at most 5 s,
+  cleared when refresh commits; transactions bypass it. An older computation
+  never overwrites a newer row.
   A cache, not a source of truth: no foreign keys, and ranks never read it.
 
 ### Groups (#25)
@@ -1280,3 +1298,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+### Public market read caching
+
+- `server/market-cache.ts` shares boards, market references and tape reads
+  for at most one second in bounded in-process caches. Authentication,
+  rate limiting, response validation and event logging still run on every
+  API request; HTTP responses retain `no-store`. Creation, fills, close
+  and settlement invalidate after commit. Failed reads are not cached,
+  in-flight invalidated reads cannot repopulate entries, and transactions
+  always bypass the cache. These caches assume one app process.

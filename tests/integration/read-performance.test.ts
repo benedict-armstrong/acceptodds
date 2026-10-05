@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { accounts } from '@/db/schema';
 import { getDb, getPool, type Database } from '@/db';
 import { getPortfolio } from '@/server/accounts';
 import { closeMarket, createMarket, quote, settle, trade } from '@/server/engine';
@@ -159,6 +161,24 @@ describe('read workload and correctness', () => {
       expect(await leaderboardStandings({ basis })).toEqual(
         await db.transaction((tx) => leaderboardStandings({ basis }, tx as unknown as Database)),
       );
+    }
+  });
+
+  it('does not extend the full-field expiry with incremental trades', async () => {
+    await leaderboardStandings({ basis: 'net_worth' });
+    const start = Date.now();
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      clock.mockReturnValue(start + 29_000);
+      await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 1_000_000n, STARTING_MICRO);
+      await leaderboardStandings({ basis: 'net_worth' });
+      // A writer outside this process cannot invalidate its caches.
+      await db.update(accounts).set({ displayName: 'External rename' }).where(eq(accounts.id, fx.traderIds[2]));
+      clock.mockReturnValue(start + 35_000);
+      const field = await leaderboardStandings({ basis: 'net_worth' });
+      expect(field.find((r) => r.accountId === fx.traderIds[2])!.displayName).toBe('External rename');
+    } finally {
+      clock.mockRestore();
     }
   });
 

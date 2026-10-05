@@ -3,7 +3,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import { user as authUser } from '@/db/auth-schema';
 import * as schema from '@/db/schema';
-import { accounts, affiliations, ledgerEntries, listings, markets, orders, outcomes, positions } from '@/db/schema';
+import { accounts, affiliations, ledgerEntries, orders, positions } from '@/db/schema';
 import { costBasis, type Fill } from '@/lib/cost-basis';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';

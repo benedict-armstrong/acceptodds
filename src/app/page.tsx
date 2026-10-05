@@ -19,6 +19,7 @@ import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
+import { startingBalanceMicro } from '@/server/accounts';
 import * as events from '@/server/events';
 import {
   browseListings,
@@ -52,12 +53,13 @@ const POSITIONS_COOKIE = 'home_positions_open';
 const PEOPLE = 5;
 
 /** What the site is, above the search; hidden while searching. */
-const ABSTRACT = (
+const abstract = () => (
   <>
     A prediction market on peer review. Each paper has a market on its decision (oral, spotlight, poster or reject),
-    priced by researchers who stake $rep, an in app currency, on what they expect. Prices are probabilities, and every
-    market settles when the venue publishes its decisions. It is a game made for fun, and has no connection to ICLR,
-    OpenReview or any other organisation. acceptodds is an open source project, open to contributions, at{' '}
+    priced by researchers who stake $rep, an in app currency, on what they expect. Everyone who signs up receives{' '}
+    {rep(startingBalanceMicro())} {REP} to trade with. Prices are probabilities, and every market settles when the venue
+    publishes its decisions. It is a game made for fun, and has no connection to ICLR, OpenReview or any other
+    organisation. acceptodds is an open source project, open to contributions, at{' '}
     <a href={REPO_URL} className={ui.hyperref}>
       {REPO_URL.replace(/^https:\/\//, '')}
     </a>
@@ -231,7 +233,7 @@ export default async function Home({
             {kind ? ` at ${kind}` : ''}?
           </>
         }
-        abstract={q ? null : ABSTRACT}
+        abstract={q ? null : abstract()}
         abstractFull
       />
       {/* A plain GET form, so search works without JavaScript. */}

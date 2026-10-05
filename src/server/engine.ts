@@ -94,7 +94,11 @@ interface Board {
 
 async function readBoard(ex: Executor, market: typeof markets.$inferSelect): Promise<Board> {
   const rows = await ex.select().from(outcomes).where(eq(outcomes.marketId, market.id)).orderBy(asc(outcomes.ordinal));
+  return boardFromOutcomes(market, rows);
+}
 
+/** Build the engine's validated board from batched reads, without another database round trip. */
+export function boardFromOutcomes(market: Pick<schema.Market, 'id' | 'b'>, rows: schema.Outcome[]): Board {
   if (rows.length < 2) {
     throw new EngineError('invalid_market', `market ${market.id} has ${rows.length} outcomes`);
   }

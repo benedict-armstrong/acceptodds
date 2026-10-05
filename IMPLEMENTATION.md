@@ -111,7 +111,7 @@ join it, not invent a second one.
 | Validation     | Zod, one schema per boundary                                 |                                                                                            |
 | UI             | Tailwind v4 + shadcn/ui                                      |                                                                                            |
 | Charts         | Recharts                                                     |                                                                                            |
-| Live prices    | SWR polling, 3s                                              | §9 — SSE is now _available_ but still not worth it for v1                                  |
+| Live prices    | SWR polling, adaptive                                        | §9 — SSE is now _available_ but still not worth it for v1                                  |
 | Jobs + backups | `ops` sidecar: crond, curls the app, `pg_dump`s the database | §10                                                                                        |
 | Tests          | Vitest + fast-check; Postgres service container in CI        |                                                                                            |
 | Errors         | Sentry (self-hosted is overkill; the SaaS free tier is fine) |                                                                                            |
@@ -422,8 +422,8 @@ management, admin market creation and settlement.
 
 - Server Components render the board; trades go through Server Actions that
   call the same `engine.trade()` as the API.
-- **Poll, don't push — but the reason has changed.** SWR with a 3s interval on
-  the board. In the hosted draft SSE was ruled out structurally (serverless
+- **Poll, don't push — but the reason has changed.** SWR with adaptive intervals on
+  the board (5s active, 15s untraded, 30s closed, stopped once settled). In the hosted draft SSE was ruled out structurally (serverless
   functions can't hold long-lived connections); self-hosted, we _do_ have a
   long-running Node server and Postgres `LISTEN/NOTIFY`, so SSE is now merely
   unnecessary rather than impossible. Keep polling for v1; if you do switch,

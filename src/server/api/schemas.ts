@@ -1150,7 +1150,7 @@ export const Comment = z
       .object({
         alias: z.string().meta({
           description:
-            "The author's pseudonym on this paper, OpenReview-style (shown as `Reviewer k3xm`): the same on all their comments on the paper's markets, unrelated to their alias on any other paper.",
+            "The author's pseudonym on this paper, OpenReview-style (shown as `User k3xm`): the same on all their comments on the paper's markets, unrelated to their alias on any other paper.",
           example: 'k3xm',
         }),
         isBot: z.boolean(),

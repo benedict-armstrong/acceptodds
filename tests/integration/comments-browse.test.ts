@@ -194,8 +194,8 @@ describe('mention mails', () => {
 
     await vi.waitFor(() => expect(mailsTo('alice')).toHaveLength(1));
     const [mail] = mailsTo('alice');
-    expect(mail.subject).toContain(`Reviewer ${reply.author.alias} mentioned you`);
-    expect(mail.text).toContain(`(Reviewer ${first.author.alias})`);
+    expect(mail.subject).toContain(`User ${reply.author.alias} mentioned you`);
+    expect(mail.text).toContain(`(User ${first.author.alias})`);
     expect(mail.text).toContain('> @');
     expect(mail.text).toContain('/markets/concurrency');
     expect(mail.text).not.toContain('bob');

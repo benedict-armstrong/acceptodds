@@ -45,10 +45,16 @@ export interface Initial {
   startingBalanceMicro: string;
 }
 
+async function fetchJson(url: string, credentials: RequestCredentials) {
+  const response = await fetch(url, { credentials });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json();
+}
+
 /** Public reads go out without cookies: anonymous, and not counted against the viewer's rate limit. */
-export const publicJson = (url: string) => fetch(url, { credentials: 'omit' }).then((r) => r.json());
+export const publicJson = (url: string) => fetchJson(url, 'omit');
 /** Reads that need the viewer (their portfolio, "you" on comments). */
-export const viewerJson = (url: string) => fetch(url).then((r) => r.json());
+export const viewerJson = (url: string) => fetchJson(url, 'same-origin');
 
 /**
  * A market's board, chart, trade box, tape and comments, kept live by polling.

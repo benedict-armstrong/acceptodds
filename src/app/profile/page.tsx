@@ -164,9 +164,9 @@ export default async function ProfilePage() {
             field="mentionMailOptIn"
             optIn={a.mentionMailOptIn}
             name="Mention emails"
-            hint="At most ten a day. The email names the commenter by reviewer id only, as the page does."
+            hint="At most ten a day. The email names the commenter by user id only, as the page does."
           >
-            Email me when a comment mentions my reviewer id (@id) on a paper.
+            Email me when a comment mentions my user id (@id) on a paper.
           </MailToggle>
         </div>
       </section>

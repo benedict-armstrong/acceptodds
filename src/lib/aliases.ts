@@ -1,6 +1,6 @@
 /**
  * Commenters' pseudonyms (`comment_aliases`), OpenReview-style: four
- * characters, shown as "Reviewer k3xm" and mentioned as `@k3xm`.
+ * characters, shown as "User k3xm" and mentioned as `@k3xm`.
  *
  * Lower case and without look-alikes (0/o, 1/l/i), so a mention can be typed
  * from what is read. 31⁴ ≈ 920k per paper, so a clash is rare and simply
@@ -17,8 +17,8 @@ export function randomAlias(random: () => number = Math.random): string {
 }
 
 /** How an alias is shown. */
-export function reviewerName(alias: string): string {
-  return `Reviewer ${alias}`;
+export function userName(alias: string): string {
+  return `User ${alias}`;
 }
 
 /**

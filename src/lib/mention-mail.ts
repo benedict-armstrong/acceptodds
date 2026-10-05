@@ -1,4 +1,4 @@
-import { reviewerName } from './aliases';
+import { userName } from './aliases';
 
 /** How much of the comment a mention mail quotes. */
 export const MENTION_QUOTE_CHARS = 800;
@@ -25,7 +25,7 @@ export function renderMentionMail(m: MentionMail): { subject: string; text: stri
   const title = m.title.length > 90 ? `${m.title.slice(0, 89).trimEnd()}…` : m.title;
   const body = m.body.length > MENTION_QUOTE_CHARS ? `${m.body.slice(0, MENTION_QUOTE_CHARS).trimEnd()}…` : m.body;
   const text = [
-    `${reviewerName(m.from)} mentioned you (${reviewerName(m.to)}) in the discussion of`,
+    `${userName(m.from)} mentioned you (${userName(m.to)}) in the discussion of`,
     '',
     `  ${m.title}`,
     '',
@@ -34,8 +34,8 @@ export function renderMentionMail(m: MentionMail): { subject: string; text: stri
     `Read and reply: ${m.url}`,
     '',
     '—',
-    `You get this because you comment on ${m.siteName} as ${reviewerName(m.to)} on this paper.`,
+    `You get this because you comment on ${m.siteName} as ${userName(m.to)} on this paper.`,
     `To stop these emails, go to ${m.settingsUrl}`,
   ].join('\n');
-  return { subject: `${reviewerName(m.from)} mentioned you on “${title}”`, text };
+  return { subject: `${userName(m.from)} mentioned you on “${title}”`, text };
 }

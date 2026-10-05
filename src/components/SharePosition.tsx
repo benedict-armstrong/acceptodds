@@ -97,7 +97,7 @@ export function SharePositionModal({
             </p>
             <p className="mb-2">
               <b>It links you to your comments on this paper.</b> A comment shows its author’s stake, so anyone who
-              compares the two can tell which reviewer id is yours, and so every comment you made on this paper. Your
+              compares the two can tell which user id is yours, and so every comment you made on this paper. Your
               positions and comments elsewhere stay private.
             </p>
             <p className="mb-1 text-muted">You can make it private again at any time; the link then stops working.</p>

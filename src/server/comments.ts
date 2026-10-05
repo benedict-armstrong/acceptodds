@@ -22,7 +22,7 @@ import { encodeCursor } from './views';
  * **alias on this paper**, and nothing else about them — no handle, no
  * account id, no institution.
  *
- * The alias is OpenReview's "Reviewer k3xm": random, made the first time an
+ * The alias is OpenReview's "User k3xm": random, made the first time an
  * account comments on a paper (`comment_aliases`), the same on every comment
  * it makes on any of that paper's markets, and unrelated to its alias on any
  * other paper. It lets a reader follow one voice through a discussion and
