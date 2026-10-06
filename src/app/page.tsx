@@ -9,6 +9,7 @@ import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/compone
 import { PaperRow } from '@/components/PaperRow';
 import { TitleBlock } from '@/components/TitleBlock';
 import { TutorialModal } from '@/components/TutorialModal';
+import { Wordmark } from '@/components/Wordmark';
 import type { z } from 'zod';
 import type * as S from '@/server/api/schemas';
 import { presentListing } from '@/server/api/present';
@@ -23,6 +24,7 @@ import { startingBalanceMicro } from '@/server/accounts';
 import * as events from '@/server/events';
 import {
   browseListings,
+  hasTraded,
   listingViews,
   MARKET_SORTS,
   marketKinds,
@@ -171,7 +173,7 @@ export default async function Home({
   // A search that is only words may be a name: traders above the papers, on
   // the first page.
   const who = peopleText(parsed?.node ?? null);
-  const [all, followed, held, people, busiest] = await Promise.all([
+  const [all, followed, held, people, busiest, traded] = await Promise.all([
     pageOf(sp.page, PAGE, {
       ...browse,
       kind: kindFilter,
@@ -186,6 +188,8 @@ export default async function Home({
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
     // The tutorial shows one real market's odds: the venue's most traded open paper.
     browseListings({ kind: kind ?? defaultMarketKind(), status: 'open', sort: 'volume', limit: 1 }),
+    // A trader who has placed an order is past getting started: no tutorial.
+    me !== null ? hasTraded(me) : false,
   ]);
   const busiestListing = busiest.rows[0]?.listing;
   const [tutorialExample] = busiestListing
@@ -236,18 +240,20 @@ export default async function Home({
       <TitleBlock
         title={
           <>
-            accept<i className="text-accent not-italic">odds</i>: Which papers will get accepted
+            <Wordmark />: Which papers will get accepted
             {kind ? ` at ${kind}` : ''}?
           </>
         }
         abstract={q ? null : abstract()}
         abstractFull
       >
-        <TutorialModal
-          example={tutorialExample}
-          startingBalanceMicro={startingBalanceMicro().toString()}
-          signedIn={viewer !== null}
-        />
+        {!traded && (
+          <TutorialModal
+            example={tutorialExample}
+            startingBalanceMicro={startingBalanceMicro().toString()}
+            signedIn={viewer !== null}
+          />
+        )}
       </TitleBlock>
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">

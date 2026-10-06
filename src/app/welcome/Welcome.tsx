@@ -9,6 +9,7 @@ import { MathText } from '@/components/MathText';
 import { OnboardingTrade } from '@/components/OnboardingTrade';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { PaperSearch, tradableListingMarket } from '@/components/PaperSearch';
+import { TutorialArt, TutorialText, tutorialSteps } from '@/components/TutorialModal';
 import { MESSAGES } from '@/components/orders';
 import { ui } from '@/components/ui';
 import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
@@ -23,10 +24,17 @@ import type { Choice } from '../markets/[slug]/TradeBox';
 type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
 
-export type Step = 'intro' | 'search' | 'bet' | 'email';
+/** The tutorial's steps, in order: the home page's [getting started], one a page. */
+const TOUR = ['pick', 'trade', 'cash-out'] as const;
+type TourStep = (typeof TOUR)[number];
 
-/** A visitor's steps; a signed-in viewer's end with the bet, placed, at the paper. */
-const ANON: Step[] = ['intro', 'search', 'bet', 'email'];
+export type Step = 'intro' | TourStep | 'search' | 'bet' | 'email';
+
+/**
+ * A visitor's steps: the intro, the tutorial, then the bet. A signed-in
+ * viewer's skip both and end with the bet, placed, at the paper.
+ */
+const ANON: Step[] = ['intro', ...TOUR, 'search', 'bet', 'email'];
 const SIGNED_IN: Step[] = ['search', 'bet'];
 /** A visitor who chose the paper and the bet on the market's own page. */
 const CHOSEN: Step[] = ['email'];
@@ -116,14 +124,18 @@ export function Welcome({
     document.cookie = `${WELCOMED_COOKIE}=1; path=/; max-age=31536000; samesite=lax`;
   }, []);
 
-  const card = (title: React.ReactNode, body: React.ReactNode, wide = false) => {
+  const card = (title: React.ReactNode, body: React.ReactNode, wide = false, figure?: React.ReactNode) => {
     const at = steps.indexOf(step);
     return (
       <OnboardingCard
         title={title}
         // The first of `CHOSEN` goes back to the market's page it came from.
         onBack={at > 0 || chosen ? () => window.history.back() : undefined}
+        // Every step past the intro says it is still part of getting started, the name the home page's link uses:
+        // the search looks like the home list, and would otherwise read as having left the flow.
+        eyebrow={step === 'intro' ? undefined : 'Getting started · your first trade'}
         wide={wide}
+        figure={figure}
       >
         {body}
       </OnboardingCard>
@@ -138,14 +150,35 @@ export function Welcome({
           <p className="mb-4 text-muted">
             Pick a {kind} paper, stake reputation on its decision. For researchers with an institutional email.
           </p>
-          <button className={ui.btn()} onClick={() => go('search')}>
-            Start
+          <button className={ui.btn()} onClick={() => go(TOUR[0])}>
+            Get started
           </button>
           <p className={`${ui.fine} mt-3 text-center`}>
             Already have an account? <Link href={authHref('/signin', next)}>Sign in</Link>
           </p>
         </>,
       );
+
+    case 'pick':
+    case 'trade':
+    case 'cash-out': {
+      const at = TOUR.indexOf(step);
+      const tour = tutorialSteps({ example: suggestions[0], startingBalanceMicro: viewer.cashMicro, signedIn: false });
+      const last = at === TOUR.length - 1;
+      return card(
+        `${at + 1}. ${tour[at].title}`,
+        <>
+          <TutorialText step={tour[at]} />
+          <div className="mt-6">
+            <button className={ui.btn()} onClick={() => go(last ? 'search' : TOUR[at + 1])}>
+              {last ? 'Make your first trade' : 'Next'}
+            </button>
+          </div>
+        </>,
+        false,
+        tour[at].art && <TutorialArt>{tour[at].art}</TutorialArt>,
+      );
+    }
 
     case 'search':
       return card(

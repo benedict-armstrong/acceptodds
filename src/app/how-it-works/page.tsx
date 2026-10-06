@@ -7,7 +7,7 @@ import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { rep, REP } from '@/lib/format';
 import { startingBalanceMicro } from '@/server/accounts';
-import { siteName } from '@/server/share';
+import { Wordmark } from '@/components/Wordmark';
 
 // The starting balance is read from the environment at request time.
 export const dynamic = 'force-dynamic';
@@ -36,8 +36,13 @@ export default function HowItWorksPage() {
     <main className={`${ui.page} max-w-[640px]`}>
       <TitleBlock
         title="How the markets work"
-        byline={siteName()}
-        abstract={`Every paper has a market on its decision. You buy shares in the outcome you believe in; each share of the outcome that happens pays 1 ${REP} and every other share pays nothing, so an outcome's price is the market's probability for it. Prices are set by an automated market maker, so there is always someone to trade with, and you can sell what you hold until trading closes. Trading is in reputation, which cannot be bought: everyone starts with ${start}.`}
+        byline={
+          <Link href="/" className="text-ink hover:no-underline">
+            <Wordmark />
+          </Link>
+        }
+        abstract={`Every paper has a market on its decision, with two outcomes: Accept or Reject. You buy shares in the one you believe in; each share of the outcome that happens pays 1 ${REP} and a share of the other pays nothing, so a price is the market's probability for that outcome. Prices are set by an automated market maker, so there is always someone to trade with, and you can sell what you hold until trading closes. Trading is in reputation, which cannot be bought: everyone starts with ${start}.`}
+        abstractFull
       />
 
       <h2 id="trade" className={ui.groupHeading}>
@@ -45,8 +50,9 @@ export default function HowItWorksPage() {
       </h2>
       <div className={prose}>
         <p>
-          Each paper has a market on its decision, usually with four outcomes, best first: <i>Oral</i>, <i>Spotlight</i>
-          , <i>Poster</i> and <i>Reject</i>. A withdrawn or desk-rejected paper counts as <i>Reject</i>.
+          Each paper has a market on its decision, with two outcomes: <i>Accept</i>, if the paper is accepted in any
+          form (oral, spotlight or poster), and <i>Reject</i>. A withdrawn or desk-rejected paper counts as{' '}
+          <i>Reject</i>. Each market’s contract, on its page, says exactly how it resolves.
         </p>
         <p>
           You buy <b>shares</b> in an outcome. When the decision is published, every share of the outcome that happened
@@ -55,8 +61,7 @@ export default function HowItWorksPage() {
         <p>
           So an outcome’s price is the market’s probability for it: a share at 30% costs about{' '}
           <span className="font-mono">0.30 {REP}</span> and pays <span className="font-mono">1 {REP}</span> if it wins.
-          The prices of a market’s outcomes always add up to 100%. The single “accept” figure shown for a paper is
-          everything but <i>Reject</i>: 100% minus the price of <i>Reject</i>.
+          The two prices always add up to 100%, and the “accept” figure shown for a paper is the price of <i>Accept</i>.
         </p>
       </div>
 
@@ -96,7 +101,7 @@ export default function HowItWorksPage() {
       <div className={prose}>
         <p>
           You can sell shares you hold, in part or in full, at any time until trading closes. You cannot sell shares you
-          do not hold: there is no shorting. To bet against an outcome, buy the others.
+          do not hold: there is no shorting. To bet against acceptance, buy <i>Reject</i>.
         </p>
         <p>
           Selling moves the price down as you sell, so selling a holding pays <b>less</b> than its shares times the

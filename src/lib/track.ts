@@ -32,7 +32,7 @@ export type EventName =
   // trading
   | 'order_placed'
   | 'order_refused'
-  // the [about] tutorial: opened, each step first reached (2 and 3), and its last button
+  // the [getting started] tutorial: opened, each step first reached (2 and 3), and its last button
   | 'tutorial_opened'
   | 'tutorial_step'
   | 'tutorial_finished'

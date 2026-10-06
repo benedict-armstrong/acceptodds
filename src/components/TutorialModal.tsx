@@ -77,13 +77,16 @@ function exampleOf(listing?: Listing): Example | null {
   };
 }
 
+/** One step of the tutorial: an illustration, when there is an example market, and its text. */
+export type TutorialStep = { title: string; art: ReactNode; body: ReactNode; fine?: ReactNode };
+
 /**
- * The tutorial behind [about], after Polymarket's: three steps, each an
- * illustration, a numbered heading, a paragraph and one button. A modal on a
- * wide screen, a bottom sheet on a phone. The illustrations are drawn from one
- * real open market; without one, the steps are text alone.
+ * The tutorial's three steps, after Polymarket's: pick a paper, place a
+ * trade, cash out. The illustrations are drawn from one real open market;
+ * without one, the steps are text alone. Shown as a sheet by `TutorialModal`
+ * and in line, one step a page, by `/welcome`.
  */
-export function TutorialModal({
+export function tutorialSteps({
   example: listing,
   startingBalanceMicro,
   signedIn,
@@ -91,16 +94,10 @@ export function TutorialModal({
   example?: Listing;
   startingBalanceMicro: string;
   signedIn: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState(0);
-  const content = useRef<HTMLDivElement>(null);
-  /** The furthest step reached since the tutorial was opened. */
-  const reached = useRef(0);
+}): TutorialStep[] {
   const example = exampleOf(listing);
   const [yes, no] = example?.sides.map((side) => side.label) ?? ['Accept', 'Reject'];
-
-  const steps: { title: string; art: ReactNode; body: ReactNode; fine?: ReactNode }[] = [
+  return [
     {
       title: 'Pick a paper',
       art: example && <ListSketch example={example} />,
@@ -112,8 +109,11 @@ export function TutorialModal({
       fine: (
         <>
           Odds are set by Hanson’s logarithmic market scoring rule: see{' '}
-          <Link href="/how-it-works#maker">How it works</Link>, or{' '}
-          <a href={LMSR_PAPER} target="_blank" rel="noopener noreferrer">
+          <Link href="/how-it-works#maker" className="underline">
+            How it works
+          </Link>
+          , or{' '}
+          <a href={LMSR_PAPER} target="_blank" rel="noopener noreferrer" className="underline">
             the paper
           </a>
           .
@@ -126,7 +126,7 @@ export function TutorialModal({
       body: (
         <>
           {signedIn ? 'Every account starts with' : 'Sign up with your institutional email and get'}{' '}
-          <span className="font-mono text-ink">
+          <span className="font-mono whitespace-nowrap text-ink">
             {rep(startingBalanceMicro, 0)} {REP}
           </span>
           {signedIn ? '. Choose a side and a stake, and you’re trading.' : ' then you’re ready to trade.'}
@@ -147,6 +147,49 @@ export function TutorialModal({
       ),
     },
   ];
+}
+
+/** A step's illustration, faded towards the top, as if it rose out of the page. */
+export function TutorialArt({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="relative flex h-60 items-center justify-center [mask-image:linear-gradient(to_top,black_45%,transparent)]"
+      aria-hidden="true"
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A step's paragraph and its fine print. */
+export function TutorialText({ step }: { step: TutorialStep }) {
+  return (
+    <>
+      <p className="mt-3 font-serif text-base leading-relaxed text-subtle">{step.body}</p>
+      {step.fine && <p className="mt-4 text-xs text-muted">{step.fine}</p>}
+    </>
+  );
+}
+
+/**
+ * The tutorial behind [getting started]: its steps in a modal on a wide
+ * screen, a bottom sheet on a phone, each with one button.
+ */
+export function TutorialModal({
+  example,
+  startingBalanceMicro,
+  signedIn,
+}: {
+  example?: Listing;
+  startingBalanceMicro: string;
+  signedIn: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(0);
+  const content = useRef<HTMLDivElement>(null);
+  /** The furthest step reached since the tutorial was opened. */
+  const reached = useRef(0);
+  const steps = tutorialSteps({ example, startingBalanceMicro, signedIn });
   const last = steps.length - 1;
   const current = steps[step];
 
@@ -172,8 +215,8 @@ export function TutorialModal({
         }
       }}
     >
-      <ModalTrigger type="button" className={`font-sans text-sm ${ui.linkBtn}`}>
-        [about]
+      <ModalTrigger type="button" className={`font-sans text-base font-semibold ${ui.linkBtn}`}>
+        [getting started]
       </ModalTrigger>
       <SheetContent
         ref={content}
@@ -184,15 +227,20 @@ export function TutorialModal({
           else if (event.key === 'ArrowLeft' && step > 0) go(step - 1);
         }}
       >
-        {current.art && (
-          // Faded towards the top, as if the illustration rose out of the page.
-          <div
-            className="relative flex h-60 items-center justify-center [mask-image:linear-gradient(to_top,black_45%,transparent)]"
-            aria-hidden="true"
-          >
-            {current.art}
-          </div>
-        )}
+        {/* The way back is the first thing on the left, as on `/welcome`'s cards (`OnboardingCard`). The row is kept
+            on the first step, so the illustration does not jump between steps. */}
+        <div className="min-h-5">
+          {step > 0 && (
+            <button
+              type="button"
+              className="-ml-1 cursor-pointer px-1 font-sans text-sm text-muted hover:text-ink"
+              onClick={() => go(step - 1)}
+            >
+              ← Back
+            </button>
+          )}
+        </div>
+        {current.art && <TutorialArt>{current.art}</TutorialArt>}
         {/* Every step's text in one grid cell, the others invisible, so the sheet is as tall as the longest and
             never changes size between steps. */}
         <div className="mt-4 grid">
@@ -207,8 +255,7 @@ export function TutorialModal({
                   {i + 1}. {s.title}
                 </p>
               )}
-              <p className="mt-3 font-serif text-base leading-relaxed text-subtle">{s.body}</p>
-              {s.fine && <p className="mt-4 text-xs text-muted">{s.fine}</p>}
+              <TutorialText step={s} />
             </div>
           ))}
         </div>
@@ -219,7 +266,7 @@ export function TutorialModal({
             </button>
           ) : signedIn ? (
             <ModalClose className={ui.btn()} onClick={() => track('tutorial_finished', { target: 'close' })}>
-              Start trading
+              Make your first trade
             </ModalClose>
           ) : (
             <Link
@@ -230,7 +277,7 @@ export function TutorialModal({
                 setOpen(false);
               }}
             >
-              Get started
+              Make your first trade
             </Link>
           )}
         </div>

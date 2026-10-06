@@ -49,7 +49,11 @@ export function Abstract({ text, math = false, full = false }: { text: ReactNode
     <div className="mx-auto mt-5 max-w-[min(680px,85%)] text-center text-[14px] leading-[1.55]">
       <h2 className={`${ui.boxHeading} text-center`}>Abstract</h2>
       <div className="inline-block max-w-full text-left">
-        <p ref={ref} className={`whitespace-pre-line text-justify hyphens-auto ${open || full ? '' : 'line-clamp-3'}`}>
+        {/* Clipped at three lines' height, not `line-clamp`: its ellipsis lands on the last word of a justified line. */}
+        <p
+          ref={ref}
+          className={`whitespace-pre-line text-justify hyphens-auto ${open || full ? '' : 'max-h-[3lh] overflow-hidden'}`}
+        >
           {math && typeof text === 'string' ? <MathText text={unwrapLines(text)} /> : text}
         </p>
         {overflows && !full && (

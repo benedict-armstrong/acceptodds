@@ -1716,6 +1716,12 @@ export async function isFirstOrder(accountId: string, orderId: string, database:
   return row?.id === orderId;
 }
 
+/** Whether an account has ever placed an order: the home page hides its getting-started tutorial once it has. */
+export async function hasTraded(accountId: string, database: Database = getDb()): Promise<boolean> {
+  const [row] = await database.select({ id: orders.id }).from(orders).where(eq(orders.accountId, accountId)).limit(1);
+  return row !== undefined;
+}
+
 /**
  * The earliest order an account ever placed, for the first-trade page: what
  * it staked, on which outcome of which market, and how it moved that

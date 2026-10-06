@@ -548,7 +548,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   and `References`/`Cite` (numbered by hand, like tables) — and `Popover` (Radix, the primitive shadcn
   wraps, in our tokens) for anything that floats over the page, and
   `Modal` (Radix Dialog, likewise) for anything that takes it over — with
-  `SheetContent` for one that is a bottom sheet on a phone (the `[about]`
+  `SheetContent` for one that is a bottom sheet on a phone (the `[getting started]`
   tutorial) — and
   `CodeInput` (shadcn's `InputOTP` over `input-otp`) for a one-time code:
   one real input under the boxes, so paste and autofill work — reuse
@@ -1101,8 +1101,8 @@ unpaginated, and 5 s for that search.
   data limited to codes and flags: never an email, handle, name, id or amount),
   for Umami funnels: `signup_submitted/refused`, `signin_*`, `code_*`,
   `finish_shown/completed`, `order_placed/refused`, `follow_toggled`,
-  `share_copied`, `tutorial_opened/step/finished` (the `[about]` sheet: no
-  URL of its own, so no page views; each step counted once per opening). `?step=` and `?error=` are allowlisted for the same funnels.
+  `share_copied`, `tutorial_opened/step/finished` (the `[getting started]` sheet: no
+  URL of its own, so no page views; each step counted once per opening; hidden from a viewer who has placed an order, `views.hasTraded`). `?step=` and `?error=` are allowlisted for the same funnels.
 - **`/privacy` is the privacy notice** (GDPR Art. 13, Swiss FADP), linked
   from the foot of the home page. It lists what is stored and who else
   handles it (Resend, Cloudflare, the self-hosted Umami): a new cookie, mail,
@@ -1254,7 +1254,9 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
 ### Onboarding (`/welcome`)
 
 - **One question at a time**, each in `components/OnboardingCard`, the step
-  in `?step=` so back works: which paper (search in `DEFAULT_MARKET_KIND`,
+  in `?step=` so back works: a visitor's "Get started" first walks the
+  home page's tutorial in line, one step a page (`pick`, `trade`,
+  `cash-out`, from `tutorialSteps`, the same steps as the modal), then which paper (search in `DEFAULT_MARKET_KIND`,
   the most traded open ones before anything is typed), the bet (the market's
   own `TradeBox`), then the email alone, which goes on to `/verify-email` (the name and the
   password come there, after confirming). No comment step: it was dropped to

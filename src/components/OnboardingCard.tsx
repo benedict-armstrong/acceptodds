@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 export function OnboardingCard({
   title,
   eyebrow,
+  figure,
   onBack,
   wide = false,
   children,
@@ -16,6 +17,8 @@ export function OnboardingCard({
   title: ReactNode;
   /** A small, light line above the question, naming the flow it belongs to. */
   eyebrow?: ReactNode;
+  /** An illustration above the question (the tutorial's). */
+  figure?: ReactNode;
   /** Shown as "back" when there is a step to go back to. */
   onBack?: () => void;
   /** For a list (the paper search): the home page's width, from the top rather than centred. */
@@ -40,6 +43,7 @@ export function OnboardingCard({
           </button>
         )}
       </div>
+      {figure}
       {eyebrow && <div className="mb-1 font-sans text-sm text-muted">{eyebrow}</div>}
       <h1 className="mb-4 text-[26px] leading-tight font-normal narrow:text-[22px]">{title}</h1>
       {children}

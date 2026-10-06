@@ -16,6 +16,7 @@ import { viewerFromHeaders } from '@/server/auth';
 import { siteName, siteUrl } from '@/server/share';
 import { valuation } from '@/server/valuation';
 import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
+import { Wordmark } from '@/components/Wordmark';
 import 'katex/dist/katex.min.css';
 import './globals.css';
 
@@ -80,7 +81,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <Link href="/" aria-label="acceptodds" className="text-[22px]">
             <LogoMark />
             <span className={viewer ? 'narrow:hidden' : ''}>
-              accept<i className="text-accent not-italic">odds</i>
+              <Wordmark />
             </span>
           </Link>
           <span className="flex-1" />
