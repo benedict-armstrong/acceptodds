@@ -13,7 +13,16 @@ import { likelihood, likelihoodClass } from '@/lib/likelihood';
 import { MAX_RELAYOUT } from '@/lib/map-layout';
 import type { LayoutFrame, LayoutRequest } from '@/lib/map-layout.worker';
 import { SEARCH_MAX_LENGTH } from '@/lib/search';
-import { categoryRgb, headlineRgb, LIKELIHOOD_RGB, MAP_NONE, normalise, topicLabels, type Rgb } from '@/lib/map';
+import {
+  categoryRgb,
+  headlineRgb,
+  labelTerms,
+  LIKELIHOOD_RGB,
+  MAP_NONE,
+  normalise,
+  topicLabels,
+  type Rgb,
+} from '@/lib/map';
 import type * as S from '@/server/api/schemas';
 import type { LabelMode } from './MapCanvas';
 
@@ -217,6 +226,8 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
       return i === undefined ? [] : [i];
     });
   }, [asked, found, searchFailed, derived]);
+  // The topic labels the search's words name are drawn in the accent.
+  const highlight = useMemo(() => (asked ? labelTerms(asked) : []), [asked]);
   // Pointing at "starred" or "held" fades every other paper, as a search does.
   const [pointAt, setPointAt] = useState<'starred' | 'held' | null>(null);
   const lit = pointAt && showMine ? mine[pointAt] : matches;
@@ -352,6 +363,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
           regions={labels!.regions}
           clusters={labels!.clusters}
           labelMode={labelMode}
+          highlight={highlight}
           selected={selected}
           neighbours={relatedHere}
           focus={focus}

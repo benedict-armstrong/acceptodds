@@ -1,4 +1,5 @@
 import { likelihood, type Likelihood } from './likelihood';
+import { parseSearch, type SearchNode } from './query';
 
 /**
  * The paper map's display maths (`/map`). Client-safe and pure. The layout
@@ -40,6 +41,37 @@ export interface TopicLabel {
   y: number;
   /** Points in the grouping: the bigger wins a label collision. */
   size: number;
+}
+
+/** Words shorter than this pick out no topic label: "a" or "of" would light half of them. */
+const MIN_LABEL_TERM = 3;
+
+/**
+ * The words in a map search a topic label can match: the positive words and
+ * phrases (quotes dropped), and `keyword:`/`area:` values, which name topics.
+ * Nothing under a `-`, and no other filter. Lower case.
+ */
+export function labelTerms(query: string): string[] {
+  const out = new Set<string>();
+  const walk = (node: SearchNode | null) => {
+    if (!node) return;
+    if (node.kind === 'and' || node.kind === 'or') node.items.forEach(walk);
+    else if (node.kind === 'text') for (const t of node.include) out.add(t.replace(/"/g, ''));
+    else if (node.kind === 'match' && node.op === '=' && (node.field === 'keyword' || node.field === 'area'))
+      out.add(node.value);
+  };
+  walk(parseSearch(query).node);
+  return [...out].map((t) => t.trim().toLowerCase()).filter((t) => t.length >= MIN_LABEL_TERM);
+}
+
+/** Whether a topic label holds one of `terms` at the start of a word, as the search's last word matches as a prefix. */
+export function labelMatches(text: string, terms: readonly string[]): boolean {
+  const lower = text.toLowerCase();
+  return terms.some((t) => {
+    for (let at = lower.indexOf(t); at >= 0; at = lower.indexOf(t, at + 1))
+      if (at === 0 || !/[\p{L}\p{N}]/u.test(lower[at - 1])) return true;
+    return false;
+  });
 }
 
 /**

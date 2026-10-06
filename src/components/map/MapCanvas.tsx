@@ -10,25 +10,45 @@ import {
   type DataFilterExtensionProps,
 } from '@deck.gl/extensions';
 import { EmbeddedController, PanController } from '@/lib/map-controller';
-import { dotScale, MAP_SIZE, sparseScale, type TopicLabel } from '@/lib/map';
+import { dotScale, labelMatches, MAP_SIZE, sparseScale, type TopicLabel } from '@/lib/map';
 
 export type LabelMode = 'auto' | 'region' | 'cluster' | 'off';
 
 /** Below this zoom (past the opening view) `auto` labels regions, above it clusters. */
 const CLUSTER_LABELS_FROM = 1;
 const ACCENT: [number, number, number] = [179, 27, 27];
-const INK: [number, number, number, number] = [29, 29, 29, 230];
+const INK: [number, number, number, number] = [29, 29, 29, 255];
 const PAGE: [number, number, number, number] = [251, 250, 247, 230];
 /**
  * The labels' SDF atlas. deck's `outlineWidth` is a fraction of the glyph's
  * distance field (0–1), and the halo can reach no further than `buffer`: the
- * field is wide enough here (`radius`) for a ~2.5px halo at label sizes, with
- * a soft edge (`smoothing`) under half a pixel.
+ * field is wide enough here (`radius`) for the halo below, with a soft edge
+ * (`smoothing`) under half a pixel.
  */
 const LABEL_FONT = { sdf: true, fontSize: 96, buffer: 32, radius: 48, smoothing: 0.2 };
-const LABEL_HALO = 0.2;
+/**
+ * The halo round a label, so it reads over dense dots: the outline starts at
+ * `0.75 · (1 − LABEL_HALO)` of the field, which here is about 2.5px at label
+ * sizes (0.2 was barely 1px). Past ~0.85 it would run into the atlas padding.
+ */
+const LABEL_HALO = 0.45;
+/** Label sizes in pixels: a region's a size larger than a cluster's. */
+const REGION_LABEL_PX = 15;
+const CLUSTER_LABEL_PX = 14;
+/**
+ * A label the search names: a vivid blue, more saturated than every dot colour (the accent was lost
+ * over reject's red), this much bigger, and a ~4px halo.
+ */
+const LIT_LABEL: [number, number, number, number] = [21, 52, 178, 255];
+const LIT_LABEL_EXTRA_PX = 2;
+const LIT_LABEL_HALO = 0.7;
 /** How far the view may drift from where it opened before "Reset view" shows: a fraction of a pixel. */
 const HOME_TOLERANCE = 0.5;
+/**
+ * Dots on the whole map are this much smaller on a phone: the map opens fitted to a narrower
+ * screen, so the papers sit closer together while a dot stays the same size in pixels.
+ */
+const NARROW_DOTS = 0.6;
 const FILTER = new DataFilterExtension({ filterSize: 1 });
 const COLLISIONS = new CollisionFilterExtension();
 const SAFARI_GESTURES = ['gesturestart', 'gesturechange', 'gestureend'];
@@ -54,6 +74,7 @@ export default function MapCanvas({
   onSelect,
   onOpen,
   dotRadius = 1.6,
+  highlight = [],
   dimmed: dimmedOpacity = 0.2,
   embedded = false,
 }: {
@@ -77,6 +98,8 @@ export default function MapCanvas({
   onSelect: (index: number | null) => void;
   /** A paper clicked with ⌘ or Ctrl held, as a link would open in a new tab; without it, such a click selects. */
   onOpen?: (index: number) => void;
+  /** A search's words (`lib/map.ts` `labelTerms`): topic labels holding one are drawn in `LIT_LABEL`. */
+  highlight?: readonly string[];
   /** A dot's radius in pixels at the opening view: small for the whole map, bigger for a piece of it. */
   dotRadius?: number;
   /** The other papers' opacity while one is selected. */
@@ -124,16 +147,26 @@ export default function MapCanvas({
   );
   const level = labelMode === 'auto' ? (closeUp ? 'cluster' : 'region') : labelMode;
   const topics = level === 'region' ? regions : level === 'cluster' ? clusters : null;
-  // On phones, keep three quarters of the labels, favouring the largest topics.
-  const labels = useMemo(
+  // The labels the search names, regions and clusters alike, shown at every zoom whatever the level.
+  const lit = useMemo(
     () =>
-      !topics
+      highlight.length === 0 || labelMode === 'off'
         ? []
-        : narrow
-          ? topics.toSorted((a, b) => b.size - a.size || a.number - b.number).slice(0, Math.round(topics.length * 0.75))
-          : topics,
-    [topics, narrow],
+        : [...regions, ...clusters].filter((t) => labelMatches(t.text, highlight)),
+    [regions, clusters, highlight, labelMode],
   );
+  // A region's label is set a size larger than a cluster's.
+  const regionSet = useMemo(() => new Set(regions), [regions]);
+  // The level's other labels; on phones three quarters of them, favouring the largest topics.
+  const labels = useMemo(() => {
+    const rest = (topics ?? []).filter((t) => !lit.includes(t));
+    return narrow
+      ? rest.toSorted((a, b) => b.size - a.size || a.number - b.number).slice(0, Math.round(rest.length * 0.75))
+      : rest;
+  }, [topics, narrow, lit]);
+  // Collide the lit labels with the rest (invisible, at the top priority) so they clear a space for themselves;
+  // drawn in a layer of their own, which no collision hides.
+  const colliding = useMemo(() => [...lit, ...labels], [lit, labels]);
   const visibleHeld = useMemo(() => (shown ? held.filter((i) => shown[i] > 0) : held), [held, shown]);
   const visibleStarred = useMemo(() => (shown ? starred.filter((i) => shown[i] > 0) : starred), [starred, shown]);
   const selection = useMemo(() => (selected === null ? [] : [...neighbours, selected]), [neighbours, selected]);
@@ -234,9 +267,11 @@ export default function MapCanvas({
   useEffect(() => {
     if (!deck.current || zoom === null) return;
     const n = positions.length / 2;
+    const radius = narrow && !embedded ? dotRadius * NARROW_DOTS : dotRadius;
     // Zoom and sparseness both grow the dots; together never past 8x, or zoomed-in sparse dots swamp the map.
     const scale = Math.min(8, dotScale(zoom, opening.current) * sparseScale(shownCount, n));
     const dimmed = selected !== null;
+    const biggest = Math.max(1, ...colliding.map((t) => t.size));
     const at = (i: number): [number, number] => [positions[2 * i], positions[2 * i + 1]];
     const layers = [
       new ScatterplotLayer<unknown, DataFilterExtensionProps>({
@@ -247,7 +282,7 @@ export default function MapCanvas({
         filterEnabled: shown !== null,
         filterRange: [0.5, 1],
         radiusUnits: 'pixels',
-        getRadius: dotRadius,
+        getRadius: radius,
         radiusScale: scale,
         radiusMinPixels: 1,
         opacity: dimmed ? dimmedOpacity : 1,
@@ -266,8 +301,8 @@ export default function MapCanvas({
           lineWidthUnits: 'pixels',
           getLineWidth: 1.5,
           radiusUnits: 'pixels',
-          getRadius: dotRadius * scale + 3,
-          updateTriggers: { getPosition: positions, getRadius: [scale, dotRadius] },
+          getRadius: radius * scale + 3,
+          updateTriggers: { getPosition: positions, getRadius: [scale, radius] },
         }),
       visibleStarred.length > 0 &&
         new TextLayer<number>({
@@ -316,14 +351,16 @@ export default function MapCanvas({
             object === undefined ? handlers.current.onSelect(null) : click(object, event.srcEvent),
           updateTriggers: { getPosition: positions, getFillColor: [selected, colours], getRadius: selected },
         }),
-      labels.length > 0 &&
+      colliding.length > 0 &&
         new TextLayer<TopicLabel, CollisionFilterExtensionProps<TopicLabel>>({
           id: `labels-${level}`,
-          data: labels,
+          data: colliding,
           getPosition: (d) => [d.x, d.y],
           getText: (d) => d.text,
-          getSize: level === 'region' ? 14 : 13,
-          getColor: INK,
+          // A lit label's invisible copy at its drawn size, so it clears all the room it takes.
+          getSize: (d) =>
+            (regionSet.has(d) ? REGION_LABEL_PX : CLUSTER_LABEL_PX) + (lit.includes(d) ? LIT_LABEL_EXTRA_PX : 0),
+          getColor: (d) => (lit.includes(d) ? [0, 0, 0, 0] : INK),
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontWeight: 'bold',
           characterSet: 'auto',
@@ -332,7 +369,26 @@ export default function MapCanvas({
           outlineWidth: LABEL_HALO,
           outlineColor: [251, 250, 247, 255],
           extensions: [COLLISIONS],
-          getCollisionPriority: (d) => d.size,
+          // deck takes -1000..1000: a label the search names wins every collision, then the bigger topic.
+          getCollisionPriority: (d) => (lit.includes(d) ? 500 : -500) + (499 * d.size) / biggest,
+          updateTriggers: { getColor: lit, getSize: [regionSet, lit], getCollisionPriority: lit },
+        }),
+      lit.length > 0 &&
+        new TextLayer<TopicLabel>({
+          id: 'labels-lit',
+          data: lit,
+          getPosition: (d) => [d.x, d.y],
+          getText: (d) => d.text,
+          // Bigger, and with a wider halo than the rest, so no dot touches the letters.
+          getSize: (d) => (regionSet.has(d) ? REGION_LABEL_PX : CLUSTER_LABEL_PX) + LIT_LABEL_EXTRA_PX,
+          getColor: LIT_LABEL,
+          fontFamily: 'Georgia, "Times New Roman", serif',
+          fontWeight: 'bold',
+          characterSet: 'auto',
+          fontSettings: LABEL_FONT,
+          outlineWidth: LIT_LABEL_HALO,
+          outlineColor: [251, 250, 247, 255],
+          updateTriggers: { getSize: regionSet },
         }),
     ];
     deck.current.setProps({ layers });
@@ -346,11 +402,16 @@ export default function MapCanvas({
     visibleHeld,
     selection,
     labels,
+    lit,
+    regionSet,
+    colliding,
     level,
     selected,
     neighbours,
     zoom,
     dotRadius,
+    narrow,
+    embedded,
     dimmedOpacity,
   ]);
 

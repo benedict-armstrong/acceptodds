@@ -4,6 +4,8 @@ import {
   dotScale,
   frameAround,
   headlineRgb,
+  labelMatches,
+  labelTerms,
   LIKELIHOOD_RGB,
   MAP_NONE,
   MAP_SIZE,
@@ -115,5 +117,25 @@ describe('frameAround', () => {
         }
       }),
     );
+  });
+});
+
+describe('labelTerms and labelMatches', () => {
+  it('takes positive words, phrases and keyword/area values, never excluded or short ones', () => {
+    expect(labelTerms('graph "diffusion model" -vision of keyword:Robotics accept>=60')).toEqual([
+      'graph',
+      'diffusion model',
+      'robotics',
+    ]);
+    expect(labelTerms('-(graph neural) status:open')).toEqual([]);
+    expect(labelTerms('vision OR language')).toEqual(['vision', 'language']);
+  });
+
+  it('matches a term at the start of a word, case-insensitively', () => {
+    expect(labelMatches('Graph Neural Networks', ['neural'])).toBe(true);
+    expect(labelMatches('Graph Neural Networks', ['network'])).toBe(true);
+    expect(labelMatches('Paragraphs', ['graph'])).toBe(false);
+    expect(labelMatches('Score-based Diffusion Models', ['diffusion model'])).toBe(true);
+    expect(labelMatches('Anything', [])).toBe(false);
   });
 });

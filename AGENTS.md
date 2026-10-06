@@ -875,7 +875,14 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **The map's search is the home page's**: `GET /map/search?q=` runs
   `views.mapSearch` through the same `browseQuery` as `browseListings`
   (every status unless the query says `status:`) and returns every match's
-  slug, best first. The map keeps those lit and fades the rest.
+  slug, best first. The map keeps those lit and fades the rest. Topic
+  labels the query's positive words (or `keyword:`/`area:` values) name at
+  a word's start turn vivid blue (the accent was lost over reject's red),
+  larger and with a wider halo (no box,
+  on the owner's call), and show at every zoom, regions and
+  clusters alike, in a layer no collision hides; they still clear their
+  space among the rest (`lib/map.ts` `labelTerms`, `labelMatches`). A
+  client-side string match, not the search.
   `components/SearchSyntax` is the help text for both pages.
 - **"Redraw" (on by default) hides what a search did not find and lays
   the matches out again, in the browser** —
@@ -953,7 +960,7 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   `/api/v1/listings/{id}/view` (`credentials: 'same-origin'`, one unit of a
   signed-in viewer's bucket), so a page
   Cloudflare cached still counts and a crawler without JS does not. Shown on
-  the paper page and as `views` on the listing. Unlisted markets have no count.
+  the paper page from 10 views up (below that it still counts), and as `views` on the listing. Unlisted markets have no count.
 - **Which paper people read next is a total per ordered pair, nothing
   more** (`listing_transitions`, for the similarity service). The beacon
   adds `?from=<listing id>`: the paper this tab showed before, within 30

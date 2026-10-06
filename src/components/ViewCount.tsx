@@ -6,6 +6,9 @@ import { useEffect, useState } from 'react';
 const LAST_PAPER_KEY = 'pm:lastPaper';
 const LAST_PAPER_MS = 30 * 60_000;
 
+/** Below this many views the count is not shown: a handful reads as neglect, not information. */
+const MIN_SHOWN_VIEWS = 10;
+
 interface LastPaper {
   id: string;
   /** The paper before it, kept so a reload (or React re-running the effect) sends the same pair. */
@@ -40,6 +43,7 @@ function previousPaper(listingId: string): string | null {
  * network (one unit of their rate-limit bucket). Shows the count the server
  * rendered, then the one the beacon returns. Also names the paper this tab
  * showed before (`?from=`), which the server keeps only as a total per pair.
+ * Under `MIN_SHOWN_VIEWS` it still counts, but shows nothing.
  */
 export function ViewCount({ listingId, views: initial }: { listingId: string; views: number }) {
   const [views, setViews] = useState(initial);
@@ -61,6 +65,7 @@ export function ViewCount({ listingId, views: initial }: { listingId: string; vi
     return () => abort.abort();
   }, [listingId]);
 
+  if (views < MIN_SHOWN_VIEWS) return null;
   return (
     <span className="font-sans text-[13px] text-muted">
       <span className="font-mono">{views.toLocaleString('en-US')}</span> {views === 1 ? 'view' : 'views'}
