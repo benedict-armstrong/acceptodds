@@ -1,13 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Deck,
-  LinearInterpolator,
-  OrthographicController,
-  OrthographicView,
-  type OrthographicViewState,
-} from '@deck.gl/core';
+import { Deck, LinearInterpolator, OrthographicView, type OrthographicViewState } from '@deck.gl/core';
 import { LineLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import {
   CollisionFilterExtension,
@@ -15,6 +9,7 @@ import {
   type CollisionFilterExtensionProps,
   type DataFilterExtensionProps,
 } from '@deck.gl/extensions';
+import { EmbeddedController, PanController } from '@/lib/map-controller';
 import { dotScale, MAP_SIZE, sparseScale, type TopicLabel } from '@/lib/map';
 
 export type LabelMode = 'auto' | 'region' | 'cluster' | 'off';
@@ -35,32 +30,8 @@ const LABEL_HALO = 0.2;
 /** How far the view may drift from where it opened before "Reset view" shows: a fraction of a pixel. */
 const HOME_TOLERANCE = 0.5;
 const FILTER = new DataFilterExtension({ filterSize: 1 });
+const COLLISIONS = new CollisionFilterExtension();
 const SAFARI_GESTURES = ['gesturestart', 'gesturechange', 'gestureend'];
-
-/**
- * deck's controller, except that a drag always pans. Its own turns a drag
- * with ⌘, Ctrl, Alt or Shift held into a rotation, which a flat
- * (orthographic) view cannot do, so the drag did nothing — and the minimap
- * zooms with ⌘ held, so a drag straight after a zoom would be lost.
- */
-class PanController extends OrthographicController {
-  isFunctionKeyPressed(event: Parameters<OrthographicController['isFunctionKeyPressed']>[0]): boolean {
-    return event.type === 'panstart' ? false : super.isFunctionKeyPressed(event);
-  }
-}
-
-/**
- * Embedded in a page that scrolls, on a touch screen one finger scrolls the
- * page and two pan and zoom, as an embedded Google map does: the browser
- * keeps one-finger pans (`touch-action: pan-x pan-y`, below), and a pinch
- * pans as it zooms, around the fingers. Without this the figure caught every
- * swipe and the page could not be scrolled past it.
- */
-class EmbeddedController extends PanController {
-  protected _onPanStart(event: Parameters<PanController['_onPanStart']>[0]): boolean {
-    return event.pointerType === 'touch' ? false : super._onPanStart(event);
-  }
-}
 
 /**
  * The map itself, in WebGL (deck.gl). Client-only: `PaperMapView` loads it
@@ -119,6 +90,7 @@ export default function MapCanvas({
   const deck = useRef<Deck<OrthographicView> | null>(null);
   const opening = useRef(0);
   const [zoom, setZoom] = useState<number | null>(null);
+  const [closeUp, setCloseUp] = useState(false);
   const [moved, setMoved] = useState(false);
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
@@ -132,7 +104,39 @@ export default function MapCanvas({
   useEffect(() => {
     pointsAt.current = positions;
   });
-  const everyPoint = useMemo(() => new Float32Array(positions.length / 2).fill(1), [positions]);
+  const everyPoint = useMemo(() => new Float32Array(positions.length / 2).fill(1), [positions.length]);
+  // A new data object makes deck rebuild its attributes. Zoom changes sizes,
+  // not the points or glyphs; keep their data stable throughout a gesture.
+  const paperData = useMemo(
+    () => ({
+      length: positions.length / 2,
+      attributes: {
+        getPosition: { value: positions, size: 2 },
+        getFillColor: { value: colours, size: 4 },
+        getFilterValue: { value: shown ?? everyPoint, size: 1 },
+      },
+    }),
+    [positions, colours, shown, everyPoint],
+  );
+  const shownCount = useMemo(
+    () => (shown ? shown.reduce((a, v) => a + v, 0) : positions.length / 2),
+    [shown, positions.length],
+  );
+  const level = labelMode === 'auto' ? (closeUp ? 'cluster' : 'region') : labelMode;
+  const topics = level === 'region' ? regions : level === 'cluster' ? clusters : null;
+  // On phones, keep three quarters of the labels, favouring the largest topics.
+  const labels = useMemo(
+    () =>
+      !topics
+        ? []
+        : narrow
+          ? topics.toSorted((a, b) => b.size - a.size || a.number - b.number).slice(0, Math.round(topics.length * 0.75))
+          : topics,
+    [topics, narrow],
+  );
+  const visibleHeld = useMemo(() => (shown ? held.filter((i) => shown[i] > 0) : held), [held, shown]);
+  const visibleStarred = useMemo(() => (shown ? starred.filter((i) => shown[i] > 0) : starred), [starred, shown]);
+  const selection = useMemo(() => (selected === null ? [] : [...neighbours, selected]), [neighbours, selected]);
   const handlers = useRef({ onHover, onSelect, onOpen });
   useEffect(() => {
     handlers.current = { onHover, onSelect, onOpen };
@@ -153,12 +157,16 @@ export default function MapCanvas({
       parent: el,
       views: new OrthographicView({ flipY: false }),
       initialViewState,
+      // A 3x phone screen otherwise draws nine fragments per CSS pixel,
+      // including the collision and picking passes. Keep mobile buffers bounded.
+      useDevicePixels: matchMedia('(pointer: coarse)').matches ? Math.min(devicePixelRatio, 2) : true,
       controller: { type: embedded ? EmbeddedController : PanController, doubleClickZoom: true, inertia: true },
       touchAction: embedded ? 'pan-x pan-y' : 'none',
       getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
       onViewStateChange: ({ viewState }) => {
         const view = viewState as OrthographicViewState;
         setZoom(view.zoom as number);
+        setCloseUp((view.zoom as number) - opening.current >= CLUSTER_LABELS_FROM);
         setMoved(awayFromHome(view, opening.current, el));
       },
       onClick: (info) => {
@@ -226,31 +234,14 @@ export default function MapCanvas({
   useEffect(() => {
     if (!deck.current || zoom === null) return;
     const n = positions.length / 2;
-    const shownCount = shown ? shown.reduce((a, v) => a + v, 0) : n;
     // Zoom and sparseness both grow the dots; together never past 8x, or zoomed-in sparse dots swamp the map.
     const scale = Math.min(8, dotScale(zoom, opening.current) * sparseScale(shownCount, n));
     const dimmed = selected !== null;
-    const level =
-      labelMode === 'auto' ? (zoom - opening.current < CLUSTER_LABELS_FROM ? 'region' : 'cluster') : labelMode;
-    const topics = level === 'region' ? regions : level === 'cluster' ? clusters : [];
-    // On phones, keep three quarters of the labels, favouring the largest topics as collisions do.
-    const labels = narrow
-      ? topics.toSorted((a, b) => b.size - a.size || a.number - b.number).slice(0, Math.round(topics.length * 0.75))
-      : topics;
     const at = (i: number): [number, number] => [positions[2 * i], positions[2 * i + 1]];
-    // Only what the map shows: a search that hides the rest hides the viewer's papers too.
-    const visible = (indexes: number[]) => (shown ? indexes.filter((i) => shown[i] > 0) : indexes);
     const layers = [
       new ScatterplotLayer<unknown, DataFilterExtensionProps>({
         id: 'papers',
-        data: {
-          length: n,
-          attributes: {
-            getPosition: { value: positions, size: 2 },
-            getFillColor: { value: colours, size: 4 },
-            getFilterValue: { value: shown ?? everyPoint, size: 1 },
-          },
-        },
+        data: paperData,
         // Always on the layer, so turning the filter on and off never rebuilds it.
         extensions: [FILTER],
         filterEnabled: shown !== null,
@@ -264,10 +255,10 @@ export default function MapCanvas({
         onHover: ({ index, x, y }) => handlers.current.onHover(index >= 0 ? { index, x, y } : null),
         onClick: ({ index }, event) => click(index, event.srcEvent),
       }),
-      held.length > 0 &&
+      visibleHeld.length > 0 &&
         new ScatterplotLayer<number>({
           id: 'held',
-          data: visible(held),
+          data: visibleHeld,
           getPosition: (j) => at(j),
           filled: false,
           stroked: true,
@@ -278,10 +269,10 @@ export default function MapCanvas({
           getRadius: dotRadius * scale + 3,
           updateTriggers: { getPosition: positions, getRadius: [scale, dotRadius] },
         }),
-      starred.length > 0 &&
+      visibleStarred.length > 0 &&
         new TextLayer<number>({
           id: 'starred',
-          data: visible(starred),
+          data: visibleStarred,
           getPosition: (j) => at(j),
           getText: () => '★',
           characterSet: ['★'],
@@ -307,7 +298,7 @@ export default function MapCanvas({
       selected !== null &&
         new ScatterplotLayer<number>({
           id: 'selection',
-          data: [...neighbours, selected],
+          data: selection,
           getPosition: (j) => at(j),
           getFillColor: (j) =>
             j === selected ? [...ACCENT, 255] : [colours[4 * j], colours[4 * j + 1], colours[4 * j + 2], 255],
@@ -340,7 +331,7 @@ export default function MapCanvas({
           fontSettings: LABEL_FONT,
           outlineWidth: LABEL_HALO,
           outlineColor: [251, 250, 247, 255],
-          extensions: [new CollisionFilterExtension()],
+          extensions: [COLLISIONS],
           getCollisionPriority: (d) => d.size,
         }),
     ];
@@ -349,13 +340,13 @@ export default function MapCanvas({
     positions,
     colours,
     shown,
-    everyPoint,
-    starred,
-    held,
-    regions,
-    clusters,
-    labelMode,
-    narrow,
+    paperData,
+    shownCount,
+    visibleStarred,
+    visibleHeld,
+    selection,
+    labels,
+    level,
     selected,
     neighbours,
     zoom,

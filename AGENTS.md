@@ -541,7 +541,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   paper's page: "Under review as a conference paper at <kind>"), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
   and `References`/`Cite` (numbered by hand, like tables) — and `Popover` (Radix, the primitive shadcn
   wraps, in our tokens) for anything that floats over the page, and
-  `Modal` (Radix Dialog, likewise) for anything that takes it over, and
+  `Modal` (Radix Dialog, likewise) for anything that takes it over — with
+  `SheetContent` for one that is a bottom sheet on a phone (the `[about]`
+  tutorial) — and
   `CodeInput` (shadcn's `InputOTP` over `input-otp`) for a one-time code:
   one real input under the boxes, so paste and autofill work — reuse
   them rather than hand-roll another. Preflight is on: headings, `p` and

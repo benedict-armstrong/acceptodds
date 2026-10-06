@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import useSWR from 'swr';
 import type { z } from 'zod';
 import { BetSummary } from '@/components/BetSummary';
 import { MathText } from '@/components/MathText';
+import { OnboardingTrade } from '@/components/OnboardingTrade';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { PaperSearch, tradableListingMarket } from '@/components/PaperSearch';
 import { MESSAGES } from '@/components/orders';
@@ -17,10 +17,8 @@ import { WELCOMED_COOKIE } from '@/lib/onboarding';
 import { rememberPending } from '@/lib/pending-confirmation';
 import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
-import { marketPollInterval } from '@/lib/market-poll';
 import type * as S from '@/server/api/schemas';
-import { publicJson } from '../markets/[slug]/MarketLive';
-import { TradeBox, type Choice } from '../markets/[slug]/TradeBox';
+import type { Choice } from '../markets/[slug]/TradeBox';
 
 type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
@@ -156,7 +154,7 @@ export function Welcome({
     case 'bet':
       return card(
         <MathText text={pick!.title} />,
-        <BetStep
+        <OnboardingTrade
           market={pick!.market}
           viewer={viewer}
           onChoose={
@@ -186,39 +184,6 @@ export function Welcome({
         />,
       );
   }
-}
-
-/** The market's own trade box, kept live. A visitor's hands back the choice; a viewer's places the order. */
-function BetStep({
-  market: initial,
-  viewer,
-  onChoose,
-  onFilled,
-}: {
-  market: Market;
-  viewer: { signedIn: boolean; canTrade: boolean; cashMicro: string };
-  onChoose?: (c: Choice) => void;
-  onFilled: (c: Choice) => void;
-}) {
-  const { data: market = initial } = useSWR<Market>(`/api/v1/markets/${initial.id}`, publicJson, {
-    fallbackData: initial,
-    refreshInterval: (latest) => marketPollInterval(latest ?? initial),
-    revalidateOnMount: false,
-  });
-  return (
-    <>
-      <p className="mb-1.5 text-sm text-muted">
-        Current probabilities, set by everyone’s bets. Pick an outcome and stake on it.
-      </p>
-      <TradeBox
-        market={market}
-        cashMicro={BigInt(viewer.cashMicro)}
-        viewer={viewer}
-        onChoose={onChoose}
-        onFilled={onFilled}
-      />
-    </>
-  );
 }
 
 /** Institutional email: `POST /onboarding` stores the bet and mails a link and a code. */

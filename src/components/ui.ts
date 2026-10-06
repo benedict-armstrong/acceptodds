@@ -78,8 +78,9 @@ export const ui = {
     'border border-hyperref px-px font-mono text-[0.9em] break-all text-ink box-decoration-clone hover:no-underline',
   linkBtn: 'cursor-pointer text-accent hover:underline disabled:cursor-default disabled:opacity-50',
   /** `inline`: sized to its label, not the full width. `flush`: no top margin, and flows in text (a table cell's action). */
-  btn: ({ ghost = false, inline = false, flush = false } = {}) =>
+  /** `fill`: a background class in place of the accent (e.g. an outcome's `TIER_BG`). */
+  btn: ({ ghost = false, inline = false, flush = false, fill = '' } = {}) =>
     `${flush ? 'inline-block' : 'mt-2 block'} cursor-pointer text-center font-sans text-sm leading-[normal] font-semibold hover:no-underline disabled:cursor-default disabled:opacity-50 ${
-      ghost ? 'bg-rule-soft text-ink' : 'bg-accent text-white'
+      ghost ? 'bg-rule-soft text-ink' : `${fill || 'bg-accent'} text-white`
     } ${inline ? 'px-4 py-1.5' : 'w-full p-2'}`,
 };

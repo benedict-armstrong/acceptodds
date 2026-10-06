@@ -1,7 +1,4 @@
 import type { Metadata } from 'next';
-import type { z } from 'zod';
-import type * as S from '@/server/api/schemas';
-import { presentListing } from '@/server/api/present';
 import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
@@ -14,6 +11,9 @@ import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/compone
 import { Sparkline } from '@/components/Sparkline';
 import { TitleBlock } from '@/components/TitleBlock';
 import { TutorialModal } from '@/components/TutorialModal';
+import type { z } from 'zod';
+import type * as S from '@/server/api/schemas';
+import { presentListing } from '@/server/api/present';
 import { ui } from '@/components/ui';
 import { defaultMarketKind } from '@/lib/venue';
 import { pct, rep, REP } from '@/lib/format';
@@ -27,11 +27,11 @@ import { startingBalanceMicro } from '@/server/accounts';
 import * as events from '@/server/events';
 import {
   browseListings,
+  listingViews,
   MARKET_SORTS,
   marketKinds,
   searchPeople,
   sparklines,
-  listingViews,
   type BrowsePage,
   type BrowseRow,
   type BrowseSort,
@@ -175,8 +175,7 @@ export default async function Home({
   // A search that is only words may be a name: traders above the papers, on
   // the first page.
   const who = peopleText(parsed?.node ?? null);
-  const tutorialKind = kind ?? defaultMarketKind();
-  const [all, followed, held, people, tutorial] = await Promise.all([
+  const [all, followed, held, people, busiest] = await Promise.all([
     pageOf(sp.page, PAGE, {
       ...browse,
       kind: kindFilter,
@@ -189,8 +188,13 @@ export default async function Home({
     pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me, exceptHeldBy: me }) : null,
     pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
-    browseListings({ kind: tutorialKind, status: 'open', sort: 'volume', limit: 5 }),
+    // The tutorial shows one real market's odds: the venue's most traded open paper.
+    browseListings({ kind: kind ?? defaultMarketKind(), status: 'open', sort: 'volume', limit: 1 }),
   ]);
+  const busiestListing = busiest.rows[0]?.listing;
+  const [tutorialExample] = busiestListing
+    ? ((await listingViews([busiestListing])).map(presentListing) as z.output<typeof S.Listing>[])
+    : [];
   const cookieJar = await cookies();
   const followingOpen = cookieJar.get(FOLLOWING_COOKIE)?.value !== '0';
   const positionsOpen = cookieJar.get(POSITIONS_COOKIE)?.value !== '0';
@@ -224,9 +228,6 @@ export default async function Home({
     `${href({ ...pages, [key]: String(p) })}${anchor}`;
   const filtered = kindFilter !== null || statusFilter !== 'all';
   const pinnedCount = (followed?.total ?? 0) + (held?.total ?? 0);
-  const tutorialSuggestions = (await listingViews(tutorial.rows.flatMap((r) => (r.listing ? [r.listing] : [])))).map(
-    presentListing,
-  ) as z.output<typeof S.Listing>[];
   // Shown on the ⋯ trigger when not the defaults.
   const activeFilters = [status !== 'open' && status, onlyFollowed && '★', showTldr && 'tldr']
     .filter(Boolean)
@@ -247,9 +248,9 @@ export default async function Home({
         abstractFull
       >
         <TutorialModal
+          example={tutorialExample}
           startingBalanceMicro={startingBalanceMicro().toString()}
-          kind={tutorialKind}
-          suggestions={tutorialSuggestions}
+          signedIn={viewer !== null}
         />
       </TitleBlock>
       {/* A plain GET form, so search works without JavaScript. */}

@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
-import { sql } from 'drizzle-orm';
 import { createHouse, ensureAccountForUser, startingBalanceMicro } from '@/server/accounts';
 import { createAuth } from '@/server/better-auth';
 import { createMarket } from '@/server/engine';
@@ -10,10 +9,12 @@ import { upsertListing } from '@/server/listings';
 import { SUBSIDY_FRACTION } from '@/lib/lmsr';
 import { createDb, createPool, type Database } from './index';
 import { listings } from './schema';
+import { wipeSeedData } from './seed-reset';
 
 /**
- * The real venue (`npm run db:seed`). It **wipes every table first**, users and
- * sessions included, then creates:
+ * The real venue (`npm run db:seed`). It resets trading, users and sessions,
+ * preserving existing listings, bibliography, related papers and map vectors,
+ * then creates:
  *
  * - the house, with a treasury sized to pay for every market;
  * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is;
@@ -33,9 +34,11 @@ import { listings } from './schema';
  * is when decisions are released (default 2026-12-15); the markets close the
  * day before. Markets open at {@link PRIOR}, last year's split of decisions,
  * not an even one.
- * `--keep-listings` instead preserves the existing listings, bibliography,
- * related papers and map, and recreates their markets without reading SQLite.
- * All trading and account data is still wiped.
+ * Existing listings are reused without reading SQLite. An empty database is
+ * loaded from SQLite. `--keep-listings` explicitly requires the reuse path;
+ * `--reset-listings` opts into wiping paper data and loading SQLite again.
+ * `--db` and `--limit` require `--reset-listings`.
+ * All trading and account data is still wiped in either mode.
  *
  * Only a local database is wiped unless `--allow-remote` is passed; a remote
  * seed also needs `SEED_ADMIN_PASSWORD` (a local one defaults to
@@ -53,13 +56,14 @@ async function main() {
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || (local ? ADMIN_PASSWORD : '');
   if (!adminPassword) throw new Error('SEED_ADMIN_PASSWORD is required to seed a remote database');
 
-  const keepListings = process.argv.includes('--keep-listings');
-  if (keepListings && (flag('db') !== undefined || flag('limit') !== undefined)) {
-    throw new Error('--keep-listings cannot be combined with --db or --limit');
+  const resetListings = process.argv.includes('--reset-listings');
+  const explicitKeep = process.argv.includes('--keep-listings');
+  if (resetListings && explicitKeep) {
+    throw new Error('--reset-listings cannot be combined with --keep-listings');
   }
-  const submissions = keepListings
-    ? []
-    : readSubmissions(flag('db') ?? path.join('data', 'iclr2027.sqlite'), Number(flag('limit') ?? 0));
+  if (!resetListings && (flag('db') !== undefined || flag('limit') !== undefined)) {
+    throw new Error('--db and --limit require --reset-listings (which deletes existing paper data)');
+  }
   const traders = Number(flag('traders') ?? 6);
   const decisionAt = new Date(`${flag('decision') ?? '2026-12-15'}T00:00:00Z`);
   if (!Number.isFinite(traders) || traders < 1) throw new Error('--traders must be a positive number');
@@ -68,12 +72,16 @@ async function main() {
 
   const pool = createPool(url);
   const db = createDb(pool);
-  const existingListings = keepListings
+  const existingListings = !resetListings
     ? await db.select({ id: listings.id, slug: listings.slug, kind: listings.kind }).from(listings)
     : [];
+  const keepListings = explicitKeep || (!resetListings && existingListings.length > 0);
+  const submissions = keepListings
+    ? []
+    : readSubmissions(flag('db') ?? path.join('data', 'iclr2027.sqlite'), Number(flag('limit') ?? 0));
   const marketCount = keepListings ? existingListings.length : submissions.length;
 
-  await wipeData(db, keepListings);
+  await wipeSeedData(db, !resetListings);
   // A market opening at a prior costs the house b·ln(1/p_min), with b = SUBSIDY_FRACTION · balance · traders / ln(n)
   // (§1.7); a margin covers rounding.
   const b = (SUBSIDY_FRACTION * Number(startingBalanceMicro()) * traders) / Math.log(DECISIONS.length);
@@ -99,20 +107,6 @@ function flag(name: string): string | undefined {
 
 function isLocal(url: string): boolean {
   return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(new URL(url).hostname);
-}
-
-/** Empties public tables (users and sessions included), optionally retaining paper data. */
-async function wipeData(db: Database, keepListings: boolean) {
-  const { rows } = await db.execute<{ t: string }>(
-    sql`select format('%I', tablename) as t from pg_tables where schemaname = 'public'
-        and (not ${keepListings} or tablename not in (
-          'listings', 'listing_references', 'listing_related', 'listing_views', 'map_points', 'map_topics'
-        ))`,
-  );
-  if (rows.length > 0) {
-    await db.execute(sql.raw(`truncate table ${rows.map((r) => r.t).join(', ')} restart identity cascade`));
-  }
-  console.log(`wiped ${rows.length} tables`);
 }
 
 /** Default password of the seeded admin on a local database. */

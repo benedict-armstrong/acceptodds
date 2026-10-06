@@ -52,6 +52,13 @@
 
   /* The caret in an empty `CodeInput` slot. */
   --animate-caret-blink: caret-blink 1.2s ease-out infinite;
+  /* A `SheetContent` on a phone: slides up from the bottom edge. */
+  --animate-sheet-up: sheet-up 0.25s ease-out;
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+  }
   @keyframes caret-blink {
     0%,
     70%,

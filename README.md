@@ -87,7 +87,9 @@ Then:
 
 ```sh
 npm run db:migrate          # apply migrations to $DATABASE_URL
-npm run db:seed             # wipes the database, then loads data/iclr2027.sqlite (copy it from ../research)
+npm run db:seed             # resets accounts/trading; preserves existing papers, related lists and map vectors
+# On an empty database, loads data/iclr2027.sqlite (copy it from ../research).
+# To also wipe paper data and reload SQLite: npm run db:seed -- --reset-listings
 npm run dev                 # http://localhost:3000, /healthz checks the database
 ```
 

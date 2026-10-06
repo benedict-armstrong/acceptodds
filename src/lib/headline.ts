@@ -105,6 +105,18 @@ export function squareOf(ordinal: number, outcomes: number): string {
 
 /** Tailwind class lists per palette slot, written whole so Tailwind finds them. */
 export const TIER_BG = ['bg-tier-1', 'bg-tier-2', 'bg-tier-3', 'bg-tier-4'] as const;
+/**
+ * Outcome controls (the trade box), per palette slot: the bar's colours, but
+ * red and green as the stronger `down`/`up`, since a button is a small area.
+ */
+export const TIER_STRONG_BG = ['bg-down', 'bg-tier-2', 'bg-up', 'bg-tier-4'] as const;
+/** A selected outcome's control, per palette slot: filled in `TIER_STRONG_BG`. */
+export const TIER_FILL = [
+  'border-down bg-down text-white',
+  'border-tier-2 bg-tier-2 text-white',
+  'border-up bg-up text-white',
+  'border-tier-4 bg-tier-4 text-white',
+] as const;
 /** The same colours as hex, for SVG and image rendering (`app/globals.css` `--color-tier-*`). */
 export const TIER_HEX = ['#a24a3f', '#c49a2c', '#3d7a4f', '#3f6a9a'] as const;
 

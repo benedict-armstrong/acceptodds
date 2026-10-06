@@ -20,7 +20,8 @@
 #   ... run --rm tools npm run token:mint -- --handle research-bot --scopes admin --name ops
 #   ... run --rm tools npm run digest:send
 #   ... run --rm -e SEED_ADMIN_PASSWORD=... tools npm run db:seed -- --allow-remote
-#       (WIPES EVERY TABLE, users included, then seeds demo papers, bots and the admin)
+#       (resets trading and users; preserves papers, related lists and map vectors)
+#       Add --reset-listings only to also wipe paper data and reload SQLite.
 
 name: acceptodds
 

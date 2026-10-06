@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { ui } from '@/components/ui';
+import { MAX_BAR_OUTCOMES, paletteSlot, TIER_FILL, TIER_STRONG_BG } from '@/lib/headline';
 import { parseUnits } from '@/lib/money';
 import { payoutReturn, pct, rep, REP } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
@@ -19,9 +20,18 @@ export interface Choice {
   seenOrderCount: number;
 }
 
-/** One button of a segmented control. */
-function segment(on: boolean): string {
-  return `flex-1 cursor-pointer border px-1 py-[5px] font-sans text-sm leading-[normal] ${on ? 'border-ink bg-ink text-white' : 'border-rule bg-white'}`;
+/**
+ * The palette slot of outcome `i` of `n`, as the outcome bar colours it (red/green
+ * for two); `null` past `MAX_BAR_OUTCOMES`, which the bar leaves uncoloured too.
+ */
+function slotOf(i: number, n: number): number | null {
+  return n <= MAX_BAR_OUTCOMES ? paletteSlot(i, n) : null;
+}
+
+/** One button of a segmented control: the selected one filled, in its outcome's colour when it has one. */
+function segment(on: boolean, slot: number | null): string {
+  const look = !on ? 'border-rule bg-white' : slot === null ? 'border-ink bg-ink text-white' : TIER_FILL[slot];
+  return `flex-1 cursor-pointer border px-1 py-[5px] font-sans text-sm leading-[normal] ${look}`;
 }
 
 /**
@@ -62,6 +72,8 @@ export function TradeBox({
   const [idx, setIdx] = useState(lockedIndex ?? 0);
   const [stake, setStake] = useState('100');
   const outcome = market.outcomes[idx];
+  const slot = slotOf(idx, market.outcomes.length);
+  const buy = ui.btn({ fill: slot === null ? '' : TIER_STRONG_BG[slot] });
   const budget = parseUnits(stake);
   // Called after the fill, with this render's choice: the one the order was sent from.
   const { send, busy, note } = useOrder(market.id, () =>
@@ -83,7 +95,12 @@ export function TradeBox({
       {lockedIndex === undefined && (
         <div className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}>
           {market.outcomes.map((o, i) => (
-            <button key={o.id} className={segment(i === idx)} onClick={() => setIdx(i)}>
+            <button
+              key={o.id}
+              aria-pressed={i === idx}
+              className={segment(i === idx, slotOf(i, market.outcomes.length))}
+              onClick={() => setIdx(i)}
+            >
               {o.label} {pct(o.price)}
             </button>
           ))}
@@ -147,7 +164,7 @@ export function TradeBox({
       {onChoose ? (
         <>
           <button
-            className={ui.btn()}
+            className={buy}
             disabled={budget === null || budget <= 0n || short}
             onClick={() =>
               budget && onChoose({ outcomeId: outcome.id, stakeMicro: budget, seenOrderCount: market.orderCount })
@@ -162,7 +179,7 @@ export function TradeBox({
         <div className={ui.note(false)}>{MESSAGES.not_verified}</div>
       ) : (
         <button
-          className={ui.btn()}
+          className={buy}
           disabled={!current || busy || short}
           onClick={() =>
             current && signed !== null && send(outcome.id, outcome.label, signed.toString(), current.costMicro)
