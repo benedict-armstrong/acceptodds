@@ -32,6 +32,10 @@ export type EventName =
   // trading
   | 'order_placed'
   | 'order_refused'
+  // the [about] tutorial: opened, each step first reached (2 and 3), and its last button
+  | 'tutorial_opened'
+  | 'tutorial_step'
+  | 'tutorial_finished'
   // small signals of interest
   | 'follow_toggled'
   | 'share_copied'
@@ -48,8 +52,13 @@ export interface EventData {
   needsName?: boolean;
   needsPassword?: boolean;
   following?: boolean;
-  /** What was copied: 'paper' | 'badge' | 'profile'; or where it was sent: 'x' | 'whatsapp'. */
+  /**
+   * What was copied: 'paper' | 'badge' | 'profile'; or where it was sent: 'x' | 'whatsapp'; or where the
+   * tutorial's last button went: 'welcome' | 'close'.
+   */
   target?: string;
+  /** A tutorial step, counted from 1. */
+  step?: number;
 }
 
 type Umami = { track: (name: string, data?: Record<string, unknown>) => void };

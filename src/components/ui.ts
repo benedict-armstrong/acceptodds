@@ -76,6 +76,10 @@ export const ui = {
   /** An external link boxed as hyperref boxes a `\url{}`: typewriter, ink, a cyan frame. */
   hyperref:
     'border border-hyperref px-px font-mono text-[0.9em] break-all text-ink box-decoration-clone hover:no-underline',
+  /** The home page's search field and its button; `/welcome`'s paper search uses the field alone. */
+  searchInput:
+    'min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none',
+  searchBtn: 'cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink',
   linkBtn: 'cursor-pointer text-accent hover:underline disabled:cursor-default disabled:opacity-50',
   /** `inline`: sized to its label, not the full width. `flush`: no top margin, and flows in text (a table cell's action). */
   /** `fill`: a background class in place of the accent (e.g. an outcome's `TIER_BG`). */

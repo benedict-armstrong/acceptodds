@@ -12,13 +12,23 @@ import { ui } from './ui';
  * `trader-xxxx` handle, and its first name makes the real one
  * (`accounts.setDisplayName`). Such an account's display name *is* its handle.
  */
-export function EditName({ displayName, handle }: { displayName: string; handle: string }) {
+export function EditName({
+  displayName,
+  handle,
+  label = 'edit name',
+  triggerClassName = `${ui.linkBtn} inline-flex items-center`,
+}: {
+  displayName: string;
+  handle: string;
+  label?: string;
+  triggerClassName?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(displayName);
+  const placeholder = displayName === handle;
+  const [name, setName] = useState(placeholder ? '' : displayName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const placeholder = displayName === handle;
   const changed = name.trim() !== displayName && name.trim() !== '';
 
   async function save(e: FormEvent) {
@@ -48,12 +58,12 @@ export function EditName({ displayName, handle }: { displayName: string; handle:
       onOpenChange={(o) => {
         setOpen(o);
         if (o) {
-          setName(displayName);
+          setName(placeholder ? '' : displayName);
           setError(null);
         }
       }}
     >
-      <ModalTrigger className={`${ui.linkBtn} inline-flex items-center`}>edit name</ModalTrigger>
+      <ModalTrigger className={triggerClassName}>{label}</ModalTrigger>
       <ModalContent title="Edit name">
         <form onSubmit={save}>
           <label htmlFor="display-name" className="mb-1 block text-muted">

@@ -45,6 +45,16 @@ export interface Chosen {
   choice: Choice;
 }
 
+/**
+ * "a" or "an" before a venue, read as it is said: an acronym by its letters
+ * ("an ICLR", "a NeurIPS", "an EMNLP"), a word by its first letter.
+ */
+function article(kind: string): 'a' | 'an' {
+  const word = kind.split(/\s/)[0] ?? '';
+  const acronym = word.length > 1 && word === word.toUpperCase();
+  return (acronym ? /^[AEFHILMNORSX]/ : /^[aeiou]/i).test(word) ? 'an' : 'a';
+}
+
 /** What a step needs from the ones before it, so a reload or a deep link falls back to where it can start. */
 const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
   bet: 'pick',
@@ -68,6 +78,7 @@ export function Welcome({
   kind,
   next,
   suggestions,
+  sparks,
   chosen,
   viewer,
 }: {
@@ -75,6 +86,8 @@ export function Welcome({
   /** Where the intro's sign-in link returns to. */
   next: string;
   suggestions: Listing[];
+  /** The suggestions' sparklines, by market id. */
+  sparks: Record<string, number[]>;
   chosen: Chosen | null;
   viewer: { signedIn: boolean; canTrade: boolean; cashMicro: string };
 }) {
@@ -103,13 +116,14 @@ export function Welcome({
     document.cookie = `${WELCOMED_COOKIE}=1; path=/; max-age=31536000; samesite=lax`;
   }, []);
 
-  const card = (title: React.ReactNode, body: React.ReactNode) => {
+  const card = (title: React.ReactNode, body: React.ReactNode, wide = false) => {
     const at = steps.indexOf(step);
     return (
       <OnboardingCard
         title={title}
         // The first of `CHOSEN` goes back to the market's page it came from.
         onBack={at > 0 || chosen ? () => window.history.back() : undefined}
+        wide={wide}
       >
         {body}
       </OnboardingCard>
@@ -135,12 +149,13 @@ export function Welcome({
 
     case 'search':
       return card(
-        `Which ${kind} paper do you have an opinion on?`,
+        `Pick ${article(kind)} ${kind} paper`,
         <>
           <p className="-mt-2 mb-3 text-muted">Maybe you have a feeling about your own submission?</p>
           <PaperSearch
             kind={kind}
             suggestions={suggestions}
+            sparks={sparks}
             onPick={(l) => {
               const market = tradableListingMarket(l) ?? l.markets[0];
               setPick({ market, title: l.title, href: marketHref({ marketSlug: market.slug, listingSlug: l.slug }) });
@@ -149,6 +164,7 @@ export function Welcome({
             }}
           />
         </>,
+        true,
       );
 
     case 'bet':

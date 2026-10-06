@@ -1,11 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { CopyButton } from '@/components/CopyButton';
+import { CopyField } from '@/components/CopyField';
 import { Modal, ModalClose, ModalContent, ModalTrigger } from '@/components/Modal';
 import { ui } from '@/components/ui';
 import { groupInvitePath, groupPath } from '@/lib/links';
+import { rememberInvite } from '@/lib/pending-invite';
 
 /**
  * Leaderboard groups in the UI (#25): making one, joining by invite link,
@@ -135,6 +138,23 @@ export function NewGroupButton({
         />
       </ModalContent>
     </Modal>
+  );
+}
+
+/**
+ * On an invite page, signed out: sign in or up, remembering the invite so
+ * they join once they have an account (`PendingGroupJoin`), wherever the
+ * way in ends.
+ */
+export function SignInToJoin({ code }: { code: string }) {
+  return (
+    <Link
+      href={`/signin?next=${encodeURIComponent(groupInvitePath(code))}`}
+      className={ui.btn({ inline: true })}
+      onClick={() => rememberInvite(code)}
+    >
+      Sign in / Sign up
+    </Link>
   );
 }
 
@@ -297,6 +317,7 @@ export function GroupActions({ group, role, viewerHandle, members }: GroupAction
                   </li>
                 ))}
               </ul>
+              <CopyField value={invite} label={`Invite link to ${group.name}`} className="mb-2" />
               <p className="mb-1 text-muted">
                 A new invite link stops the old one working. Nobody already in the group is removed.
               </p>

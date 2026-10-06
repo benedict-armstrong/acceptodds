@@ -7,7 +7,9 @@ import { ConfirmBanner } from '@/components/ConfirmBanner';
 import { LogoMark } from '@/components/Logo';
 import { NavGroups } from '@/components/NavGroups';
 import { groupsOf } from '@/server/groups';
+import { NameBanner } from '@/components/NameBanner';
 import { NavWorth, type NavStanding } from '@/components/NavWorth';
+import { PendingGroupJoin } from '@/components/PendingGroupJoin';
 import { rep, REP } from '@/lib/format';
 import { microToFloat } from '@/lib/money';
 import { viewerFromHeaders } from '@/server/auth';
@@ -112,6 +114,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </nav>
         </header>
         <ConfirmBanner signedIn={viewer !== null} />
+        <PendingGroupJoin signedIn={viewer !== null} />
+        {viewer && (
+          <NameBanner
+            needsName={viewer.needsName}
+            displayName={viewer.account.displayName}
+            handle={viewer.account.handle}
+          />
+        )}
         {children}
         {tracker && <Analytics {...tracker} />}
       </body>

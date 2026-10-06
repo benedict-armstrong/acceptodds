@@ -24,12 +24,12 @@ export interface Choice {
  * The palette slot of outcome `i` of `n`, as the outcome bar colours it (red/green
  * for two); `null` past `MAX_BAR_OUTCOMES`, which the bar leaves uncoloured too.
  */
-function slotOf(i: number, n: number): number | null {
+export function slotOf(i: number, n: number): number | null {
   return n <= MAX_BAR_OUTCOMES ? paletteSlot(i, n) : null;
 }
 
 /** One button of a segmented control: the selected one filled, in its outcome's colour when it has one. */
-function segment(on: boolean, slot: number | null): string {
+export function segment(on: boolean, slot: number | null): string {
   const look = !on ? 'border-rule bg-white' : slot === null ? 'border-ink bg-ink text-white' : TIER_FILL[slot];
   return `flex-1 cursor-pointer border px-1 py-[5px] font-sans text-sm leading-[normal] ${look}`;
 }

@@ -3,15 +3,18 @@
 import { useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { z } from 'zod';
-import { Confetti } from '@/components/Confetti';
 import { MathText } from '@/components/MathText';
 import { Modal, ModalClose, ModalTitle, ModalTrigger, SheetContent } from '@/components/Modal';
+import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { sharesForStake } from '@/components/quote';
+import { segment, slotOf } from '@/app/markets/[slug]/TradeBox';
 import { ui } from '@/components/ui';
-import { pct, rep, REP } from '@/lib/format';
-import { marketHeadline } from '@/lib/headline';
+import { payoutReturn, pct, rep, REP } from '@/lib/format';
+import { marketHeadline, TIER_STRONG_BG } from '@/lib/headline';
 import { LIKELIHOOD_CLASS, likelihood } from '@/lib/likelihood';
+import { prices } from '@/lib/lmsr';
 import { unitsToMicro } from '@/lib/money';
+import { track } from '@/lib/track';
 import type * as S from '@/server/api/schemas';
 
 type Listing = z.output<typeof S.Listing>;
@@ -24,25 +27,53 @@ const LMSR_PAPER = 'https://mason.gmu.edu/~rhanson/mktscore.pdf';
 /** The stake the illustrations price. Only the stake is an example: what it pays is the market's own quote. */
 const EXAMPLE_STAKE = unitsToMicro(100);
 
-/** The example market, read for the illustrations: its two ends and what the example stake pays on each. */
+/** One side of the example market, and the example stake's trade on it, priced by the engine's own maths. */
+type Side = {
+  label: string;
+  ordinal: number;
+  price: number;
+  /** The shares the stake buys, which is also the payout: each pays 1 if its outcome happens. */
+  payoutMicro: bigint;
+  /** The side's price once the stake is bought. */
+  priceAfter: number;
+};
+
+/** The example market, read for the illustrations. */
 type Example = {
   title: string;
+  authors: string[];
   accept: number;
-  sides: { label: string; payoutMicro: bigint }[];
+  /** By ordinal, as the outcome bar takes them. */
+  outcomes: { label: string; price: number }[];
+  /** The first outcome and the last: for a paper, Accept and Reject. */
+  sides: [Side, Side];
 };
 
 function exampleOf(listing?: Listing): Example | null {
   const market = listing?.markets[0];
   const accept = market ? marketHeadline(market) : null;
   if (!listing || !market || accept === null || market.status !== 'open') return null;
-  // Outcomes run best first, worst last (`lib/headline.ts`): for a paper, Accept and Reject.
+  const q = market.outcomes.map((o) => Number(o.sharesMicro));
+  const side = (i: number): Side => {
+    const o = market.outcomes[i];
+    const payoutMicro = sharesForStake(market, i, EXAMPLE_STAKE);
+    const after = q.slice();
+    after[i] += Number(payoutMicro);
+    return {
+      label: o.label,
+      ordinal: o.ordinal,
+      price: o.price,
+      payoutMicro,
+      priceAfter: prices(after, market.b)[i],
+    };
+  };
   const byOrdinal = market.outcomes.map((o, i) => ({ o, i })).sort((a, b) => a.o.ordinal - b.o.ordinal);
-  const ends = [byOrdinal[0], byOrdinal[byOrdinal.length - 1]];
   return {
     title: listing.title,
+    authors: listing.authors,
     accept,
-    // Each share pays 1 if its outcome happens, so the shares bought are the payout.
-    sides: ends.map(({ o, i }) => ({ label: o.label, payoutMicro: sharesForStake(market, i, EXAMPLE_STAKE) })),
+    outcomes: byOrdinal.map(({ o }) => ({ label: o.label, price: o.price })),
+    sides: [side(byOrdinal[0].i), side(byOrdinal[byOrdinal.length - 1].i)],
   };
 }
 
@@ -64,13 +95,15 @@ export function TutorialModal({
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const content = useRef<HTMLDivElement>(null);
+  /** The furthest step reached since the tutorial was opened. */
+  const reached = useRef(0);
   const example = exampleOf(listing);
-  const [yes, no] = example?.sides.map((s) => s.label) ?? ['Accept', 'Reject'];
+  const [yes, no] = example?.sides.map((side) => side.label) ?? ['Accept', 'Reject'];
 
   const steps: { title: string; art: ReactNode; body: ReactNode; fine?: ReactNode }[] = [
     {
       title: 'Pick a paper',
-      art: example && <PaperCard example={example} />,
+      art: example && <ListSketch example={example} />,
       body: (
         <>
           Buy ‘{yes}’ or ‘{no}’ depending on your prediction. Odds shift in real time as other traders weigh in.
@@ -89,20 +122,21 @@ export function TutorialModal({
     },
     {
       title: 'Place a trade',
-      art: example && <StakeCards example={example} />,
+      art: example && <TradeBoxSketch example={example} />,
       body: (
         <>
           {signedIn ? 'Every account starts with' : 'Sign up with your institutional email and get'}{' '}
           <span className="font-mono text-ink">
             {rep(startingBalanceMicro, 0)} {REP}
           </span>
-          {signedIn ? '. Choose a side and a stake, and you’re trading.' : '—then you’re ready to trade.'}
+          {signedIn ? '. Choose a side and a stake, and you’re trading.' : ' then you’re ready to trade.'}
         </>
       ),
+      fine: <>{REP} is in app money, with no cash value. Trading needs an email at a research institution.</>,
     },
     {
       title: 'Cash out',
-      art: example && <Receipt example={example} />,
+      art: example && <PositionSketch example={example} />,
       body: (
         <>
           Sell your shares at any time, or wait until the decision to redeem each winning share for 1 {REP}.{' '}
@@ -111,13 +145,17 @@ export function TutorialModal({
             : 'Create an account and place your first trade in minutes.'}
         </>
       ),
-      fine: <>{REP} is play money, with no cash value. Trading needs an email at a research institution.</>,
     },
   ];
   const last = steps.length - 1;
   const current = steps[step];
 
   function go(next: number) {
+    // Each step counted once per opening, however often the arrow keys go back over it.
+    if (next > reached.current) {
+      reached.current = next;
+      track('tutorial_step', { step: next + 1 });
+    }
     setStep(next);
     content.current?.scrollTo({ top: 0 });
   }
@@ -127,7 +165,11 @@ export function TutorialModal({
       open={open}
       onOpenChange={(value) => {
         setOpen(value);
-        if (value) setStep(0);
+        if (value) {
+          setStep(0);
+          reached.current = 0;
+          track('tutorial_opened');
+        }
       }}
     >
       <ModalTrigger type="button" className={`font-sans text-sm ${ui.linkBtn}`}>
@@ -151,7 +193,6 @@ export function TutorialModal({
             {current.art}
           </div>
         )}
-        {step === last && example && <Confetti />}
         {/* Every step's text in one grid cell, the others invisible, so the sheet is as tall as the longest and
             never changes size between steps. */}
         <div className="mt-4 grid">
@@ -177,9 +218,18 @@ export function TutorialModal({
               Next
             </button>
           ) : signedIn ? (
-            <ModalClose className={ui.btn()}>Start trading</ModalClose>
+            <ModalClose className={ui.btn()} onClick={() => track('tutorial_finished', { target: 'close' })}>
+              Start trading
+            </ModalClose>
           ) : (
-            <Link href="/welcome" className={ui.btn()} onClick={() => setOpen(false)}>
+            <Link
+              href="/welcome?step=search"
+              className={ui.btn()}
+              onClick={() => {
+                track('tutorial_finished', { target: 'welcome' });
+                setOpen(false);
+              }}
+            >
               Get started
             </Link>
           )}
@@ -189,81 +239,135 @@ export function TutorialModal({
   );
 }
 
-/** The paper as a card: title, odds and its two sides, tilted a little. */
-function PaperCard({ example }: { example: Example }) {
-  const [yes, no] = example.sides;
+/** Shown at the size the illustrations are set in, and never wider than the sheet. */
+const SKETCH = 'w-80 max-w-full shadow-lg';
+
+/** "A, B, C et al.", as the home list names authors. */
+function authorLine(names: string[]): string {
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')} et al.` : names.join(', ');
+}
+
+/** The home list, as its rows look: the paper between two blank rows, with its odds and outcome bar. */
+function ListSketch({ example }: { example: Example }) {
+  const look = LIKELIHOOD_CLASS[likelihood(example.accept)];
+  const blank = (
+    <div className="grid grid-cols-[3px_1fr_56px] items-center gap-x-3 border-b border-dotted border-rule-strong py-2.5">
+      <span className="self-stretch bg-rule-soft" />
+      <span className="space-y-1.5">
+        <span className="block h-2.5 w-11/12 bg-rule-soft" />
+        <span className="block h-2 w-1/2 bg-rule-soft" />
+      </span>
+      <span className="ml-auto block h-2.5 w-8 bg-rule-soft" />
+    </div>
+  );
   return (
-    <div className="w-72 -rotate-3 border border-frame bg-card p-4 shadow-lg">
-      <div className="flex items-start justify-between gap-3">
-        <span className="line-clamp-2 font-serif text-sm leading-snug">
-          <MathText text={example.title} />
+    <div className={`${SKETCH} -rotate-2 border border-frame bg-card px-3`}>
+      {blank}
+      <div className="grid grid-cols-[3px_1fr_56px] items-center gap-x-3 border-b border-dotted border-rule-strong py-2">
+        <span className={`self-stretch ${look.bar}`} />
+        <span className="min-w-0 leading-[1.35]">
+          <span className="line-clamp-2 font-serif text-sm">
+            <MathText text={example.title} />
+          </span>
+          {example.authors.length > 0 && (
+            <span className="block truncate text-xs text-muted">{authorLine(example.authors)}</span>
+          )}
         </span>
-        <span className={`shrink-0 font-mono text-lg ${LIKELIHOOD_CLASS[likelihood(example.accept)].text}`}>
+        <span className={`inline-flex flex-col items-end gap-1 font-mono text-sm ${look.text}`}>
           {pct(example.accept)}
+          <OutcomeBar
+            prices={example.outcomes.map((o) => o.price)}
+            labels={example.outcomes.map((o) => o.label)}
+            className="h-1 w-14"
+          />
         </span>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2 text-center text-sm font-semibold">
-        <span className={`py-1.5 text-white ${LIKELIHOOD_CLASS.accept.bar}`}>{yes.label}</span>
-        <span className="bg-rule-soft py-1.5 text-subtle">{no.label}</span>
-      </div>
+      {blank}
     </div>
   );
 }
 
-/** The example stake on each side, with what the market would pay for it now. */
-function StakeCards({ example }: { example: Example }) {
-  const [yes, no] = example.sides;
-  return (
-    <>
-      <div className="absolute translate-x-12 -translate-y-8 rotate-6">
-        <StakeCard side={no} tone={LIKELIHOOD_CLASS.reject.bar} />
-      </div>
-      <div className="absolute -translate-x-10 translate-y-6 -rotate-3">
-        <StakeCard side={yes} tone={LIKELIHOOD_CLASS.accept.bar} />
-      </div>
-    </>
-  );
-}
-
-function StakeCard({ side, tone }: { side: Example['sides'][number]; tone: string }) {
-  return (
-    <div className="w-52 border border-frame bg-card p-4 text-center shadow-lg">
-      <div className="flex items-center justify-between">
-        <span className="bg-rule-soft px-2 text-muted">−</span>
-        <span className="font-mono text-2xl text-ink">
-          {rep(EXAMPLE_STAKE, 0)} <span className="text-sm">{REP}</span>
-        </span>
-        <span className="bg-rule-soft px-2 text-muted">+</span>
-      </div>
-      <div className="mt-1 text-xs text-subtle">
-        To win <b className="font-mono text-accept">{rep(side.payoutMicro)}</b>
-      </div>
-      <div className={`mt-3 py-1.5 text-sm font-semibold text-white ${tone}`}>Buy {side.label}</div>
-    </div>
-  );
-}
-
-/** The step-2 trade on the first side, as a receipt: the odds, the stake and what it pays if it wins. */
-function Receipt({ example }: { example: Example }) {
+/** The trade box with the example stake on the first side: its segments, stake line, quote and button. */
+function TradeBoxSketch({ example }: { example: Example }) {
   const [yes] = example.sides;
+  const n = example.outcomes.length;
+  const fill = slotOf(yes.ordinal, n);
+  const ret = payoutReturn(yes.payoutMicro, EXAMPLE_STAKE);
   return (
-    <div className="w-72 border border-frame bg-card shadow-lg">
-      <div className="border-b border-rule-soft p-4 font-serif text-sm leading-snug">
-        <span className="line-clamp-2">
-          <MathText text={example.title} />
+    <div className={`${SKETCH} rotate-1 ${ui.box}`}>
+      <div className="mb-2 flex gap-1.5">
+        {example.sides.map((side) => (
+          <span key={side.label} className={`text-center ${segment(side === yes, slotOf(side.ordinal, n))}`}>
+            {side.label} {pct(side.price)}
+          </span>
+        ))}
+      </div>
+      <div className="mb-3 flex items-baseline justify-center gap-2 text-xl font-semibold text-muted">
+        stake
+        <span className="border-b-2 border-dashed border-rule-strong font-mono text-3xl text-accent">
+          {rep(EXAMPLE_STAKE, 0)}
+        </span>
+        <span className="font-mono">{REP}</span>
+      </div>
+      <div className={ui.kv}>
+        <span>Payout if {yes.label}</span>
+        <b>
+          {rep(yes.payoutMicro)} {REP}
+          {ret && <span className="ml-1.5 font-normal text-muted">({ret})</span>}
+        </b>
+      </div>
+      <div className={ui.kv}>
+        <span>Price</span>
+        <span>
+          {pct(yes.price, true)} → {pct(yes.priceAfter, true)}
         </span>
       </div>
-      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1.5 p-4 text-sm">
-        <dt className="text-subtle">Odds</dt>
-        <dd className="text-right font-mono">{pct(example.accept)}</dd>
-        <dt className="text-subtle">Stake</dt>
-        <dd className="text-right font-mono">
-          {rep(EXAMPLE_STAKE, 0)} {REP}
-        </dd>
-        <dt className="text-subtle">To win</dt>
-        <dd className="text-right font-mono text-2xl text-accept">{rep(yes.payoutMicro)}</dd>
-      </dl>
-      <div className="mx-4 mb-4 bg-accent py-1.5 text-center text-sm font-semibold text-white">Cash out</div>
+      <div className={ui.btn({ fill: fill === null ? '' : TIER_STRONG_BG[fill] })}>
+        Stake {rep(EXAMPLE_STAKE)} {REP} on {yes.label}
+      </div>
+    </div>
+  );
+}
+
+/** The step-2 trade as the positions table shows it, with the Sell button. */
+function PositionSketch({ example }: { example: Example }) {
+  const [yes] = example.sides;
+  // What the position returns if its outcome wins: the payout against the stake. Never a mark (§1.1).
+  const gain = yes.payoutMicro - EXAMPLE_STAKE;
+  const gainPct = Math.round((Number(gain < 0n ? -gain : gain) / Number(EXAMPLE_STAKE)) * 100);
+  return (
+    <div className="w-[22rem] max-w-full border border-frame bg-card px-3 pt-2 pb-6 shadow-lg">
+      <span className="line-clamp-1 font-serif text-sm">
+        <MathText text={example.title} />
+      </span>
+      <table className={`${ui.table} text-[13px]`}>
+        <thead>
+          <tr>
+            <th className={ui.th()}>Outcome</th>
+            <th className={`${ui.th(true)}`}>Staked</th>
+            <th className={`${ui.th(true)}`}>Payout</th>
+            <th className={`${ui.th(true)}`}>Return</th>
+            <th className={ui.th()} />
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className={`${ui.td} whitespace-nowrap`}>
+              <OutcomeSwatch ordinal={yes.ordinal} outcomes={example.outcomes.length} />
+              {yes.label}
+            </td>
+            <td className={`${ui.td} ${ui.num}`}>{rep(EXAMPLE_STAKE)}</td>
+            <td className={`${ui.td} ${ui.num} font-bold text-up`}>{rep(yes.payoutMicro)}</td>
+            <td className={`${ui.td} ${ui.num} ${ui.pnl(gain)}`}>
+              {gain < 0n ? '−' : '+'}
+              {gainPct}%
+            </td>
+            <td className={`${ui.td} text-right`}>
+              <span className={ui.btn({ inline: true, flush: true })}>Sell</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

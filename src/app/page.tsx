@@ -2,13 +2,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
-import { MathText } from '@/components/MathText';
 import { FilterIcon, MoreIcon } from '@/components/icons';
-import { OutcomeBar } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
-import { Sparkline } from '@/components/Sparkline';
+import { PaperRow } from '@/components/PaperRow';
 import { TitleBlock } from '@/components/TitleBlock';
 import { TutorialModal } from '@/components/TutorialModal';
 import type { z } from 'zod';
@@ -16,10 +14,8 @@ import type * as S from '@/server/api/schemas';
 import { presentListing } from '@/server/api/present';
 import { ui } from '@/components/ui';
 import { defaultMarketKind } from '@/lib/venue';
-import { pct, rep, REP } from '@/lib/format';
-import { marketHeadline } from '@/lib/headline';
+import { rep, REP } from '@/lib/format';
 import { REPO_URL } from '@/lib/links';
-import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
@@ -266,12 +262,9 @@ export default async function Home({
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search papers and people"
           placeholder="Search papers and people"
-          className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
+          className={ui.searchInput}
         />
-        <button
-          type="submit"
-          className="cursor-pointer border border-rule bg-rule-soft px-3.5 font-sans text-sm font-semibold text-ink"
-        >
+        <button type="submit" className={ui.searchBtn}>
           Search
         </button>
         <SearchHelp />
@@ -521,6 +514,11 @@ export default async function Home({
       )}
 
       {!q && FOOTNOTE}
+      <p className="mt-6 font-sans text-xs text-muted">
+        <Link href="/privacy" className="text-muted">
+          Privacy
+        </Link>
+      </p>
     </main>
   );
 }
@@ -551,75 +549,17 @@ function SearchHelp() {
  * the stretched one, in a column of its own at the left so titles align.
  */
 function Row({ r, spark, tldr }: { r: BrowseRow; spark: number[]; tldr: boolean }) {
-  const look = likelihoodClass(marketLikelihood({ ...r.market, outcomes: r.outcomes }));
   const pdf = r.listing?.links.find((l) => l.label.toLowerCase() === 'pdf');
-  const names = r.listing && r.listing.authors.length > 0 ? authors(r.listing.authors) : null;
   return (
-    <div className="relative grid grid-cols-[3px_34px_1fr_90px_90px_110px] items-center gap-x-3.5 border-b border-dotted border-rule-strong py-2 hover:bg-highlight narrow:grid-cols-[3px_34px_1fr_64px]">
-      <span className={`self-stretch ${look.bar}`} aria-hidden />
-      <span className="font-sans text-xs">
-        {pdf && (
-          <a href={pdf.url} className="relative z-10 text-accent" rel="noopener noreferrer" target="_blank">
-            [{pdf.label}]
-          </a>
-        )}
-      </span>
-      <span className="min-w-0 leading-[1.35]">
-        {/* At most two lines; the whole title on hover. */}
-        <Link
-          href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
-          className="line-clamp-2 after:absolute after:inset-0 hover:no-underline"
-          title={r.listing ? r.listing.title : r.market.question}
-        >
-          <MathText text={r.listing ? r.listing.title : r.market.question} />
-        </Link>
-        {names && <span className="block font-sans text-xs text-muted">{names}</span>}
-        {tldr && r.listing?.tldr && (
-          <span className="mt-0.5 block text-[13px] leading-snug text-muted">
-            <MathText text={r.listing.tldr} />
-          </span>
-        )}
-      </span>
-      <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
-        {r.totalOrderCount > 0 ? `${rep(r.totalVolumeMicro, 0)} ${REP}` : ''}
-      </span>
-      <span className="narrow:hidden" title={r.listing ? r.market.question : undefined}>
-        <Sparkline values={spark} />
-      </span>
-      <span
-        className={`text-right font-mono text-sm ${look.text}`}
-        title={r.listing ? `${r.market.question}: chance of acceptance` : undefined}
-      >
-        {headline(r)}
-      </span>
-    </div>
-  );
-}
-
-/** "A, B, C et al." — enough to recognise a paper by. */
-function authors(names: string[]): string {
-  return names.length > 3 ? `${names.slice(0, 3).join(', ')} et al.` : names.join(', ');
-}
-
-/**
- * The headline (`lib/headline.ts`: for a paper, accepted in any form), with
- * the outcome bar under it for two to four outcomes. Settled: the
- * winner. Void: nothing.
- */
-function headline(r: BrowseRow): React.ReactNode {
-  if (r.market.status === 'settled') {
-    return r.outcomes.find((o) => o.id === r.market.resolvedOutcomeId)?.label ?? 'settled';
-  }
-  const h = marketHeadline({ ...r.market, outcomes: r.outcomes });
-  if (h === null) return '—';
-  return (
-    <span className="inline-flex flex-col items-end gap-1">
-      {pct(h)}
-      <OutcomeBar
-        prices={r.outcomes.map((o) => o.price)}
-        labels={r.outcomes.map((o) => o.label)}
-        className="h-1 w-14"
-      />
-    </span>
+    <PaperRow
+      title={r.listing ? r.listing.title : r.market.question}
+      authors={r.listing?.authors ?? []}
+      pdf={pdf}
+      tldr={tldr ? r.listing?.tldr : null}
+      market={{ ...r.market, outcomes: r.outcomes }}
+      volumeMicro={r.totalOrderCount > 0 ? r.totalVolumeMicro : null}
+      spark={spark}
+      href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
+    />
   );
 }

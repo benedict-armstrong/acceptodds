@@ -1,23 +1,20 @@
 import { headers } from 'next/headers';
 import type { z } from 'zod';
 import { marketHref } from '@/lib/links';
-import { parseChosenBet } from '@/lib/onboarding';
+import { PAPER_SEARCH_LIMIT, parseChosenBet } from '@/lib/onboarding';
 import { safeReturnTo } from '@/lib/return-to';
 import { defaultMarketKind } from '@/lib/venue';
 import { startingBalanceMicro } from '@/server/accounts';
 import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
-import { browseListings, listingViews, marketView, resolveListing, resolveMarket } from '@/server/views';
+import { browseListings, listingViews, marketView, resolveListing, resolveMarket, sparklines } from '@/server/views';
 import { Welcome, type Chosen } from './Welcome';
 
 export const dynamic = 'force-dynamic';
 
 type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
-
-/** Papers offered before anything is typed into the search. */
-const SUGGESTIONS = 5;
 
 /**
  * Onboarding: one question at a time, from "which paper?" to a placed bet
@@ -41,15 +38,17 @@ export default async function WelcomePage({
   // A visitor who chose a bet on a market's page starts after it.
   const chosen = viewer ? null : await chosenBet(params);
   const kind = defaultMarketKind();
-  const { rows } = await browseListings({ kind, status: 'open', sort: 'volume', limit: SUGGESTIONS });
+  const { rows } = await browseListings({ kind, status: 'open', sort: 'volume', limit: PAPER_SEARCH_LIMIT });
   const listed = rows.flatMap((r) => (r.listing ? [r.listing] : []));
   const suggestions = (await listingViews(listed)).map(presentListing) as Listing[];
+  const sparks = Object.fromEntries(await sparklines(rows));
 
   return (
     <Welcome
       kind={kind}
       next={safeReturnTo(params.next)}
       suggestions={suggestions}
+      sparks={sparks}
       chosen={chosen}
       viewer={
         viewer

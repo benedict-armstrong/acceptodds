@@ -191,25 +191,34 @@ export function requireTradingEligibility(principal: Principal): void {
   throw new ApiError(403, 'not_verified', 'confirm an institutional email address before trading');
 }
 
+/** A page's signed-in viewer. `needsName`: no name yet (an account made by a sign-in link), so the layout asks for one. */
+export interface Viewer {
+  account: Account;
+  isAdmin: boolean;
+  email: string;
+  needsName: boolean;
+}
+
 /**
  * The signed-in viewer of a server-rendered page, or `null`. For Server
  * Components only: read-only, so it neither counts against the rate limit nor
  * checks Origin. Anything that writes goes through the API (or through
  * `authenticate()`), never through this.
  */
-export async function viewerFromHeaders(
-  headers: Headers,
-): Promise<{ account: Account; isAdmin: boolean; email: string } | null> {
+export async function viewerFromHeaders(headers: Headers): Promise<Viewer | null> {
   const cookie = headers.get('cookie');
   if (!cookie) return null;
   return viewerForCookie(cookie);
 }
 
-const viewerForCookie = cache(
-  async (cookie: string): Promise<{ account: Account; isAdmin: boolean; email: string } | null> => {
-    const session = await getAuth().api.getSession({ headers: new Headers({ cookie }) });
-    if (!session || !session.user.emailVerified) return null;
-    const account = await ensureAccountForUser(session.user);
-    return { account, isAdmin: isAdminEmail(session.user.email), email: session.user.email };
-  },
-);
+const viewerForCookie = cache(async (cookie: string): Promise<Viewer | null> => {
+  const session = await getAuth().api.getSession({ headers: new Headers({ cookie }) });
+  if (!session || !session.user.emailVerified) return null;
+  const account = await ensureAccountForUser(session.user);
+  return {
+    account,
+    isAdmin: isAdminEmail(session.user.email),
+    email: session.user.email,
+    needsName: !session.user.name.trim(),
+  };
+});

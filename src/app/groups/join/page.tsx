@@ -2,10 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Authors } from '@/components/Authors';
-import { JoinGroupButton } from '@/components/Groups';
+import { JoinGroupButton, SignInToJoin } from '@/components/Groups';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
-import { groupInvitePath, groupPath, institutionPath } from '@/lib/links';
+import { groupPath, institutionPath } from '@/lib/links';
 import { viewerFromHeaders } from '@/server/auth';
 import { groupByInviteCode, groupMembersOf, roleIn } from '@/server/groups';
 
@@ -18,7 +18,8 @@ export const metadata: Metadata = { title: 'Join a reading group', robots: { ind
  * A group's invite link (#25, `lib/links.groupInvitePath`): the group as its
  * board opens, and a button to join. Joining is a POST from that button,
  * never this GET, so following a link joins nothing by itself. A signed-out
- * visitor signs in and comes back here.
+ * visitor's button remembers the invite, and they join once signed in or
+ * signed up (`components/PendingGroupJoin`).
  */
 export default async function JoinGroupPage({
   searchParams,
@@ -46,7 +47,7 @@ export default async function JoinGroupPage({
   return (
     <main className={ui.page}>
       <TitleBlock
-        above="You are invited to join"
+        above="You are invited to join the reading group"
         title={group.name}
         byline={
           <Authors
@@ -75,9 +76,7 @@ export default async function JoinGroupPage({
               <JoinGroupButton code={code} groupId={group.id} />
             </>
           ) : (
-            <p>
-              <Link href={`/signin?next=${encodeURIComponent(groupInvitePath(code))}`}>Sign in</Link> to join it.
-            </p>
+            <SignInToJoin code={code} />
           )}
         </div>
       </TitleBlock>

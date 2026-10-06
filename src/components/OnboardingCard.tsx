@@ -10,6 +10,7 @@ export function OnboardingCard({
   title,
   eyebrow,
   onBack,
+  wide = false,
   children,
 }: {
   title: ReactNode;
@@ -17,10 +18,14 @@ export function OnboardingCard({
   eyebrow?: ReactNode;
   /** Shown as "back" when there is a step to go back to. */
   onBack?: () => void;
+  /** For a list (the paper search): the home page's width, from the top rather than centred. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <main className="mx-auto flex min-h-[70vh] w-full max-w-[480px] flex-col justify-center px-4 py-10">
+    <main
+      className={`mx-auto flex min-h-[70vh] w-full flex-col px-4 py-10 ${wide ? 'max-w-[880px] justify-start' : 'max-w-[480px] justify-center'}`}
+    >
       {/* Above the question, where it starts: the way back is the first
           thing on the left, as in any step-by-step flow. The row is kept
           without it, so the question does not jump between steps. */}

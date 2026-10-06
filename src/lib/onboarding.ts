@@ -5,6 +5,13 @@
  */
 export const WELCOMED_COOKIE = 'welcomed';
 
+/**
+ * How many papers `/welcome`'s search lists: before anything is typed, and
+ * per search. Here, not in the client `PaperSearch`, because the server page
+ * reads it too, and a client module's exports are only references there.
+ */
+export const PAPER_SEARCH_LIMIT = 20;
+
 /** `/welcome`, keeping where sign-in would have returned to. */
 export function welcomeHref(next: string): string {
   return next === '/' ? '/welcome' : `/welcome?next=${encodeURIComponent(next)}`;

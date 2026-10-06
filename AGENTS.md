@@ -463,6 +463,10 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   a local part is often a full name. No usable name gives `trader-xxxx`;
   the first name an account without one sets (`accounts.setDisplayName`)
   replaces that placeholder, once.
+  Until it has a name (Better Auth's `user.name` blank, the viewer's
+  `needsName`), the layout's `components/NameBanner` asks for one on every
+  page but the sign-in ones, through the profile's `EditName` dialog;
+  dismissed, it stays away from that browser for a week.
 - **Sign-in links** (Better Auth's `magicLink` plugin): `/signin` offers
   "Email me a sign-in link" under the password, for the address typed. The
   allowlist and a per-address budget (`magic-link-mail:<email>`, 5 a day)
@@ -534,7 +538,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   properties it doesn't set, never override one it does — Tailwind picks
   the winner by stylesheet order, not class order — so a variant is a
   parameter (`ui.btn({ ghost: true })`). Shared behaviour is a component in
-  `components/`: `CopyButton`, `DetailsTable` (label–value rows as a
+  `components/`: `CopyButton`, `PaperRow` (a paper in a list: the home page's and `/welcome`'s search), `DetailsTable` (label–value rows as a
   booktabs table), the paper's furniture — `TitleBlock` (venue line,
   title, author line, `Abstract`; papers, traders and `/how-it-works` open
   with it), `RunningHead` (the template's line over a rule at the top of a
@@ -1091,7 +1095,12 @@ unpaginated, and 5 s for that search.
   data limited to codes and flags: never an email, handle, name, id or amount),
   for Umami funnels: `signup_submitted/refused`, `signin_*`, `code_*`,
   `finish_shown/completed`, `order_placed/refused`, `follow_toggled`,
-  `share_copied`. `?step=` and `?error=` are allowlisted for the same funnels.
+  `share_copied`, `tutorial_opened/step/finished` (the `[about]` sheet: no
+  URL of its own, so no page views; each step counted once per opening). `?step=` and `?error=` are allowlisted for the same funnels.
+- **`/privacy` is the privacy notice** (GDPR Art. 13, Swiss FADP), linked
+  from the foot of the home page. It lists what is stored and who else
+  handles it (Resend, Cloudflare, the self-hosted Umami): a new cookie, mail,
+  processor, log or public field goes there in the same change.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** wipes every table, then loads submissions from
@@ -1217,6 +1226,13 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   `/groups/join?code=` (`lib/links.groupInvitePath`): in the query, which
   analytics never records, and joining is the page's POST button, never
   the GET. `group` is deliberately not in `ANALYTICS_PARAMS`.
+- **A signed-out visitor's invite is remembered, then joined.** The invite
+  page's "Sign in / Sign up" stores the code in this browser
+  (`lib/pending-invite.ts`, a day) — pressing the button, never opening the
+  link — and `components/PendingGroupJoin` (in the layout) posts the join
+  once anyone is signed in, wherever sign-in or onboarding ends, and says
+  so in a banner. Another browser (a mail opened on a phone) means the
+  invite page's own button.
 
 - **Reading groups have shared reading lists**, underneath the leaderboard;
   institutions do not. `server/reading.ts` writes `group_reading_list` only
