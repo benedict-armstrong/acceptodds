@@ -185,7 +185,9 @@ export function JevPrice({
         {/* Positioned, so it paints over the figure: the blur's filter lifts the figure above unpositioned content. */}
         <div className="relative flex w-full justify-center">{over}</div>
       </div>
-      {!signingUp && <p className={ui.fine}>Then back it, or bet against it.</p>}
+      {!signingUp && (
+        <p className={ui.fine}>Open the market to see its starting price (determined by @TypeSafeAI/JEV).</p>
+      )}
       {viewer.signedIn && !viewer.canTrade && <div className={ui.note(false)}>{MESSAGES.not_verified}</div>}
       {note && <div className={ui.note(false)}>{note}</div>}
     </div>

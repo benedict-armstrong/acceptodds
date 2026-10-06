@@ -91,7 +91,7 @@ export function RelatedPapers({
                 : unlock === 'bet'
                   ? 'Place a bet on this paper'
                   : 'Once this paper has a bet,'}{' '}
-              to see {hidden} more related {hidden === 1 ? 'paper' : 'papers'}.
+              to see more related papers.
             </p>
             {/* With no market yet, `JevPrice` is just above: the sentence says enough. */}
             {unlock === 'bet' && (

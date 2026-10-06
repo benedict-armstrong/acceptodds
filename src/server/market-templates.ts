@@ -41,7 +41,27 @@ const ICLR_2027: MarketTemplate = {
   // The previous oral, spotlight and poster rates combined into a 32% acceptance rate.
   fallbackPrices: [0.32, 0.68],
   jev: {
-    instructions: 'This paper is under review at ICLR 2027. What will the final decision be?',
+    // The prior and the reviewing guidelines, so the answer starts from the base rate and moves only on the
+    // paper's merits as reviewers judge them, not on whether it reads like a paper.
+    instructions: [
+      'This paper is under review at ICLR 2027. Predict its final decision.',
+      '',
+      'Start from the base rate: about 32% of ICLR submissions are accepted (oral, spotlight and poster ' +
+        'combined), so most papers are rejected, and a competent, well-written paper is not by itself ' +
+        'above the base rate. Move away from it only as far as the paper gives you reason to.',
+      '',
+      'Judge it as ICLR reviewers and area chairs do, by its guidelines for a good paper:',
+      '- Significance and interest: does it address a problem the ICLR community cares about, and would ' +
+        'people build on it?',
+      '- Novelty: is the idea, method or finding new, or an incremental variation on prior work?',
+      '- Soundness: do the claims follow from the theory and experiments, with appropriate baselines, ' +
+        'ablations and evaluation?',
+      '- Clarity: is it clearly written, with its contributions stated and supported?',
+      '- Reproducibility: are the methods, data and settings described well enough to reproduce?',
+      '',
+      'Weigh the paper as a whole, as a meta-review would: a clear, significant contribution outweighs ' +
+        'minor flaws, while a serious flaw in soundness or a lack of novelty usually means rejection.',
+    ].join('\n'),
     criteria: ['accepted in any form (oral, spotlight or poster)', 'rejected, withdrawn or desk-rejected'],
   },
 };
