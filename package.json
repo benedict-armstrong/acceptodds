@@ -17,6 +17,7 @@
     "api:smoke": "tsx scripts/api-smoke.ts",
     "digest:send": "tsx scripts/send-digest.ts",
     "users:prune": "tsx scripts/prune-unconfirmed-users.ts",
+    "markets:drop-untraded": "tsx scripts/drop-untraded-markets.ts",
     "institutions:build": "NODE_OPTIONS=--max-old-space-size=4096 tsx scripts/build-institution-domains.ts",
     "auth:generate": "auth generate --config auth.config.ts --output src/db/auth-schema.ts",
     "format": "prettier --write .",

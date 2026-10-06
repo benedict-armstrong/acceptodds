@@ -9,6 +9,7 @@ import * as mapTitlesRoute from '@/app/api/v1/map/titles/route';
 import { MINIMAP_NEAREST } from '@/lib/map';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
+import { invalidateMap } from '@/server/map-cache';
 import {
   browseListings,
   listingMinimap,
@@ -299,17 +300,18 @@ describe('browsing listings', () => {
     await buy(second.marketId, second.outcomeIds[1]);
 
     const { rows } = await browseListings({ kind: null, sort: 'closing' });
-    expect(rows.map((r) => [r.market.slug, r.listing?.slug ?? null, r.marketCount])).toEqual([
-      ['concurrency', null, 1],
+    expect(rows.map((r) => [r.main!.market.slug, r.listing?.slug ?? null, r.marketCount])).toEqual([
+      // Traded first: the fixture's market has no fills.
       ['p-accept', 'p', 2],
+      ['concurrency', null, 1],
     ]);
-    const row = rows[1];
+    const row = rows[0];
     // Volume and fills over the whole listing; the headline from the main market.
     expect(row.totalOrderCount).toBe(2);
-    expect(row.totalVolumeMicro).toBeGreaterThan(row.volumeMicro);
-    expect(row.outcomes[0].price).toBeGreaterThan(0.5);
+    expect(row.totalVolumeMicro).toBeGreaterThan(row.main!.volumeMicro);
+    expect(row.main!.outcomes[0].price).toBeGreaterThan(0.5);
     // The sparkline is the main market's.
-    expect((await sparklines(rows)).get(main.marketId)).toHaveLength(2);
+    expect((await sparklines(rows.map((r) => r.main!))).get(main.marketId)).toHaveLength(2);
 
     // A listing counts once in its main market's kind.
     expect(await marketKinds()).toEqual([{ kind: 'binary', count: 2 }]);
@@ -345,12 +347,16 @@ describe('browsing listings', () => {
     await db.update(markets).set({ status: 'void' }).where(eq(markets.id, gone.marketId));
 
     const { rows } = await browseListings({ kind: 'lk', sort: 'likelihood', status: 'all' });
-    expect(rows.map((r) => r.market.slug)).toEqual(['multi', 'high', 'mid', 'low', 'gone']);
-    expect(rows[2].outcomes[0].price).toBeCloseTo(0.5);
+    // Traded first; `mid` and `gone` have no fills.
+    expect(rows.map((r) => r.main!.market.slug)).toEqual(['multi', 'high', 'low', 'mid', 'gone']);
+    expect(rows[3].main!.outcomes[0].price).toBeCloseTo(0.5);
     // The SQL headline is the same number `lib/headline.ts` computes.
     const m = rows[0];
-    expect(1 - m.outcomes[2].price).toBeGreaterThan(2 / 3);
-    expect(marketHeadline({ ...m.market, outcomes: m.outcomes })).toBeCloseTo(1 - m.outcomes[2].price, 12);
+    expect(1 - m.main!.outcomes[2].price).toBeGreaterThan(2 / 3);
+    expect(marketHeadline({ ...m.main!.market, outcomes: m.main!.outcomes })).toBeCloseTo(
+      1 - m.main!.outcomes[2].price,
+      12,
+    );
   });
 });
 
@@ -409,7 +415,9 @@ describe('the paper map', () => {
 
   it('matches slugs when read, skips unlisted ones and carries the main market’s headline', async () => {
     for (const slug of ['a', 'b']) await post({ slug, title: `Paper ${slug}`, primaryArea: 'area' });
-    expect((await market('a-accept', { listingSlug: 'a' })).status).toBe(201);
+    const made = await market('a-accept', { listingSlug: 'a' });
+    expect(made.status).toBe(201);
+    const t = await trader('t');
 
     const res = await put({
       points: [
@@ -440,8 +448,15 @@ describe('the paper map', () => {
       area: [0, 0],
       areas: ['area'],
     });
-    expect(headline[0]).toBeCloseTo(0.5);
-    expect(headline[1]).toBeNull();
+    // Untraded, the market shows no price; traded, its headline.
+    expect(headline).toEqual([null, null]);
+    const buy = await api('POST', `/markets/${made.body.market.id}/orders`, {
+      token: t.token,
+      body: { outcomeId: made.body.market.outcomes[0].id, sharesMicro: '1000000', maxCostMicro: '1000000000' },
+    });
+    expect(buy.status).toBe(201);
+    invalidateMap();
+    expect((await getMap()).body.headline[0]).toBeGreaterThan(0.5);
     expect(got.body.regions).toEqual([
       { number: 0, label: 'first region' },
       { number: 1, label: 'second region' },
@@ -537,7 +552,7 @@ describe('a paper’s minimap', () => {
     api('PUT', '/map', { token: admin.token, body: { points, clusters: [{ number: 1, label: 'near' }] } });
   const minimap = async (slug: string) => {
     const listing = await resolveListing(slug);
-    return listingMinimap(listing, await listingRelatedTo(listing));
+    return listingMinimap(listing, (await listingRelatedTo(listing, { all: true })).related);
   };
 
   it('is null off the map', async () => {

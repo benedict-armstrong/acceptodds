@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { asksJevPrice } from '@/lib/links';
 import { clearPending, parsePending, readPendingRaw, subscribePending } from '@/lib/pending-confirmation';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 
@@ -23,7 +24,9 @@ export function ConfirmBanner({ signedIn }: { signedIn: boolean }) {
     if (signedIn) clearPending();
   }, [signedIn]);
 
-  if (signedIn || !pending || AUTH_PAGES.includes(pathname)) return null;
+  // A paper's JEV sign-up asks for its code on the paper itself.
+  const asksHere = pending !== null && asksJevPrice(pending.next) && pending.next.split('?', 1)[0] === pathname;
+  if (signedIn || !pending || asksHere || AUTH_PAGES.includes(pathname)) return null;
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 border-b border-rule bg-highlight px-6 py-2 narrow:px-4 font-sans text-[13px]">
       <span>

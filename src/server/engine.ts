@@ -611,7 +611,11 @@ async function runTrade(
   });
 }
 
-async function findFillByIdempotencyKey(ex: Executor, accountId: string, idempotencyKey: string): Promise<Fill | null> {
+export async function findFillByIdempotencyKey(
+  ex: Executor,
+  accountId: string,
+  idempotencyKey: string,
+): Promise<Fill | null> {
   const [existing] = await ex
     .select()
     .from(orders)

@@ -225,6 +225,24 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'put',
+      path: '/listings/{id}/text',
+      tags: ['listings'],
+      summary: 'Set a listing’s full text',
+      description:
+        'Replaces it; `null` or empty clears it. Read only to set the opening prices when the listing’s market is opened, and never served. Its own call, so a client that writes listings never clears it.',
+      scope: 'admin',
+      request: {
+        params: z.object({ id: S.ListingRef }),
+        body: { content: { 'application/json': { schema: S.SetTextRequest } } },
+      },
+      ok: { status: 200, schema: S.SetTextResult, description: 'The stored length, in characters.' },
+      errors: { 400: 'validation_error', 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'put',
       path: '/listings/{id}/related',
       tags: ['listings'],
       summary: 'Set a listing’s related listings',
@@ -761,6 +779,53 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'post',
+      path: '/listings/{id}/market',
+      tags: ['trading'],
+      summary: 'Open a listing’s market at a model’s prices, without trading',
+      description:
+        'A listing has no market until someone opens it, by this call or by a first order (`POST /listings/{id}/orders`). The market opens at JEV’s prices for the listing, else the venue’s base rate. Idempotent: on a listing with a market, that market and `created: false`. Each account may open 50 a day.',
+      scope: 'trade',
+      request: { params: listingIdParam },
+      ok: { status: 201, schema: S.OpenedMarket, description: 'The market (200 when it already existed).' },
+      errors: {
+        403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
+        404: 'not_found',
+        409: 'market_not_open: no market is made for this listing’s kind | market_closed',
+        429: 'rate_limited: too many markets opened today',
+      },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/listings/{id}/orders',
+      tags: ['trading'],
+      summary: 'Buy on a listing by stake, making its market on the first trade',
+      description:
+        'A listing has no market until its first trade: this order makes it (opening at a model’s prior, else the venue’s base rate) and then fills. On a listing that has a market, it buys on the main market. By stake, not shares: the stake is the bound, and buys what it pays for when the order arrives. Send an `Idempotency-Key` header and retry freely.',
+      scope: 'trade',
+      request: {
+        params: listingIdParam,
+        headers: z.object({
+          'Idempotency-Key': S.IdempotencyKey.optional().meta({
+            description: 'Up to 255 printable ASCII characters, unique per account.',
+          }),
+        }),
+        body: { content: { 'application/json': { schema: S.ListingOrderRequest } } },
+      },
+      ok: { status: 201, schema: S.ListingFill, description: 'The fill (or, for a replayed key, the original fill).' },
+      errors: {
+        403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
+        404: 'not_found: no such listing or outcome.',
+        409: 'insufficient_balance | market_not_open: no market is made for this listing’s kind | market_closed | idempotency_key_reused',
+      },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
       path: '/listings/{id}/view',
       tags: ['listings'],
       summary: 'Count a view of a listing',
@@ -939,9 +1004,9 @@ export function buildRegistry(): OpenAPIRegistry {
       method: 'post',
       path: '/onboarding',
       tags: ['onboarding'],
-      summary: 'Sign up by choosing a bet',
+      summary: 'Sign up, with or without a first bet',
       description:
-        'The one way to sign up. Makes a name-less, password-less user for an address at an approved institution and mails it a confirmation link and code. The bet is stored, not placed: no account exists until the address is confirmed. After confirming, the person gives a name (`PATCH /me`) and a password (`POST /me/password`) and the bet is placed like any order, at the price then. Answers the same whether or not the address already has an account; a confirmed one is mailed a sign-in link instead, and the bet is placed when it signs in. Five mails a day per address.',
+        'The one way to sign up. Makes a name-less, password-less user for an address at an approved institution and mails it a confirmation link and code, both returning to `next`. A `bet` is stored, not placed: no account exists until the address is confirmed. After confirming, the person gives a name (`PATCH /me`) and a password (`POST /me/password`) and the bet is placed like any order, at the price then. Answers the same whether or not the address already has an account; a confirmed one is mailed a sign-in link instead, and the bet is placed when it signs in. Five mails a day per address.',
       request: { body: { content: { 'application/json': { schema: S.OnboardingRequest } } } },
       ok: { status: 200, schema: S.SignUpStarted, description: 'The mail is on its way.' },
       errors: {

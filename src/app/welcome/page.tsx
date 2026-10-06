@@ -38,10 +38,16 @@ export default async function WelcomePage({
   // A visitor who chose a bet on a market's page starts after it.
   const chosen = viewer ? null : await chosenBet(params);
   const kind = defaultMarketKind();
-  const { rows } = await browseListings({ kind, status: 'open', sort: 'volume', limit: PAPER_SEARCH_LIMIT });
+  const { rows } = await browseListings({
+    kind,
+    status: 'open',
+    sort: 'volume',
+    traded: true,
+    limit: PAPER_SEARCH_LIMIT,
+  });
   const listed = rows.flatMap((r) => (r.listing ? [r.listing] : []));
   const suggestions = (await listingViews(listed)).map(presentListing) as Listing[];
-  const sparks = Object.fromEntries(await sparklines(rows));
+  const sparks = Object.fromEntries(await sparklines(rows.flatMap((r) => (r.main ? [r.main] : []))));
 
   return (
     <Welcome

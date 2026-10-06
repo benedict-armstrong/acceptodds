@@ -6,7 +6,7 @@ export async function wipeSeedData(db: Database, keepListings = true) {
   const { rows } = await db.execute<{ t: string }>(
     sql`select format('%I', tablename) as t from pg_tables where schemaname = 'public'
         and (not ${keepListings} or tablename not in (
-          'listings', 'listing_references', 'listing_related', 'listing_views', 'map_points', 'map_topics'
+          'listings', 'listing_references', 'listing_related', 'listing_texts', 'listing_views', 'map_points', 'map_topics'
         ))`,
   );
   if (rows.length > 0) {

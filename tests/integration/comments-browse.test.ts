@@ -365,12 +365,13 @@ describe('browsing markets', () => {
     await buy(t.token, b.outcomeIds[0], '5000000', b.marketId); // most recent
 
     const slugs = async (q: Parameters<typeof browseListings>[0]) =>
-      (await browseListings(q)).rows.map((r) => r.market.slug);
+      (await browseListings(q)).rows.map((r) => r.main!.market.slug);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'closing' })).toEqual(['b', 'a']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'volume' })).toEqual(['a', 'b']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'activity' })).toEqual(['b', 'a']);
     expect(await slugs({ kind: 'ICLR 2027', sort: 'newest' })).toEqual(['b', 'a']);
-    expect(await slugs({ kind: null, sort: 'closing' })).toEqual(['concurrency', 'c', 'b', 'a']);
+    // Traded rows first, whatever the sort; then the untraded, by the same sort.
+    expect(await slugs({ kind: null, sort: 'closing' })).toEqual(['b', 'a', 'concurrency', 'c']);
     expect(await slugs({ kind: 'NeurIPS 2026', status: 'settled', sort: 'closing' })).toEqual([]);
     void c;
 
@@ -386,12 +387,12 @@ describe('browsing markets', () => {
     await buy(t.token, fx.outcomeIds[0], '10000000');
     await buy(t.token, fx.outcomeIds[1], '30000000');
     const { rows } = await browseListings({ kind: null, sort: 'closing' });
-    const sp = await sparklines(rows);
+    const sp = await sparklines(rows.map((r) => r.main!));
     const line = sp.get(fx.marketId)!;
     expect(line).toHaveLength(3);
     expect(line[0]).toBe(0.5); // the opening price
     expect(line[1]).toBeGreaterThan(0.5); // YES bought
     expect(line[2]).toBeLessThan(line[1]); // then NO bought
-    expect(line[2]).toBeCloseTo(rows[0].outcomes[0].price, 12);
+    expect(line[2]).toBeCloseTo(rows[0].main!.outcomes[0].price, 12);
   });
 });

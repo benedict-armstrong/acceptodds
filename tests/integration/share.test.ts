@@ -175,12 +175,12 @@ describe('sparklines', () => {
     await trade(fx.traderIds[0], p.marketId, p.outcomeIds[3], 10n * UNIT, 1_000n * UNIT); // Reject: down
     await trade(fx.traderIds[1], p.marketId, p.outcomeIds[1], 25n * UNIT, 1_000n * UNIT); // Spotlight: up
     const { rows } = await browseListings({ kind: 'ICLR 2027', sort: 'closing' });
-    const line = (await sparklines(rows)).get(p.marketId)!;
+    const line = (await sparklines(rows.map((r) => r.main!))).get(p.marketId)!;
     expect(line).toHaveLength(3);
     expect(line[0]).toBeCloseTo(0.75, 12); // the opening headline, 1 − 1/4
     expect(line[1]).toBeLessThan(0.75);
     expect(line[2]).toBeGreaterThan(line[1]);
-    const row = rows.find((r) => r.market.id === p.marketId)!;
-    expect(line[2]).toBeCloseTo(headlinePrice(row.outcomes.map((o) => o.price)), 12);
+    const row = rows.find((r) => r.main!.market.id === p.marketId)!;
+    expect(line[2]).toBeCloseTo(headlinePrice(row.main!.outcomes.map((o) => o.price)), 12);
   });
 });

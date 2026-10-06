@@ -24,6 +24,9 @@ import * as settleRoute from '@/app/api/v1/markets/[id]/settle/route';
 import * as listingsRoute from '@/app/api/v1/listings/route';
 import * as listingRoute from '@/app/api/v1/listings/[id]/route';
 import * as listingFollowRoute from '@/app/api/v1/listings/[id]/follow/route';
+import * as listingOrdersRoute from '@/app/api/v1/listings/[id]/orders/route';
+import * as listingMarketRoute from '@/app/api/v1/listings/[id]/market/route';
+import * as listingTextRoute from '@/app/api/v1/listings/[id]/text/route';
 import * as listingViewRoute from '@/app/api/v1/listings/[id]/view/route';
 import * as listingCitationsRoute from '@/app/api/v1/listings/[id]/citations/route';
 import * as listingRelatedRoute from '@/app/api/v1/listings/[id]/related/route';
@@ -86,6 +89,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/groups/[id]/reading-list', groupReadingListRoute],
   ['/groups/[id]/reading-list/[listingId]', groupReadingItemRoute],
   ['/listings/[id]/follow', listingFollowRoute],
+  ['/listings/[id]/orders', listingOrdersRoute],
+  ['/listings/[id]/market', listingMarketRoute],
+  ['/listings/[id]/text', listingTextRoute],
   ['/listings/[id]/view', listingViewRoute],
   ['/listings/[id]/citations', listingCitationsRoute],
   ['/listings/[id]/related', listingRelatedRoute],

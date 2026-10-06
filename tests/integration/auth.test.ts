@@ -35,10 +35,7 @@ async function signUpUnconfirmed(email: string) {
   return api('POST', '/onboarding', {
     body: {
       email,
-      marketId: fx.marketId,
-      outcomeId: fx.outcomeIds[0],
-      stakeMicro: '1000000',
-      seenOrderCount: 0,
+      bet: { marketId: fx.marketId, outcomeId: fx.outcomeIds[0], stakeMicro: '1000000', seenOrderCount: 0 },
     },
   });
 }

@@ -4,9 +4,11 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { createHouse, ensureAccountForUser, startingBalanceMicro } from '@/server/accounts';
 import { createAuth } from '@/server/better-auth';
-import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
-import { SUBSIDY_FRACTION } from '@/lib/lmsr';
+import { liquidityFor } from '@/lib/lmsr';
+import { microToFloat } from '@/lib/money';
+import { PRICE_FLOOR } from '@/server/jev';
+import { marketTemplates } from '@/server/market-templates';
 import { createDb, createPool, type Database } from './index';
 import { listings } from './schema';
 import { wipeSeedData } from './seed-reset';
@@ -20,20 +22,18 @@ import { wipeSeedData } from './seed-reset';
  * - the admin, the first `ADMIN_EMAILS` address, funded as a signup is;
  * - one listing per ICLR 2027 submission in `data/iclr2027.sqlite` (the
  *   database `../research` builds from OpenReview; override with `--db=<path>`),
- *   each with the default single market, `Accept, Reject`, best first.
+ *   with **no market**: a listing's market is opened on demand
+ *   (`server/market-start.ts`), from its kind's template.
  *
  * Nothing is traded and nobody else exists: the venue opens empty. The
  * platform still knows nothing about papers: everything here goes in through
- * the same listing and engine calls `../research` would make, with the
- * submission's text, keywords and area supplied whole. Submissions are
- * anonymous until the decision, so they carry no authors.
+ * the same listing call `../research` would make, with the submission's text,
+ * keywords and area supplied whole. Submissions are anonymous until the
+ * decision, so they carry no authors.
  *
- * `--limit=<n>` loads only the first n submissions. `--traders=<n>` is the
- * expected field that sizes every market's `b` (default 6: a 100-unit Accept
- * buy moves the opening price from 32% to about 39.4%). `--decision=<date>`
- * is when decisions are released (default 2026-12-15); the markets close the
- * day before. Markets open at {@link PRIOR}, last year's split of decisions,
- * not an even one.
+ * `--limit=<n>` loads only the first n submissions. The treasury is sized to
+ * open every listing's market at the worst prior JEV can give
+ * (`jev.PRICE_FLOOR`).
  * Existing listings are reused without reading SQLite. An empty database is
  * loaded from SQLite. `--keep-listings` explicitly requires the reuse path;
  * `--reset-listings` opts into wiping paper data and loading SQLite again.
@@ -64,12 +64,6 @@ async function main() {
   if (!resetListings && (flag('db') !== undefined || flag('limit') !== undefined)) {
     throw new Error('--db and --limit require --reset-listings (which deletes existing paper data)');
   }
-  const traders = Number(flag('traders') ?? 6);
-  const decisionAt = new Date(`${flag('decision') ?? '2026-12-15'}T00:00:00Z`);
-  if (!Number.isFinite(traders) || traders < 1) throw new Error('--traders must be a positive number');
-  if (Number.isNaN(decisionAt.getTime())) throw new Error('--decision must be a date like 2026-12-15');
-  const closesAt = new Date(decisionAt.getTime() - 24 * 60 * 60 * 1000);
-
   const pool = createPool(url);
   const db = createDb(pool);
   const existingListings = !resetListings
@@ -79,26 +73,28 @@ async function main() {
   const submissions = keepListings
     ? []
     : readSubmissions(flag('db') ?? path.join('data', 'iclr2027.sqlite'), Number(flag('limit') ?? 0));
-  const marketCount = keepListings ? existingListings.length : submissions.length;
+  const listingCount = keepListings ? existingListings.length : submissions.length;
 
   await wipeSeedData(db, !resetListings);
-  // A market opening at a prior costs the house b·ln(1/p_min), with b = SUBSIDY_FRACTION · balance · traders / ln(n)
-  // (§1.7); a margin covers rounding.
-  const b = (SUBSIDY_FRACTION * Number(startingBalanceMicro()) * traders) / Math.log(DECISIONS.length);
-  const perMarket = b * Math.log(1 / Math.min(...PRIOR));
-  await createHouse(BigInt(Math.ceil(perMarket * marketCount * 1.01)), db);
+  await createHouse(BigInt(Math.ceil(worstSubsidyMicro() * listingCount * 1.01)), db);
   await seedAdmin(db, adminPassword);
-  if (keepListings) {
-    const started = Date.now();
-    for (const [i, listing] of existingListings.entries()) {
-      await seedMarket(db, listing, traders, closesAt);
-      reportProgress(i + 1, marketCount, started);
-    }
-    console.log(`papers preserved: ${marketCount}, markets: ${marketCount}`);
-  } else {
-    await seedSubmissions(db, submissions, traders, closesAt);
-  }
+  if (keepListings) console.log(`papers preserved: ${listingCount}, markets: none until traded`);
+  else await seedSubmissions(db, submissions);
   await pool.end();
+}
+
+/**
+ * The most the house can pay to open one listing's market (§1.7): b·ln(1/p_min),
+ * with p_min the floor under every opening price, for the costliest template.
+ */
+function worstSubsidyMicro(): number {
+  const balance = microToFloat(startingBalanceMicro());
+  return Math.max(
+    0,
+    ...marketTemplates().map(
+      (t) => liquidityFor(balance, t.expectedTraders, t.outcomes.length) * Math.log(1 / PRICE_FLOOR),
+    ),
+  );
 }
 
 function flag(name: string): string | undefined {
@@ -147,27 +143,6 @@ async function seedAdmin(db: Database, password: string) {
 
 const KIND = 'ICLR 2027';
 
-/** The two outcomes of a paper's market, best first; the headline is P(Accept). */
-const DECISIONS = ['Accept', 'Reject'];
-
-/**
- * The decision market's contract, shown to traders on its page. Reject is
- * every way a paper can fail to appear (#19): the client that settles the
- * market settles a withdrawal as Reject.
- */
-const DECISION_CONTRACT = [
-  "This market settles on the venue's final decision for the paper.",
-  '',
-  '- **Accept**: the paper is accepted to ICLR 2027 in any form (oral, spotlight or poster).',
-  '- **Reject**: the paper is rejected. This also covers a paper that is withdrawn or desk-rejected before the decision.',
-].join('\n');
-
-/**
- * Where a market opens, best first like {@link DECISIONS}: the previous
- * oral, spotlight and poster priors combined into a 32% acceptance prior.
- */
-const PRIOR = [0.32, 0.68];
-
 interface Submission {
   id: string;
   number: number;
@@ -210,11 +185,11 @@ function parseList(json: string | number | null): string[] {
   }
 }
 
-async function seedSubmissions(db: Database, submissions: Submission[], traders: number, closesAt: Date) {
+async function seedSubmissions(db: Database, submissions: Submission[]) {
   const started = Date.now();
   for (const [i, s] of submissions.entries()) {
     const slug = `iclr2027-${s.number}`;
-    const { listing } = await upsertListing(
+    await upsertListing(
       {
         slug,
         title: s.title,
@@ -230,35 +205,9 @@ async function seedSubmissions(db: Database, submissions: Submission[], traders:
       },
       db,
     );
-    await seedMarket(db, listing, traders, closesAt);
     reportProgress(i + 1, submissions.length, started);
   }
-  console.log(`papers: ${submissions.length}, markets: ${submissions.length}`);
-}
-
-async function seedMarket(
-  db: Database,
-  listing: { id: string; slug: string; kind: string | null },
-  traders: number,
-  closesAt: Date,
-) {
-  await createMarket(
-    {
-      slug: `${listing.slug}-decision`,
-      question: 'Will this paper get accepted to ICLR 2027',
-      contract: DECISION_CONTRACT,
-      kind: listing.kind ?? KIND,
-      outcomes: DECISIONS,
-      openingPrices: PRIOR,
-      closesAt,
-      startingBalanceMicro: startingBalanceMicro(),
-      expectedTraders: traders,
-      status: 'open',
-      listingId: listing.id,
-      listingRank: 0,
-    },
-    db,
-  );
+  console.log(`papers: ${submissions.length}, markets: none until traded`);
 }
 
 function reportProgress(done: number, total: number, started: number) {

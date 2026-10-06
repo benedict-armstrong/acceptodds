@@ -16,7 +16,7 @@ import { ViewCount } from '@/components/ViewCount';
 import { ui } from '@/components/ui';
 import { pct } from '@/lib/format';
 import { marketHeadline, shareTitleLine } from '@/lib/headline';
-import { shortPath } from '@/lib/links';
+import { JEV_PRICE_PARAM, shortPath } from '@/lib/links';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import type { z } from 'zod';
 import type { Listing } from '@/db/schema';
@@ -26,6 +26,7 @@ import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
+import { openMarketTemplate } from '@/server/market-templates';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
 import {
   listingCitations,
@@ -33,11 +34,13 @@ import {
   listingView,
   onMap,
   resolveListing,
+  tradingMarketIds,
   type MarketView,
 } from '@/server/views';
 import { marketLiveFigures } from '../../markets/[slug]/figures';
 import { loadMarketLive } from '../../markets/[slug]/load';
 import { MarketLive } from '../../markets/[slug]/MarketLive';
+import { JevPrice } from './JevPrice';
 import { SharePanel } from './SharePanel';
 
 export const dynamic = 'force-dynamic';
@@ -118,6 +121,14 @@ export default async function PaperPage({
     ? await Promise.all([groupsOf(viewer.account.id), readingGroupIdsForListing(viewer.account.id, listing.id)])
     : [[], new Set<string>()];
   const [readStatus] = await readingStatuses([listing.id], viewer?.account.id ?? null);
+  // A paper with no market yet can be traded while its kind's markets are open.
+  const opening = markets.length === 0 ? openMarketTemplate(listing.kind) : null;
+  // Nobody has bet on it, and someone could: the related papers held back say where to.
+  const main = markets[0];
+  const unbet =
+    main === undefined
+      ? opening !== null
+      : main.orderCount === 0 && (await tradingMarketIds([main.market.id])).length > 0;
   events.log('listing.read', { accountId: viewer?.account.id ?? null });
   // Before the discussion, its figure numbered after the market's own.
   const relatedPapers = (
@@ -125,6 +136,8 @@ export default async function PaperPage({
       related={related}
       minimapOf={mapped ? listing.slug : null}
       figure={(initial ? marketLiveFigures(initial.market, initial.venue !== null) : 0) + 1}
+      unlock={unbet ? (main === undefined ? 'open' : 'bet') : null}
+      venue={listing.kind}
     />
   );
 
@@ -187,8 +200,25 @@ export default async function PaperPage({
         </div>
       </TitleBlock>
 
+      {/* Nobody has opened its market yet: asking JEV for the opening price does. */}
+      {markets.length === 0 &&
+        (opening ? (
+          <section id="trade" className="mt-10 scroll-mt-4">
+            <JevPrice
+              listingId={listing.id}
+              slug={listing.slug}
+              outcomes={opening.outcomes}
+              asked={(Array.isArray(sp[JEV_PRICE_PARAM]) ? sp[JEV_PRICE_PARAM][0] : sp[JEV_PRICE_PARAM]) === 'jev'}
+              viewer={{
+                signedIn: viewer !== null,
+                canTrade: viewer !== null && (viewer.account.isBot || viewer.account.verifiedAt !== null),
+              }}
+            />
+          </section>
+        ) : (
+          <div className={ui.empty}>No markets on this paper yet.</div>
+        ))}
       {/* One market per paper is the default; the list is only for a paper with more. */}
-      {markets.length === 0 && <div className={ui.empty}>No markets on this paper yet.</div>}
       {markets.length > 1 && (
         <section className="mt-10">
           <h2 className={`${ui.section} mb-3`}>Markets</h2>

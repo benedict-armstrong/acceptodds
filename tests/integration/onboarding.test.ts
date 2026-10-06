@@ -41,11 +41,13 @@ function start(email: string, extra: Record<string, unknown> = {}) {
   return api('POST', '/onboarding', {
     body: {
       email,
-      marketId: fx.marketId,
-      outcomeId: fx.outcomeIds[0],
-      stakeMicro: STAKE.toString(),
-      seenOrderCount: 0,
-      ...extra,
+      bet: {
+        marketId: fx.marketId,
+        outcomeId: fx.outcomeIds[0],
+        stakeMicro: STAKE.toString(),
+        seenOrderCount: 0,
+        ...extra,
+      },
     },
   });
 }
@@ -132,6 +134,36 @@ describe('onboarding', () => {
     expect((await api('DELETE', '/me/pending-bet', { cookie })).status).toBe(204);
     const u = await userRow('ada@example.org');
     expect(await db.select().from(pendingBets).where(eq(pendingBets.userId, u.id))).toEqual([]);
+  });
+
+  it('without a bet: stores none, and the link and the code both sign in and return to `next`', async () => {
+    const next = '/papers/some-paper?price=jev';
+    const res = await api('POST', '/onboarding', { body: { email: 'ada@example.org', next } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie') ?? '').not.toContain(ONBOARDING_BROWSER_COOKIE);
+    const u = await userRow('ada@example.org');
+    expect(await pendingBetFor(u.id)).toBeNull();
+
+    const mail = devOutbox().findLast((m) => m.to === 'ada@example.org')!;
+    const code = /code is (\d{6})/.exec(mail.text)![1];
+    const typed = await authCall('POST', '/email-otp/verify-email', { body: { email: 'ada@example.org', otp: code } });
+    expect(typed.status).toBe(200);
+    const cookie = cookieFrom(typed);
+    expect((await api('GET', '/me', { cookie })).body).toMatchObject({ canTrade: true });
+
+    // The same for a confirmed address, by its sign-in link.
+    clearDevOutbox();
+    await api('POST', '/onboarding', { body: { email: 'ada@example.org', next } });
+    const { location } = await clickLink('ada@example.org');
+    const landed = new URL(location!, 'http://test.local');
+    expect(landed.pathname).toBe(VERIFY_EMAIL);
+    expect(landed.searchParams.get('next')).toBe(next);
+  });
+
+  it('returns to `/` from a `next` off the site', async () => {
+    await api('POST', '/onboarding', { body: { email: 'ada@example.org', next: '//evil.example/x' } });
+    const { location } = await clickLink('ada@example.org');
+    expect(new URL(location!, 'http://test.local').search).toBe('');
   });
 
   it('answers the same for a confirmed address, mails that it has an account with a link and a code, and stores the bet for it', async () => {

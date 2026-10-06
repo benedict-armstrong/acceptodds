@@ -28,19 +28,22 @@ export function References({
   items,
   heading = 'References',
   idPrefix = 'ref',
+  start = 1,
 }: {
   items: ReactNode[];
   /** `null` for a list set under a heading of its own. */
   heading?: ReactNode | null;
   idPrefix?: string;
+  /** The first entry's number, for a list continued from another. */
+  start?: number;
 }) {
   return (
     <section>
       {heading !== null && <h2 className={ui.backHeading}>{heading}</h2>}
       <ol className="space-y-1.5 text-sm leading-snug">
         {items.map((item, i) => (
-          <li key={i} id={`${idPrefix}-${i + 1}`} className="grid grid-cols-[2.2em_1fr]">
-            <span>[{i + 1}]</span>
+          <li key={i} id={`${idPrefix}-${start + i}`} className="grid grid-cols-[2.2em_1fr]">
+            <span>[{start + i}]</span>
             <span>{item}</span>
           </li>
         ))}

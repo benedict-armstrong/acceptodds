@@ -50,3 +50,17 @@ export function institutionPath(name: string): string {
 export function groupInvitePath(code: string): string {
   return `/groups/join?code=${encodeURIComponent(code)}`;
 }
+
+/** `?price=jev` on a paper's page: the opening price was asked for while signed out, so ask again on arrival. */
+export const JEV_PRICE_PARAM = 'price';
+
+/** A paper's page with `?price=jev`: where a sign-up for JEV's price returns to. */
+export function jevPricePath(slug: string): string {
+  return `/papers/${encodeURIComponent(slug)}?${JEV_PRICE_PARAM}=jev`;
+}
+
+/** Whether a same-site path asks for JEV's price (`jevPricePath`). */
+export function asksJevPrice(path: string): boolean {
+  const query = path.split('#', 1)[0].split('?')[1] ?? '';
+  return new URLSearchParams(query).get(JEV_PRICE_PARAM) === 'jev';
+}

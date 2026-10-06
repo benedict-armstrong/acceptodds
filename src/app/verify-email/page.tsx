@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import type { PendingBet as StoredPendingBet } from '@/db/schema';
 import { LINK_USED } from '@/lib/link-errors';
-import { marketHref } from '@/lib/links';
+import { asksJevPrice, marketHref } from '@/lib/links';
 import { authHref, safeReturnTo } from '@/lib/return-to';
 import { presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
@@ -22,7 +22,9 @@ export const dynamic = 'force-dynamic';
  * code is typed. Which of the three it shows follows from the session, never
  * from how the person got here.
  *
- * - **Signed in, nothing owed:** straight on to `next`.
+ * - **Signed in, nothing owed:** straight on to `next`. Also with a name
+ *   or password owed but no bet, when `next` asks for JEV's price
+ *   (`asksJevPrice`): that sign-up came to see it, so it goes straight back.
  * - **Signed in, something owed** (a name, a password, a bet waiting to be
  *   placed): `Finish` asks for what is missing, places the bet, goes on.
  * - **No session, an address in the URL:** the code from the mail, in the
@@ -52,7 +54,9 @@ export default async function VerifyEmail({
   }
 
   const [pending, missing] = await Promise.all([pendingBetFor(userId), missingFromUser(userId)]);
-  if (!pending && !missing.name && !missing.password) redirect(next);
+  // Signing up for JEV's price goes straight back to open the market: the name is asked for by the
+  // banner, and the password the next time a sign-in link lands here.
+  if (!pending && ((!missing.name && !missing.password) || asksJevPrice(next))) redirect(next);
 
   const bet = pending ? await pendingBetView(pending) : null;
   return (

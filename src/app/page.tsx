@@ -187,7 +187,7 @@ export default async function Home({
     pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
     // The tutorial shows one real market's odds: the venue's most traded open paper.
-    browseListings({ kind: kind ?? defaultMarketKind(), status: 'open', sort: 'volume', limit: 1 }),
+    browseListings({ kind: kind ?? defaultMarketKind(), status: 'open', sort: 'volume', traded: true, limit: 1 }),
     // A trader who has placed an order is past getting started: no tutorial.
     me !== null ? hasTraded(me) : false,
   ]);
@@ -198,7 +198,9 @@ export default async function Home({
   const cookieJar = await cookies();
   const followingOpen = cookieJar.get(FOLLOWING_COOKIE)?.value !== '0';
   const positionsOpen = cookieJar.get(POSITIONS_COOKIE)?.value !== '0';
-  const sparks = await sparklines([...all.rows, ...(followed?.rows ?? []), ...(held?.rows ?? [])]);
+  const sparks = await sparklines(
+    [...all.rows, ...(followed?.rows ?? []), ...(held?.rows ?? [])].flatMap((r) => (r.main ? [r.main] : [])),
+  );
   events.log('market.list', { accountId: me });
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
@@ -478,7 +480,7 @@ export default async function Home({
           }
         >
           {followed.rows.map((r) => (
-            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} tldr={showTldr} />
+            <Row key={rowKey(r)} r={r} spark={(r.main && sparks.get(r.main.market.id)) || []} tldr={showTldr} />
           ))}
           <Pager page={followed.page} pages={followed.pages} href={pageHref('fpage', '#following')} />
         </Collapsible>
@@ -497,7 +499,7 @@ export default async function Home({
           }
         >
           {held.rows.map((r) => (
-            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} tldr={showTldr} />
+            <Row key={rowKey(r)} r={r} spark={(r.main && sparks.get(r.main.market.id)) || []} tldr={showTldr} />
           ))}
           <Pager page={held.page} pages={held.pages} href={pageHref('hpage', '#positions')} />
         </Collapsible>
@@ -513,7 +515,7 @@ export default async function Home({
             <div className="h-3.5" />
           )}
           {all.rows.map((r) => (
-            <Row key={r.market.id} r={r} spark={sparks.get(r.market.id) ?? []} tldr={showTldr} />
+            <Row key={rowKey(r)} r={r} spark={(r.main && sparks.get(r.main.market.id)) || []} tldr={showTldr} />
           ))}
           <Pager page={all.page} pages={all.pages} href={pageHref('page', pinnedCount > 0 ? '#all' : '')} />
         </section>
@@ -558,14 +560,20 @@ function Row({ r, spark, tldr }: { r: BrowseRow; spark: number[]; tldr: boolean 
   const pdf = r.listing?.links.find((l) => l.label.toLowerCase() === 'pdf');
   return (
     <PaperRow
-      title={r.listing ? r.listing.title : r.market.question}
+      title={r.listing?.title ?? r.main?.market.question ?? ''}
       authors={r.listing?.authors ?? []}
       pdf={pdf}
       tldr={tldr ? r.listing?.tldr : null}
-      market={{ ...r.market, outcomes: r.outcomes }}
+      // No price on the list until someone trades: an untraded market's is only JEV's.
+      market={r.main && r.main.orderCount > 0 ? { ...r.main.market, outcomes: r.main.outcomes } : null}
       volumeMicro={r.totalOrderCount > 0 ? r.totalVolumeMicro : null}
       spark={spark}
-      href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.market.slug}`}
+      href={r.listing ? `/papers/${r.listing.slug}` : `/markets/${r.main?.market.slug}`}
     />
   );
+}
+
+/** A row's key: its listing, or its standalone market. */
+function rowKey(r: BrowseRow): string {
+  return r.listing?.id ?? r.main?.market.id ?? '';
 }

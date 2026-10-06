@@ -91,8 +91,11 @@ export function TradeBox({
 
   return (
     <div className={ui.box}>
-      {/* Four outcomes don't fit in one row on a phone: two by two there. */}
-      <div className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}>
+      {/* Four outcomes don't fit in one row on a phone: two by two there. `data-outcomes`: where "Place a bet" scrolls. */}
+      <div
+        data-outcomes
+        className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}
+      >
         {market.outcomes.map((o, i) => (
           <button
             key={o.id}

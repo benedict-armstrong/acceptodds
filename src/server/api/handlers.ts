@@ -3,6 +3,7 @@ import { isUniqueViolation } from '@/db/errors';
 import { authenticate, requireAuth, requireSession, requireTradingEligibility, type Principal } from '../auth';
 import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
+import { buyOnListing, openListingMarket } from '../market-start';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
 import { getComment, listComments, listReplies, postComment } from '../comments';
@@ -20,7 +21,7 @@ import {
   rotateInvite,
   updateGroup,
 } from '../groups';
-import { setRelated, upsertListing } from '../listings';
+import { setRelated, setText, upsertListing } from '../listings';
 import { setMap } from '../map';
 import { mapCached } from '../map-cache';
 import { countTransition, countView } from '../view-counter';
@@ -224,6 +225,15 @@ export const getListingRelated = route(async (req, params) => {
   return respond(S.ListingRelated, presentRelated(await listingRelatedTo(listing)), { principal });
 });
 
+/** Replace a listing's full text, which only JEV reads. Written by `listings.ts`; not market state. */
+export const putListingText = route(async (req, params) => {
+  const principal = await requireAuth(req, 'admin');
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const body = await parseBody(req, S.SetTextRequest);
+  const chars = await setText(listing, body.text);
+  return respond(S.SetTextResult, { listingId: listing.id, chars }, { principal });
+});
+
 /** Replace a listing's related list. Written by `listings.ts`; not market state. */
 export const putListingRelated = route(async (req, params) => {
   const principal = await requireAuth(req, 'admin');
@@ -292,7 +302,7 @@ export const getListingMinimap = route(async (req, params) => {
   const principal = await authenticate(req);
   const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
   const prepared = await mapCached(`minimap/${listing.id}`, MAP_TTL_MS, async () => {
-    const minimap = await listingMinimap(listing, await listingRelatedTo(listing));
+    const minimap = await listingMinimap(listing, (await listingRelatedTo(listing, { all: true })).related);
     return minimap && prepare(S.Minimap, minimap);
   });
   if (!prepared) throw new ApiError(404, 'not_found', `listing ${listing.id} is not on the map`);
@@ -433,6 +443,63 @@ export const postOrder = route(async (req, params) => {
     principal,
     headers: fill.replayed ? { 'Idempotent-Replayed': 'true' } : {},
   });
+});
+
+/**
+ * Open a listing's market at JEV's prices, with no trade
+ * (`market-start.openListingMarket`). Idempotent: a listing that has one
+ * answers it with `created: false` and a 200.
+ */
+export const postListingMarket = route(async (req, params) => {
+  const principal = await requireAuth(req, 'trade');
+  requireTradingEligibility(principal);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const { market, created } = await openListingMarket(listing, principal.account.id);
+  return respond(
+    S.OpenedMarket,
+    { market: presentMarket(await marketView(market)), created },
+    { status: created ? 201 : 200, principal },
+  );
+});
+
+/**
+ * A buy by stake on a listing's main market (`market-start.buyOnListing`),
+ * which a listing's first trade makes. Retried with the same
+ * `Idempotency-Key`, the original fill; with the same key for an order on
+ * another market or outcome, a 409, as on `POST /markets/{id}/orders`.
+ */
+export const postListingOrder = route(async (req, params) => {
+  const principal = await requireAuth(req, 'trade');
+  requireTradingEligibility(principal);
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const body = await parseBody(req, S.ListingOrderRequest);
+
+  const rawKey = req.headers.get('idempotency-key');
+  const idempotencyKey = rawKey === null ? null : parseParam(rawKey, S.IdempotencyKey, 'Idempotency-Key');
+
+  const { fill, marketCreated } = await buyOnListing({
+    accountId: principal.account.id,
+    listing,
+    outcome: body.outcome,
+    stakeMicro: body.stakeMicro,
+    idempotencyKey,
+  });
+
+  if (fill.replayed) {
+    const original = await marketView(await resolveMarket(fill.marketId));
+    const label = original.outcomes.find((o) => o.id === fill.outcomeId)?.label;
+    if (original.market.listingId !== listing.id || label !== body.outcome || fill.costMicro > body.stakeMicro) {
+      throw new ApiError(409, 'idempotency_key_reused', 'this Idempotency-Key was already used for a different order', {
+        orderId: fill.orderId,
+      });
+    }
+  }
+
+  return respond(
+    S.ListingFill,
+    { ...presentFill(fill, await isFirstOrder(principal.account.id, fill.orderId)), marketCreated },
+    { status: 201, principal, headers: fill.replayed ? { 'Idempotent-Replayed': 'true' } : {} },
+  );
 });
 
 /**
@@ -742,7 +809,7 @@ export const deleteMyAffiliation = route(async (req, params) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Sign up by betting (`server/onboarding.ts`): no password, no account yet.
+ * Sign up (`server/onboarding.ts`), maybe with a first bet: no password, no account yet.
  * Answers the same whether or not the address is taken.
  */
 export const postOnboarding = route(async (req) => {
@@ -750,7 +817,8 @@ export const postOnboarding = route(async (req) => {
   const body = await parseBody(req, S.OnboardingRequest);
   const nonce = newBrowserNonce();
   await startOnboarding(body, nonce);
-  events.log('onboarding.started', { accountId: null, marketId: body.marketId });
+  events.log('onboarding.started', { accountId: null, marketId: body.bet?.marketId ?? null });
+  if (!body.bet) return respond(S.SignUpStarted, { email: body.email }, { principal });
   // Names this browser as the one the bet was chosen in (`choseHere`).
   const cookie =
     `${ONBOARDING_BROWSER_COOKIE}=${nonce}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax` +

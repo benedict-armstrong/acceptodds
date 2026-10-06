@@ -143,9 +143,9 @@ describe('browseListings pages', () => {
     for (const offset of [0, 3, 6]) {
       const page = await browseListings({ kind: 'venue', sort: 'newest', offset, limit: 3 });
       expect(page.total).toBe(7);
-      pages.push(...page.rows.map((r) => r.market.slug));
+      pages.push(...page.rows.map((r) => r.main!.market.slug));
     }
-    expect(pages).toEqual(whole.rows.map((r) => r.market.slug));
+    expect(pages).toEqual(whole.rows.map((r) => r.main!.market.slug));
     expect(await browseListings({ kind: 'venue', sort: 'newest', offset: 9, limit: 3 })).toEqual({
       rows: [],
       total: 7,
@@ -177,7 +177,7 @@ describe('browseListings pages', () => {
     const slugs = async (q: Omit<Parameters<typeof browseListings>[0], 'sort' | 'kind'>) => {
       const page = await browseListings({ kind: 'venue', sort: 'closing', ...q });
       expect(page.total).toBe(page.rows.length);
-      return page.rows.map((r) => r.listing?.slug ?? r.market.slug).sort();
+      return page.rows.map((r) => r.listing?.slug ?? r.main!.market.slug).sort();
     };
     expect(await slugs({ followedBy: me, exceptHeldBy: me })).toEqual(['f']);
     expect(await slugs({ heldBy: me })).toEqual(['fh', 'h']);
@@ -188,6 +188,6 @@ describe('browseListings pages', () => {
     );
     expect(h.marketCount).toBe(2);
     expect(h.totalOrderCount).toBe(1);
-    expect(h.market.slug).toBe('h-main');
+    expect(h.main!.market.slug).toBe('h-main');
   });
 });

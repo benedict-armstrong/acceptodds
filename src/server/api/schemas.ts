@@ -243,6 +243,10 @@ export const ListingRelated = z
     related: z
       .array(CitedListing)
       .meta({ description: 'Best match first. Entries with no listing here are left out.' }),
+    hidden: z.number().int().min(0).meta({
+      description:
+        'How many more were named but are not sent: until the listing has a bet, only the first 3 are. A bet on any of its markets shows the rest.',
+    }),
   })
   .meta({
     id: 'ListingRelated',
@@ -530,6 +534,31 @@ export const Fill = z
     firstTrade: z.boolean().meta({ description: 'True when this is the first order the account ever placed.' }),
   })
   .meta({ id: 'Fill' });
+
+export const ListingOrderRequest = z
+  .object({
+    outcome: z.string().min(1).max(200).meta({ description: 'The outcome’s label, e.g. "Accept".' }),
+    stakeMicro: MicroInput.meta({
+      description:
+        'What to spend, in micro-units: also the order’s bound. It buys as many shares as it pays for on the board when the order arrives, and never costs more.',
+    }),
+  })
+  .meta({ id: 'ListingOrderRequest' });
+
+export const OpenedMarket = z
+  .object({
+    market: Market,
+    created: z
+      .boolean()
+      .meta({ description: 'True when this request made the market; false when it already had one.' }),
+  })
+  .meta({ id: 'OpenedMarket' });
+
+export const ListingFill = Fill.extend({
+  marketCreated: z.boolean().meta({
+    description: 'True when this order made the listing’s market: its first trade.',
+  }),
+}).meta({ id: 'ListingFill' });
 
 // ---------------------------------------------------------------------------
 // accounts and leaderboard
@@ -1011,6 +1040,9 @@ export const ReferenceRequest = z
   })
   .meta({ id: 'ReferenceRequest' });
 
+/** A full text's longest, in characters: a long paper with appendices is about 300k. */
+const FULL_TEXT_MAX = 1_000_000;
+
 export const UpsertListingRequest = z
   .object({
     slug: Slug,
@@ -1037,6 +1069,17 @@ export const UpsertListingRequest = z
     id: 'UpsertListingRequest',
     description: 'Creates the listing, or replaces every field of the one with this slug. A field left out is cleared.',
   });
+
+export const SetTextRequest = z
+  .object({
+    text: z.string().max(FULL_TEXT_MAX).nullable().meta({
+      description:
+        'The full text of the subject (for a paper, its extracted PDF). Read only to set a new market’s opening prices, never served. `null` or empty clears it.',
+    }),
+  })
+  .meta({ id: 'SetTextRequest' });
+
+export const SetTextResult = z.object({ listingId: Id, chars: z.number().int().min(0) }).meta({ id: 'SetTextResult' });
 
 export const SetRelatedRequest = z
   .object({
@@ -1244,12 +1287,24 @@ export const CommentId = Id.meta({ description: 'A comment id.' });
 export const OnboardingRequest = z
   .object({
     email: z.email().max(254).meta({ description: 'An address at an approved institution.', example: 'ada@ethz.ch' }),
-    marketId: Id,
-    outcomeId: Id,
-    stakeMicro: MicroInput.meta({ description: 'What to spend, at most the starting balance. Not a share count.' }),
-    seenOrderCount: z.number().int().nonnegative().meta({
-      description:
-        "The market's `orderCount` on the board the bet was chosen from. Unchanged at confirmation, the bet is placed without asking again.",
+    bet: z
+      .object({
+        marketId: Id,
+        outcomeId: Id,
+        stakeMicro: MicroInput.meta({ description: 'What to spend, at most the starting balance. Not a share count.' }),
+        seenOrderCount: z.number().int().nonnegative().meta({
+          description:
+            "The market's `orderCount` on the board the bet was chosen from. Unchanged at confirmation, the bet is placed without asking again.",
+        }),
+      })
+      .strict()
+      .optional()
+      .meta({
+        description: 'A first bet, stored and placed once the address is confirmed. Left out, a plain sign-up.',
+      }),
+    next: z.string().max(2000).optional().meta({
+      description: 'A same-site path to return to after confirming (`/verify-email?next=`). Anything else is `/`.',
+      example: '/papers/attention-is-all-you-need?price=jev',
     }),
   })
   .strict()

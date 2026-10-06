@@ -22,6 +22,7 @@ import {
 import { headlinePrice } from '@/lib/headline';
 import { prices } from '@/lib/lmsr';
 import { MINIMAP_CANDIDATES, MINIMAP_NEAREST } from '@/lib/map';
+import { RELATED_UNBET } from '@/lib/related';
 import { percentAhead } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import { containsPattern, parseSearch, requiredText, websearchOf, type SearchNode } from '@/lib/query';
@@ -165,13 +166,14 @@ function rankOf(vector: SQL, tq: SQL): SQL {
 /**
  * A home-page row's documents match `tq`: its listing's, its main market's
  * (`m`), or any other visible market's in the listing. Never null, so it
- * negates cleanly. Over `browseListings`' aliases: `m`, and `l` its listing.
+ * negates cleanly. Over `browseListings`' aliases: `l` the listing and `m`
+ * its main market, either of which may be null (`ROWS`).
  */
 function rowMatches(tq: SQL): SQL {
   return sql`(coalesce(${listingVector('l')} @@ ${tq}, false)
-    or ${marketVector('m')} @@ ${tq}
+    or coalesce(${marketVector('m')} @@ ${tq}, false)
     or exists (select 1 from markets s2
-                where s2.listing_id = m.listing_id and not s2.is_main and s2.status <> 'draft'
+                where s2.listing_id = l.id and not s2.is_main and s2.status <> 'draft'
                   and ${marketVector('s2')} @@ ${tq}))`;
 }
 
@@ -209,19 +211,19 @@ function searchPredicate(node: SearchNode, skip: SearchNode | null): SQL | null 
         // A newline between keywords, so a pattern never spans two of them.
         keyword: sql`coalesce(array_to_string(l.keywords, E'\\n'), '')`,
         area: sql`coalesce(l.primary_area, '')`,
-        venue: sql`m.kind`,
+        venue: ROW_KIND,
       }[node.field];
       return sql`${column} ${node.op === '=' ? sql`ilike` : sql`not ilike`} ${containsPattern(node.value)}`;
     }
     case 'status':
-      return sql`m.status ${sql.raw(COMPARE_SQL[node.op])} ${node.value}`;
+      return sql`${ROW_STATUS} ${sql.raw(COMPARE_SQL[node.op])} ${node.value}`;
     case 'compare': {
       const [column, value] = {
         // Void has no headline, whatever the cache last held: it compares as unknown.
         accept: [sql`(case when m.status = 'void' then null else m.headline end) * 100`, sql`${node.value}::float8`],
         // `sum(bigint)` is numeric; so is the bound: no float touches money (§1.6).
-        volume: [sql`(m.volume_micro + coalesce(sec.volume_micro, 0))`, sql`${node.value}::numeric * 1000000`],
-        trades: [sql`(m.order_count + coalesce(sec.order_count, 0))`, sql`${node.value}::bigint`],
+        volume: [ROW_VOLUME, sql`${node.value}::numeric * 1000000`],
+        trades: [ROW_ORDERS, sql`${node.value}::bigint`],
       }[node.field];
       return sql`coalesce(${column} ${sql.raw(COMPARE_SQL[node.op])} ${value}, false)`;
     }
@@ -543,26 +545,54 @@ export async function listingCitations(listing: Listing, database: Database = ge
   };
 }
 
+/** A listing's related list as it is given out: `hidden` more were named but are held back. */
+export interface RelatedList {
+  related: CitedListing[];
+  hidden: number;
+}
+
 /**
  * The listings the similarity service named as related to this one, in its
  * order, best first. Matched by slug when read; a slug with no listing here
  * (yet) is skipped, so the list is whatever can be shown.
+ *
+ * Until the listing has a bet (a fill on any of its markets) only the first
+ * {@link RELATED_UNBET} are given out and the rest only counted, so a bet is
+ * what shows them (`RelatedPapers`). `all` skips that, for the map's own
+ * reads (the minimap), which may show them.
  */
-export async function listingRelatedTo(listing: Listing, database: Database = getDb()): Promise<CitedListing[]> {
-  const rows = await database
-    .select({ listing: listings })
-    .from(listingRelated)
-    .innerJoin(listings, eq(listings.slug, listingRelated.relatedSlug))
-    .where(eq(listingRelated.listingId, listing.id))
-    .orderBy(asc(listingRelated.position));
+export async function listingRelatedTo(
+  listing: Listing,
+  { all = false }: { all?: boolean } = {},
+  database: Database = getDb(),
+): Promise<RelatedList> {
+  const [rows, [bet]] = await Promise.all([
+    database
+      .select({ listing: listings })
+      .from(listingRelated)
+      .innerJoin(listings, eq(listings.slug, listingRelated.relatedSlug))
+      .where(eq(listingRelated.listingId, listing.id))
+      .orderBy(asc(listingRelated.position)),
+    all
+      ? [{ id: listing.id }]
+      : database
+          .select({ id: markets.id })
+          .from(markets)
+          .where(and(eq(markets.listingId, listing.id), sql`${markets.orderCount} > 0`))
+          .limit(1),
+  ]);
+  const given = bet ? rows : rows.slice(0, RELATED_UNBET);
   const views = await listingViews(
-    rows.map((r) => r.listing),
+    given.map((r) => r.listing),
     database,
   );
-  return rows.map(({ listing: l }) => ({
-    listing: l,
-    main: views.find((v) => v.listing.id === l.id)?.markets[0] ?? null,
-  }));
+  return {
+    related: given.map(({ listing: l }) => ({
+      listing: l,
+      main: views.find((v) => v.listing.id === l.id)?.markets[0] ?? null,
+    })),
+    hidden: rows.length - given.length,
+  };
 }
 
 export interface MapPointView {
@@ -573,7 +603,7 @@ export interface MapPointView {
   y: number;
   region: number | null;
   cluster: number | null;
-  /** The main market's headline cache (#12): a price, never a value; `null` when void or there is none. */
+  /** The main market's headline cache (#12): a price, never a value; `null` when void, untraded or there is none. */
   headline: number | null;
 }
 
@@ -612,7 +642,7 @@ function mapPointRows(database: Database) {
       cluster: mapPoints.cluster,
       headline: sql<
         number | null
-      >`case when ${markets.status} = 'void' then null else round(${markets.headline}::numeric, 4)::float8 end`,
+      >`case when ${markets.status} = 'void' or ${markets.orderCount} = 0 then null else round(${markets.headline}::numeric, 4)::float8 end`,
     })
     .from(mapPoints)
     .innerJoin(listings, eq(listings.slug, mapPoints.slug))
@@ -686,7 +716,7 @@ export interface Minimap {
  * map has flattened what the vectors still hold. Positions, vectors and
  * relatedness are all other services'; nothing is computed from the papers
  * here. `null` when the paper is not on the map. `related` is
- * `listingRelatedTo(listing)`.
+ * `listingRelatedTo(listing, { all: true })`.
  */
 export async function listingMinimap(
   listing: Listing,
@@ -1362,10 +1392,16 @@ export type MarketSort = (typeof MARKET_SORTS)[number];
 /** Search rank: only meaningful with a query, and the UI's default when there is one. */
 export type BrowseSort = MarketSort | 'relevance';
 
-export interface BrowseRow extends MarketView {
+export interface BrowseRow {
   /** The listing this row stands for, or null for a market that has none. */
   listing: Listing | null;
-  /** Visible markets in the row: 1 for a standalone market. */
+  /**
+   * The market that stands for the row (`markets.is_main`). Null for a
+   * listing nobody has opened a market on (`server/market-start.ts`). With
+   * no orders, the list shows no price for it either.
+   */
+  main: MarketView | null;
+  /** Visible markets in the row: 1 for a standalone market, 0 before a listing's first trade. */
   marketCount: number;
   /** Volume and fills summed over every market in the row. */
   totalVolumeMicro: bigint;
@@ -1385,15 +1421,18 @@ export interface BrowsePage {
  * that belongs to no listing, a page at a time.
  *
  * A row is read from the market that stands for it (`markets.is_main`: the
- * standalone market, or the listing's main market). Filtered by its `kind`
- * (the opaque grouping string, which the creating client sets to a venue like
+ * standalone market, or the listing's main market), if it has one. A listing
+ * has none until its first trade makes it (`server/market-start.ts`); such a
+ * row has no price, counts as `open` and is in its listing's `kind`. Every
+ * sort puts traded rows first: a market nobody has traded yet (opened at
+ * JEV's price) shows no price on the list either. Filtered by `kind` (the
+ * opaque grouping string, which the creating client sets to a venue like
  * "ICLR 2027") and status, and sorted by its closing date, its headline
  * (`markets.headline`, highest first), volume summed over the row, the latest
  * fill in the row, or its creation. Sorting reads only the engine's caches on
- * `markets`, never `orders`, so a venue of 30k papers costs a scan of 30k
- * index entries, not of every fill. Paged by offset: every sort but `newest`
- * moves with each fill, so a keyset cursor would be no steadier, and a page
- * number is what the list shows.
+ * `markets`, never `orders`. Paged by offset: every sort but `newest` moves
+ * with each fill, so a keyset cursor would be no steadier, and a page number
+ * is what the list shows.
  *
  * With a non-blank `q`, in the search syntax of `lib/query.ts`: words and
  * phrases match a row when its listing text or any visible market's text in
@@ -1412,6 +1451,8 @@ export async function browseListings(
     q?: string | null;
     offset?: number;
     limit?: number;
+    /** Only rows that have a market, i.e. leave out listings nobody has traded yet. */
+    traded?: boolean;
     /** Only listings this account follows (so no unlisted markets). */
     followedBy?: string | null;
     /** Only rows where this account holds shares in any market of the row. */
@@ -1427,21 +1468,22 @@ export async function browseListings(
   const offset = q.offset ?? 0;
   const { from, order } = browseQuery(q);
   const result = await database.execute<{
-    id: string;
+    listing_id: string | null;
+    market_id: string | null;
     volume: string;
     order_count: number;
     last_trade_at: string | null;
     markets: number;
     total: number;
   }>(sql`
-    select m.id,
-           (m.volume_micro + coalesce(sec.volume_micro, 0))::text as volume,
-           (m.order_count + coalesce(sec.order_count, 0))::int as order_count,
+    select l.id as listing_id, m.id as market_id,
+           ${ROW_VOLUME}::text as volume,
+           ${ROW_ORDERS}::int as order_count,
            greatest(m.last_trade_at, sec.last_trade_at)::text as last_trade_at,
-           (1 + coalesce(sec.markets, 0))::int as markets,
+           ((m.id is not null)::int + coalesce(sec.markets, 0))::int as markets,
            (count(*) over ())::int as total
     ${from}
-     order by ${sql.join([...order, sql`m.id desc`], sql`, `)}
+     order by ${sql.join([...order, sql`coalesce(m.id, l.id) desc`], sql`, `)}
      limit ${limit} offset ${offset}
   `);
 
@@ -1456,32 +1498,24 @@ export async function browseListings(
   }
   const total = found[0].total;
 
-  const loaded = await database
-    .select({ market: markets, listing: listings })
-    .from(markets)
-    .leftJoin(listings, eq(listings.id, markets.listingId))
-    .where(
-      inArray(
-        markets.id,
-        found.map((r) => r.id),
-      ),
-    );
-  const byId = new Map(loaded.map((r) => [r.market.id, r]));
-  const inOrder = found.map((r) => byId.get(r.id)!);
-  const views = await marketViews(
-    inOrder.map((r) => r.market),
-    database,
-  );
+  const marketIds = found.flatMap((r) => (r.market_id ? [r.market_id] : []));
+  const listingIds = found.flatMap((r) => (r.listing_id ? [r.listing_id] : []));
+  const [loadedMarkets, loadedListings] = await Promise.all([
+    marketIds.length > 0 ? database.select().from(markets).where(inArray(markets.id, marketIds)) : [],
+    listingIds.length > 0 ? database.select().from(listings).where(inArray(listings.id, listingIds)) : [],
+  ]);
+  const views = new Map((await marketViews(loadedMarkets, database)).map((v) => [v.market.id, v] as const));
+  const listingById = new Map(loadedListings.map((l) => [l.id, l]));
   return {
     total,
-    rows: views.map((v, i) => ({
-      ...v,
-      listing: inOrder[i].listing,
-      marketCount: found[i].markets,
+    rows: found.map((r) => ({
+      listing: r.listing_id ? listingById.get(r.listing_id)! : null,
+      main: r.market_id ? views.get(r.market_id)! : null,
+      marketCount: r.markets,
       // `sum(bigint)` is `numeric`: read as text, never as a JS number (§1.6).
-      totalVolumeMicro: BigInt(found[i].volume),
-      totalOrderCount: found[i].order_count,
-      lastTradeAt: found[i].last_trade_at ? new Date(found[i].last_trade_at) : null,
+      totalVolumeMicro: BigInt(r.volume),
+      totalOrderCount: r.order_count,
+      lastTradeAt: r.last_trade_at ? new Date(r.last_trade_at) : null,
     })),
   };
 }
@@ -1489,10 +1523,31 @@ export async function browseListings(
 type BrowseFilter = Omit<Parameters<typeof browseListings>[0], 'offset' | 'limit'>;
 
 /**
- * The home list's rows as SQL: `from` (markets `m`, the search hits `hit`
- * and, when searching, listings `l`, through the `where`) and `order` for
- * the sort. Shared by `browseListings` and `mapSearch`, so the map's search
- * is the home page's.
+ * The home list's rows, one each: every listing (`l`) with its main market
+ * (`m`, null before its first trade), and every visible market with no
+ * listing (`m`, `l` null). Columns of either may be null; the expressions
+ * below are what reads them.
+ */
+const ROWS = sql`
+  (select ls.id as listing_id, mm.id as market_id
+     from listings ls left join markets mm on mm.listing_id = ls.id and mm.is_main
+   union all
+   select null, ms.id from markets ms where ms.is_main and ms.listing_id is null) k
+  left join listings l on l.id = k.listing_id
+  left join markets m on m.id = k.market_id`;
+/** A row's venue: its market's `kind`, else its listing's. */
+const ROW_KIND = sql`coalesce(m.kind, l.kind)`;
+/** A row's status: its market's; a listing without one yet is `open`, since a trade would make it. */
+const ROW_STATUS = sql`coalesce(m.status, 'open')`;
+/** Volume and fills over the row's markets; 0 before any. */
+const ROW_VOLUME = sql`(coalesce(m.volume_micro, 0) + coalesce(sec.volume_micro, 0))`;
+const ROW_ORDERS = sql`(coalesce(m.order_count, 0) + coalesce(sec.order_count, 0))`;
+
+/**
+ * The home list's rows as SQL: `from` (`ROWS`, the search hits `hit`, the
+ * other markets' sums `sec`, through the `where`) and `order` for the sort.
+ * Shared by `browseListings` and `mapSearch`, so the map's search is the
+ * home page's.
  */
 function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
   const text = normalizeSearch(q.q);
@@ -1504,17 +1559,17 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
 
   // A row's key: its listing, or the standalone market itself.
   const followed = (account: string) =>
-    sql`exists (select 1 from listing_follows lf where lf.account_id = ${account} and lf.listing_id = m.listing_id)`;
+    sql`exists (select 1 from listing_follows lf where lf.account_id = ${account} and lf.listing_id = l.id)`;
   const held = (account: string) => sql`exists (
     select 1 from positions p
       join outcomes po on po.id = p.outcome_id
       join markets pm on pm.id = po.market_id
      where p.account_id = ${account} and p.shares_micro > 0
-       and coalesce(pm.listing_id, pm.id) = coalesce(m.listing_id, m.id))`;
+       and coalesce(pm.listing_id, pm.id) = coalesce(l.id, m.id))`;
   const where = [
-    sql`m.is_main`,
-    status === 'all' ? undefined : sql`m.status = ${status}`,
-    q.kind ? sql`m.kind = ${q.kind}` : undefined,
+    status === 'all' ? undefined : sql`${ROW_STATUS} = ${status}`,
+    q.kind ? sql`${ROW_KIND} = ${q.kind}` : undefined,
+    q.traded ? sql`m.id is not null` : undefined,
     q.followedBy ? followed(q.followedBy) : undefined,
     q.heldBy ? held(q.heldBy) : undefined,
     q.exceptFollowedBy ? sql`not ${followed(q.exceptFollowedBy)}` : undefined,
@@ -1534,28 +1589,30 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
           select ls.id, ${rankOf(listingVector('ls'), tq)}
             from listings ls where ${listingVector('ls')} @@ ${tq}
         ) h group by h.k
-      ) hit on hit.k = coalesce(m.listing_id, m.id)`
+      ) hit on hit.k = coalesce(l.id, m.id)`
     : sql``;
 
-  // Over the \`rows\` CTE below, whose columns are the main market's and the
-  // row's sums.
-  const order = {
-    closing: [sql`m.closes_at asc`],
-    // Void has no headline, whatever the cache last held.
-    likelihood: [
-      sql`(case when m.status = 'void' then null else m.headline end) desc nulls last`,
-      sql`m.closes_at asc`,
-    ],
-    volume: [sql`m.volume_micro + coalesce(sec.volume_micro, 0) desc`],
-    activity: [sql`greatest(m.last_trade_at, sec.last_trade_at) desc nulls last`],
-    newest: [sql`m.created_at desc`],
-    relevance: tq ? [sql`hit.r desc`, sql`m.closes_at asc`] : [sql`m.closes_at asc`],
-  }[q.sort];
+  // Traded rows first, whatever the sort: a listing with no market, or a
+  // market nobody has traded (opened at JEV's price), shows no price yet.
+  const order = [
+    sql`(m.id is null or m.order_count = 0)`,
+    ...{
+      closing: [sql`m.closes_at asc`],
+      // Void has no headline, whatever the cache last held.
+      likelihood: [
+        sql`(case when m.status = 'void' then null else m.headline end) desc nulls last`,
+        sql`m.closes_at asc`,
+      ],
+      volume: [sql`${ROW_VOLUME} desc`],
+      activity: [sql`greatest(m.last_trade_at, sec.last_trade_at) desc nulls last`],
+      newest: [sql`m.created_at desc`],
+      relevance: tq ? [sql`hit.r desc`, sql`m.closes_at asc`] : [sql`m.closes_at asc`],
+    }[q.sort],
+  ];
 
   const from = sql`
-      from markets m
+      from ${ROWS}
       ${hits}
-      ${node === null ? sql`` : sql`left join listings l on l.id = m.listing_id`}
       -- Visible markets of a listing other than its main one, summed into the
       -- row. Few listings have any, and markets_secondary_idx holds just those.
       left join (
@@ -1564,8 +1621,8 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
           from markets s
          where not s.is_main and s.status <> 'draft'
          group by s.listing_id
-      ) sec on sec.listing_id = m.listing_id
-     where ${sql.join(where, sql` and `)}`;
+      ) sec on sec.listing_id = l.id
+     where ${where.length > 0 ? sql.join(where, sql` and `) : sql`true`}`;
   return { from, order };
 }
 
@@ -1587,22 +1644,22 @@ export async function mapSearch(
   const { from, order } = browseQuery({ q: text, status: 'all', sort: 'relevance' });
   const result = await database.execute<{ slug: string }>(sql`
     select l.slug ${from} and l.slug is not null
-     order by ${sql.join([...order, sql`m.id desc`], sql`, `)}
+     order by ${sql.join([...order, sql`l.id desc`], sql`, `)}
   `);
   return { slugs: result.rows.map((r) => r.slug), errors };
 }
 
-/** Every `kind` with at least one visible row, most rows first. A listing counts once, by its main market. */
+/** Every `kind` with at least one row, most rows first. A listing counts once, traded or not. */
 export const marketKinds = cache(async (database: Database = getDb()): Promise<{ kind: string; count: number }[]> => {
-  return (
-    database
-      .select({ kind: markets.kind, count: sql<number>`count(*)::int` })
-      .from(markets)
-      .where(eq(markets.isMain, true))
-      .groupBy(markets.kind)
-      // Byte order, so ties sort the same whatever locale the database was created with.
-      .orderBy(sql`count(*) desc`, sql`${markets.kind} COLLATE "C"`)
-  );
+  const result = await database.execute<{ kind: string; count: number }>(sql`
+    select ${ROW_KIND} as kind, count(*)::int as count
+      from ${ROWS}
+     where ${ROW_KIND} is not null
+     group by 1
+     -- Byte order, so ties sort the same whatever locale the database was created with.
+     order by 2 desc, ${ROW_KIND} COLLATE "C"
+  `);
+  return result.rows;
 });
 
 /**

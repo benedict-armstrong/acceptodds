@@ -10,13 +10,11 @@ import { OnboardingTrade } from '@/components/OnboardingTrade';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { PaperSearch, tradableListingMarket } from '@/components/PaperSearch';
 import { TutorialArt, TutorialText, tutorialSteps } from '@/components/TutorialModal';
-import { MESSAGES } from '@/components/orders';
+import { SignUpEmail } from '@/components/SignUpEmail';
 import { ui } from '@/components/ui';
-import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
 import { rememberPending } from '@/lib/pending-confirmation';
-import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import type * as S from '@/server/api/schemas';
 import type { Choice } from '../markets/[slug]/TradeBox';
@@ -247,65 +245,20 @@ function EmailStep({
   choice: Choice;
   onSent: (email: string) => void;
 }) {
-  const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const address = email.trim();
-        if (hasSubaddress(address)) return setError(SUBADDRESS_REFUSED);
-        setBusy(true);
-        setError(null);
-        const res = await fetch('/api/v1/onboarding', {
-          method: 'POST',
-          // Not 'omit': the answer sets the cookie that names this browser as
-          // the one the bet was chosen in (`choseHere`).
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            email: address,
-            marketId: market.id,
-            outcomeId: choice.outcomeId,
-            stakeMicro: choice.stakeMicro.toString(),
-            seenOrderCount: choice.seenOrderCount,
-          }),
-        }).catch(() => null);
-        setBusy(false);
-        if (res?.ok) {
-          track('signup_submitted');
-          return onSent(address);
-        }
-        const body = await res?.json().catch(() => null);
-        const code = body?.error?.code;
-        track('signup_refused', { reason: res ? String(code ?? res.status) : 'network' });
-        setError(
-          code === 'email_domain_not_allowed'
-            ? 'That address is not at an institution on our list.'
-            : code === 'rate_limited'
-              ? // The budget is per address and refills over a day (`server/onboarding.ts`), not in a moment.
-                'We have sent this address too many mails today. Open the link in the newest one, or try again in a few hours.'
-              : (MESSAGES[code] ?? body?.error?.message ?? 'Something went wrong.'),
-        );
+    <SignUpEmail
+      body={{
+        bet: {
+          marketId: market.id,
+          outcomeId: choice.outcomeId,
+          stakeMicro: choice.stakeMicro.toString(),
+          seenOrderCount: choice.seenOrderCount,
+        },
       }}
+      onSent={onSent}
+      submit="Send link"
     >
       <BetSummary title={title} market={market} outcomeId={choice.outcomeId} stakeMicro={choice.stakeMicro} />
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-        autoComplete="email"
-        placeholder="Institutional email"
-        aria-label="Institutional email"
-        className={ui.input}
-      />
-      <button className={ui.btn()} disabled={busy || !email.trim()}>
-        Send link
-      </button>
-      {error && <div className={ui.note(false)}>{error}</div>}
-    </form>
+    </SignUpEmail>
   );
 }

@@ -237,8 +237,8 @@ export function MarketLive({
             </div>
           </div>
         )}
-        {/* On a narrow screen the trade box comes before the tape. */}
-        <div className="narrow:order-first">
+        {/* On a narrow screen the trade box comes before the tape. `#trade` is where "Place a bet" links. */}
+        <div id="trade" className="scroll-mt-4 narrow:order-first">
           {tradable ? (
             <Trading
               market={market}

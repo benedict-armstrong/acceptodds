@@ -110,7 +110,7 @@ async function search(q: string | null, opts: { kind?: string | null; status?: a
     sort: opts.sort ?? 'relevance',
     q,
   });
-  return rows.map((r) => r.listing?.slug ?? r.market.slug);
+  return rows.map((r) => r.listing?.slug ?? r.main!.market.slug);
 }
 
 const sorted = (xs: string[]) => [...xs].sort();

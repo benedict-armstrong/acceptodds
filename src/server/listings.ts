@@ -1,6 +1,6 @@
 import { eq, getTableColumns, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { listingReferences, listingRelated, listings, type Listing, type ListingLink } from '@/db/schema';
+import { listingReferences, listingRelated, listings, listingTexts, type Listing, type ListingLink } from '@/db/schema';
 import { invalidateMap } from './map-cache';
 
 /**
@@ -96,6 +96,27 @@ export async function upsertListing(
   // A slug on the map is shown once it is listed, under the listing's title.
   invalidateMap();
   return result;
+}
+
+/**
+ * Replace a listing's full text (`listing_texts`), read only by `server/jev.ts`.
+ * A call of its own, like the related list, so whatever extracts the text and
+ * whatever writes the listing never clear each other's. Empty clears it.
+ */
+export async function setText(
+  listing: Pick<Listing, 'id'>,
+  text: string | null,
+  database: Database = getDb(),
+): Promise<number> {
+  if (!text) {
+    await database.delete(listingTexts).where(eq(listingTexts.listingId, listing.id));
+    return 0;
+  }
+  await database
+    .insert(listingTexts)
+    .values({ listingId: listing.id, body: text })
+    .onConflictDoUpdate({ target: listingTexts.listingId, set: { body: text } });
+  return text.length;
 }
 
 /**

@@ -33,6 +33,24 @@ export function ShareIcon({ className = 'size-3.5' }: { className?: string }) {
   );
 }
 
+/** Up: an arrow pointing up, for a link to something above. `1em` square, so the text size sets it. */
+export function ArrowUpIcon({ className = 'size-[1em]' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 13.5V2.5M3.5 7 8 2.5 12.5 7" />
+    </svg>
+  );
+}
+
 /** Follow: a star, filled when following. `1em` square, so the text size sets it. */
 export function StarIcon({ filled = false, className = 'size-[1em]' }: { filled?: boolean; className?: string }) {
   return (

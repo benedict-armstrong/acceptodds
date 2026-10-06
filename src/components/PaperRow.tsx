@@ -36,15 +36,15 @@ export function PaperRow({
   pdf?: { url: string; label: string };
   /** Shown under the authors when given. */
   tldr?: string | null;
-  /** The market that stands for the row: its headline and outcome bar. */
-  market: RowMarket;
+  /** The market that stands for the row: its headline and outcome bar. Null before its first trade: no price yet. */
+  market: RowMarket | null;
   /** `null` while nothing has traded. */
   volumeMicro: bigint | string | null;
   spark: number[];
   href?: string;
   onPick?: () => void;
 }) {
-  const look = likelihoodClass(marketLikelihood(market));
+  const look = likelihoodClass(market ? marketLikelihood(market) : null);
   const target = 'line-clamp-2 after:absolute after:inset-0 hover:no-underline';
   const name = <MathText text={title} />;
   return (
@@ -78,11 +78,14 @@ export function PaperRow({
       <span className="text-right font-mono text-xs text-muted narrow:hidden" title="volume">
         {volumeMicro !== null ? `${rep(volumeMicro, 0)} ${REP}` : ''}
       </span>
-      <span className="narrow:hidden" title={market.question}>
-        <Sparkline values={spark} />
+      <span className="narrow:hidden" title={market?.question}>
+        {market && <Sparkline values={spark} />}
       </span>
-      <span className={`text-right font-mono text-sm ${look.text}`} title={`${market.question}: chance of acceptance`}>
-        {headline(market)}
+      <span
+        className={`text-right font-mono text-sm ${look.text}`}
+        title={market ? `${market.question}: chance of acceptance` : 'Not traded yet'}
+      >
+        {market && headline(market)}
       </span>
     </div>
   );

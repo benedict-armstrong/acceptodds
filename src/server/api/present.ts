@@ -8,7 +8,7 @@ import type { FollowedListing } from '../follows';
 import type { GroupMember, GroupRole, GroupSummary } from '../groups';
 import type { PublicPositionView } from '../public-positions';
 import type { TokenRecord } from '../tokens';
-import type { CitedListing, ListingCitations, ListingView, MarketView, OrderRow } from '../views';
+import type { CitedListing, ListingCitations, ListingView, MarketView, OrderRow, RelatedList } from '../views';
 import { toIso, toIsoOrNull } from './http';
 import type * as S from './schemas';
 
@@ -82,8 +82,8 @@ function presentCited(c: CitedListing): z.input<typeof S.CitedListing> {
   };
 }
 
-export function presentRelated(related: CitedListing[]): z.input<typeof S.ListingRelated> {
-  return { related: related.map(presentCited) };
+export function presentRelated(r: RelatedList): z.input<typeof S.ListingRelated> {
+  return { related: r.related.map(presentCited), hidden: r.hidden };
 }
 
 export function presentCitations(c: ListingCitations): z.input<typeof S.ListingCitations> {

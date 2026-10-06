@@ -4,7 +4,7 @@ import { getDb, type Database } from '@/db';
 import { user } from '@/db/auth-schema';
 import { isUniqueViolation } from '@/db/errors';
 import { accounts, markets, outcomes, pendingBets, type PendingBet } from '@/db/schema';
-import { VERIFY_EMAIL } from '@/lib/return-to';
+import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import { normalizeEmail } from './affiliations';
 import { ApiError } from './api/errors';
 import { startingBalanceMicro } from './accounts';
@@ -13,8 +13,10 @@ import { institutionForEmail } from './institution-domains';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 
 /**
- * Onboarding (`/welcome`), the one way to sign up: someone with no account
- * picks a paper and a bet, then gives an email — no name, no password. That
+ * Onboarding, the one way to sign up: someone with no account gives an
+ * email — no name, no password — having picked a paper and a bet on
+ * `/welcome`, or with no bet (a paper's `JevPrice`, which comes back to
+ * `next` to open its market). That
  * makes a Better Auth user **without a credential or a name**, stores the
  * bet in `pending_bets`, and mails a confirmation link and code.
  *
@@ -36,10 +38,9 @@ import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 
 export interface StartOnboarding {
   email: string;
-  marketId: string;
-  outcomeId: string;
-  stakeMicro: bigint;
-  seenOrderCount: number;
+  bet?: { marketId: string; outcomeId: string; stakeMicro: bigint; seenOrderCount: number };
+  /** Where the mail's link and code return to, through `/verify-email`; checked by `safeReturnTo`. */
+  next?: string;
 }
 
 /**
@@ -55,17 +56,7 @@ export async function startOnboarding(
   browserNonce: string,
   database: Database = getDb(),
 ): Promise<void> {
-  if (input.stakeMicro <= 0n || input.stakeMicro > startingBalanceMicro()) {
-    throw new ApiError(400, 'validation_error', 'stakeMicro must be positive and at most the starting balance');
-  }
-  const [target] = await database
-    .select({ status: markets.status, closesAt: markets.closesAt })
-    .from(outcomes)
-    .innerJoin(markets, eq(markets.id, outcomes.marketId))
-    .where(and(eq(outcomes.id, input.outcomeId), eq(outcomes.marketId, input.marketId)));
-  if (!target) throw new ApiError(404, 'not_found', 'no such market or outcome');
-  if (target.status !== 'open') throw new ApiError(409, 'market_not_open', 'this market is not open');
-  if (target.closesAt.getTime() <= Date.now()) throw new ApiError(409, 'market_closed', 'this market has closed');
+  if (input.bet) await checkBet(input.bet, database);
 
   const email = normalizeEmail(input.email);
   if (!institutionForEmail(email)) {
@@ -87,20 +78,31 @@ export async function startOnboarding(
   }
 
   const person = await userForEmail(email, database);
-  const bet = {
-    marketId: input.marketId,
-    outcomeId: input.outcomeId,
-    stakeMicro: input.stakeMicro,
-    seenOrderCount: input.seenOrderCount,
-    browserHash: browserHash(browserNonce),
-  };
-  await database
-    .insert(pendingBets)
-    .values({ userId: person.id, ...bet })
-    .onConflictDoUpdate({ target: pendingBets.userId, set: { ...bet, createdAt: new Date() } });
-  // Either way the mail lands on `/verify-email`, which places the bet.
-  if (person.emailVerified) await mailExistingAccount(email, VERIFY_EMAIL);
-  else await getAuth().api.sendVerificationEmail({ body: { email, callbackURL: VERIFY_EMAIL } });
+  if (input.bet) {
+    const bet = { ...input.bet, browserHash: browserHash(browserNonce) };
+    await database
+      .insert(pendingBets)
+      .values({ userId: person.id, ...bet })
+      .onConflictDoUpdate({ target: pendingBets.userId, set: { ...bet, createdAt: new Date() } });
+  }
+  // Either way the mail lands on `/verify-email`, which places a bet and goes on to `next`.
+  const callbackURL = authHref(VERIFY_EMAIL, input.next ?? '/');
+  if (person.emailVerified) await mailExistingAccount(email, callbackURL);
+  else await getAuth().api.sendVerificationEmail({ body: { email, callbackURL } });
+}
+
+async function checkBet(bet: NonNullable<StartOnboarding['bet']>, database: Database): Promise<void> {
+  if (bet.stakeMicro <= 0n || bet.stakeMicro > startingBalanceMicro()) {
+    throw new ApiError(400, 'validation_error', 'stakeMicro must be positive and at most the starting balance');
+  }
+  const [target] = await database
+    .select({ status: markets.status, closesAt: markets.closesAt })
+    .from(outcomes)
+    .innerJoin(markets, eq(markets.id, outcomes.marketId))
+    .where(and(eq(outcomes.id, bet.outcomeId), eq(outcomes.marketId, bet.marketId)));
+  if (!target) throw new ApiError(404, 'not_found', 'no such market or outcome');
+  if (target.status !== 'open') throw new ApiError(409, 'market_not_open', 'this market is not open');
+  if (target.closesAt.getTime() <= Date.now()) throw new ApiError(409, 'market_closed', 'this market has closed');
 }
 
 /**

@@ -1,5 +1,6 @@
 'use client';
 
+import { RELATED_UNBET } from '@/lib/related';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -190,13 +191,15 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
     publicJson,
     { revalidateOnFocus: false },
   );
+  // The panel lists the best few, and the lines go to those.
+  const relatedTop = useMemo(() => related?.related.slice(0, RELATED_UNBET), [related]);
   const relatedHere = useMemo(
     () =>
-      (related?.related ?? []).flatMap((r) => {
+      (relatedTop ?? []).flatMap((r) => {
         const i = derived?.bySlug.get(r.slug);
         return i === undefined ? [] : [i];
       }),
-    [related, derived],
+    [relatedTop, derived],
   );
 
   useEffect(() => {
@@ -495,13 +498,13 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
                     .map((t) => ` · ${t}`)}
                 </p>
                 <div className="mt-2.5 mb-1 font-serif text-sm font-semibold">Related papers</div>
-                {related === undefined ? (
+                {relatedTop === undefined ? (
                   <p className="italic text-muted">Loading…</p>
-                ) : related.related.length === 0 ? (
+                ) : relatedTop.length === 0 ? (
                   <p className="italic text-muted">None named yet.</p>
                 ) : (
                   <ol className="list-decimal space-y-1 pl-5">
-                    {related.related.map((r) => {
+                    {relatedTop.map((r) => {
                       const i = derived?.bySlug.get(r.slug);
                       return (
                         <li key={r.id}>

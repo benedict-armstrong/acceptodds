@@ -232,6 +232,20 @@
       "when": 1791193890018,
       "tag": "0032_reading_lists",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791287914538,
+      "tag": "0033_fk_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791295773881,
+      "tag": "0034_listing_texts",
+      "breakpoints": true
     }
   ]
 }

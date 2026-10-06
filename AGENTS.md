@@ -123,9 +123,16 @@ balances never moves, and the maker can never go negative, which is
 ## Scope boundary — load-bearing
 
 **The platform knows nothing about papers.** No corpus, no scraper, no arXiv,
-no OpenReview, no model calls. A market is a question, outcomes, an id and a
+no OpenReview. A market is a question, outcomes, an id and a
 resolution rule. If a change needs to know _what_ is being traded, it belongs
 in `../research`, which is just another API client.
+
+**One exception, on the owner's call: a listing's market is opened on
+demand** (below), from `server/market-templates.ts` (the question,
+contract and outcomes per listing `kind`) at prices from one JEV call
+(`server/jev.ts`). Those two files are the only ones that know a listing is
+a paper under review, and JEV is the only model the platform calls. Keep it
+that way.
 
 The venue never goes looking for outcomes either: settlement is an
 authenticated admin call made by `../research` when it observes a decision.
@@ -402,14 +409,17 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   bumps the standings cache. `email_verified` on Better Auth's
   `user` is still only the login address.
 - **Three pages, one per step: `/welcome`, `/signin`, `/verify-email`.**
-  `/welcome` is the only way to sign up (below); `/signin` is for people who
+  `/welcome` is the only sign-up page (below; a paper's `JevPrice` also
+  takes an email and its code in place, under "Markets opened on demand"); `/signin` is for people who
   have an account (password, or "Email me a sign-in link", which also makes
   an account for a new address). **`/verify-email` is the one page after an
   email**: every mail's link lands on it and every code is typed on it, and
   what it shows follows from the session, never from how the person got
   there. Signed in with nothing owed: on to `next`. Signed in and owing a
   name, a password or a waiting bet: `Finish` asks for what is missing,
-  places the bet, goes on. No session and `?email=`: `CodeForm`, the 6-digit
+  places the bet, goes on — except that with no bet and a `next` asking
+  for JEV's price (`asksJevPrice`) it goes straight on, the name left to
+  the banner and the password to the next sign-in link. No session and `?email=`: `CodeForm`, the 6-digit
   code (confirming signs in and refreshes the page into the case above). No
   session and no address: a link opened twice, so `/signin?error=`.
   Nothing else asks for a name or password after an email; don't add a
@@ -443,8 +453,10 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   (`lib/pending-confirmation.ts`); it grants nothing. There is still no
   user session, account or reputation before confirmation.
 - **Sign-up takes no password and no name** (`POST /onboarding`,
-  `server/onboarding.ts`; there is no other sign-up route): an email makes
-  a user with no credential and mails the confirmation; the name and
+  `server/onboarding.ts`; there is no other sign-up route): an email, with
+  an optional `bet` and an optional `next` (checked by `safeReturnTo`, the
+  link's and code's way back through `/verify-email`), makes a user with no
+  credential and mails the confirmation; the name and
   password come after confirming, at `/verify-email`. Better Auth's
   `/sign-up/email` is in `disabledPaths`. Otherwise anyone could sign up
   with your address and their password and wait for you to confirm it,
@@ -550,8 +562,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `Modal` (Radix Dialog, likewise) for anything that takes it over — with
   `SheetContent` for one that is a bottom sheet on a phone (the `[getting started]`
   tutorial) — and
+  `ScrollLink` (a same-page `#id` link that scrolls there slowly, instant under reduced motion) and
   `CodeInput` (shadcn's `InputOTP` over `input-otp`) for a one-time code:
-  one real input under the boxes, so paste and autofill work — reuse
+  one real input under the boxes, so paste and autofill work (`CodeEntry`
+  wraps it to confirm an address, with "send a new code"; `SignUpEmail` is
+  the email that starts a sign-up, over `signUp.ts`'s `sendSignUp`) — reuse
   them rather than hand-roll another. Preflight is on: headings, `p` and
   `hr` have no default margins, and `svg` is `display: block`.
 - **The UI writes through the public API, not Server Actions.** §9 suggests
@@ -738,6 +753,9 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   from its main market (status, `kind`, closing date, headline price,
   sparkline), with volume summed and activity taken over all its markets;
   a market with no listing is still its own row (`views.browseListings`).
+  A listing nobody has traded has no main market (`BrowseRow.main` null): it
+  is listed with no bar, sparkline or headline, counts as `open`, takes its
+  listing's `kind`, and every sort puts it after the rows with a market.
   A listing row opens `/papers/<slug>`: title, authors, links, a collapsible
   abstract, its markets, and the selected one (`?market=`, default the main
   market) rendered by the same `MarketLive` as `/markets/<slug>`, from the
@@ -826,6 +844,17 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   Discussion, via `MarketLive`'s `beforeDiscussion`) show each with its
   main market's odds, in the service's order, not alphabetical. Prices,
   never values.
+- **Until a paper has a bet, only its first 3 related papers are given
+  out** (`RELATED_UNBET`, `lib/related.ts`): `views.listingRelatedTo` and
+  `GET /listings/{id}/related` send those and a count, `hidden`, of the
+  rest. A bet is a fill on any of the listing's markets; per paper, not
+  per viewer. The page (`RelatedPapers`) draws the hidden ones as blurred
+  placeholders, never their titles, under what unlocks them: "Open the market" while the paper has none
+  (a sentence, no button), else "Place a bet ↑" (a `ScrollLink`, an eased scroll up until the trade box's outcome buttons sit in the window's lower third),
+  and no minimap. The map's own reads (`/map/related`, the minimap, via
+  `{ all: true }`) are not held back, on the owner's call, and its side
+  panel lists only the first 3 for every paper. With a bet, the first 10
+  and the rest behind "See more" (`components/SeeMore`).
 
 ### The paper map (`/map`)
 
@@ -1040,7 +1069,7 @@ unpaginated, and 5 s for that search.
 ### Paper markets and sharing (#11)
 
 - **A paper has one market by default: `Accept, Reject`**,
-  as its main market (rank 0), created by `../research`. The platform still
+  as its main market (rank 0), opened on demand (below). The platform still
   attaches no meaning to the labels, and a listing may still carry more
   markets (the paper page lists them only when there is more than one).
 - **Reject also covers a withdrawal** (#19): a paper withdrawn or
@@ -1117,14 +1146,78 @@ unpaginated, and 5 s for that search.
 - **`SITE_NAME`** (default `acceptodds`) is the badge's label and `og:site_name`;
   `APP_URL` (else `BETTER_AUTH_URL`) is the origin in every absolute link.
 - **`npm run db:seed`** wipes every table, then loads submissions from
-  `data/iclr2027.sqlite` under `ICLR 2027` with `Accept, Reject` markets,
-  a 32% acceptance prior, and the admin. Liquidity defaults to an expected
-  field of 6 traders: a 100-unit Accept buy moves the opening price to about
-  39.4%; `--traders=<n>` overrides it. `--keep-listings` preserves existing
-  listings, bibliography, related papers, view data and the map, replacing
-  their markets without reading SQLite. All trading and account data is
+  `data/iclr2027.sqlite` under `ICLR 2027` with **no markets**, the admin,
+  and a treasury sized to open every listing's market at the worst floored
+  prior. `--keep-listings` preserves existing
+  listings, bibliography, related papers, view data and the map, without
+  reading SQLite. All trading and account data is
   still wiped; no bots or trades are seeded. Only a local database without
   `--allow-remote`; a remote one also needs `SEED_ADMIN_PASSWORD`.
+
+### Markets opened on demand
+
+- **The venue opens with no markets on its listings.** Two calls open
+  one (`trade` scope, trading eligibility), both `server/market-start.ts`:
+  - `POST /listings/{id}/market` (`openListingMarket`) opens it at JEV's
+    price with no trade; idempotent (`created: false`, 200, when it
+    exists). Opening spends a subsidy and a model call, so at most 50 a day
+    per account (`market-open:<account>`); asking for an existing one is
+    free. This is the UI's: the paper page's `JevPrice` button, "Open
+    Market", set over the odds
+    figure drawn blurred from placeholders (an even bar, `??%`; never a
+    price), inviting a look rather than saying nobody has traded; while
+    opening it reads "Opening market…". **Signed out, it asks for an email
+    in place**, in a box over the figure (`SignUpEmail`: `POST /onboarding` with no bet and `next` the
+    paper with `?price=jev`, `jevPricePath`), then the code from the mail
+    (`CodeEntry`). The code step is remembered in this browser
+    (`lib/pending-confirmation.ts`, `next` the paper), so while any code
+    is outstanding a paper with no market asks for it, not the button (one
+    record, shared with the banner, which stays off the paper that sent it;
+    a code sent elsewhere confirms by way of `/verify-email`, back to the
+    paper without opening it). Code or link, confirming signs in and lands on
+    `?price=jev` (the link by way of `/verify-email`, which goes straight
+    on), which with a session, and so a confirmed address, opens the
+    market by itself, once. The page,
+    read again, shows `MarketLive`, whose first-bet box asks for the
+    first trade.
+  - `POST /listings/{id}/orders { outcome, stakeMicro }` (`buyOnListing`,
+    `Idempotency-Key`) is a buy by stake on the main market, opening it
+    first if there is none. For bots; the UI does not use it.
+- **No price shows before the first trade**: a market nobody has traded
+  (JEV's price only) has no bar or headline on the home list
+  (`orderCount > 0`) or the map (`headline` null), and sorts with the
+  listings that have no market, after every traded row.
+- **The market is the kind's template** (`market-templates.ts`), slug
+  `<listing>-decision`, rank 0, `created_by` the trader who opened it.
+  `created_by` is stored, never shown: the tape is anonymous, and
+  "opened by @x" would point at the first fill. No template, or past its
+  `closesAt`: refused, and nothing is made.
+- **It opens at JEV's prices**, floored (`jev.floored`: `(1 − n·f)·p + f`,
+  `PRICE_FLOOR` 0.05), so one market costs the house at most
+  `b·ln(1/PRICE_FLOOR)` (§1.7). No `NANOGPT_API_KEY`, a timeout, an error
+  or a malformed answer: the template's `fallbackPrices`. The order never
+  fails on the model. Each call's `usage.cost` goes to `usd_costs`
+  (`source = 'jev'`, §1.5).
+- **JEV reads the full text when `../research` supplied one**
+  (`PUT /listings/{id}/text`, admin, its own call like related papers, so
+  re-posting a listing keeps it; `listing_texts`, written by
+  `listings.setText`, never served), else the abstract, under the title,
+  area and keywords (`jev.paperText`). Cut at 120k characters
+  (`JEV_MAX_CHARS`): measured, 120k (~24k tokens, ~$0.001) is answered and
+  200k is refused with a 400, on which it asks again with the abstract.
+- **By stake, because the first trader has seen no price.** Shares are
+  sized on the board read after the market exists, and the stake is
+  `maxCostMicro`, so it never costs more than was put up. A fill landing in
+  between re-sizes it, up to 5 times, then `slippage_exceeded`. Slippage
+  is still `engine.trade`'s; this is only its sizing.
+- **One market per listing, however many first trades race**: one creation
+  in flight per listing per process, and across processes the unique slug
+  makes the loser read the winner's market. A balance too small for the
+  stake is refused before anything is made, so a failed first order leaves
+  no untraded market.
+- **Onboarding bets only on traded papers**: `/welcome`'s suggestions and
+  the tutorial's example pass `traded: true`, since a pending bet names a
+  market.
 
 ### Leaderboard, people search and search syntax (#10)
 

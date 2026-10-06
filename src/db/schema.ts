@@ -178,6 +178,19 @@ export interface ListingLink {
 }
 
 /**
+ * A listing's full text, as `../research` extracted it, supplied whole with
+ * the listing (`POST /listings`, `fullText`) and read only by `server/jev.ts`
+ * to price a market's opening. A table of its own so that no read of
+ * `listings` carries a whole paper. Never served.
+ */
+export const listingTexts = pgTable('listing_texts', {
+  listingId: uuid('listing_id')
+    .primaryKey()
+    .references(() => listings.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+});
+
+/**
  * A listing's bibliography (#38): what the paper cites, in its own order,
  * supplied whole by `../research` with the listing (`POST /listings`
  * replaces the list) and written only by `server/listings.ts`, in the
@@ -374,6 +387,8 @@ export const markets = pgTable(
     uniqueIndex('markets_short_id_key').on(t.shortId),
     index('markets_status_idx').on(t.status),
     index('markets_listing_id_idx').on(t.listingId),
+    // Deleting a maker account checks it here (`db/drop-untraded.ts`).
+    index('markets_maker_account_id_idx').on(t.makerAccountId),
     index('markets_created_idx').on(t.createdAt, t.id),
     // Browse rows (`views.browseListings`): the main markets of a venue.
     index('markets_main_idx')
@@ -463,6 +478,7 @@ export const orders = pgTable(
     // Price history is read as (market, time).
     index('orders_market_created_idx').on(t.marketId, t.createdAt),
     index('orders_account_id_idx').on(t.accountId),
+    index('orders_outcome_id_idx').on(t.outcomeId),
     // Bots retry. This is what makes the retry return the original fill
     // rather than trading twice.
     uniqueIndex('orders_account_idempotency_key')
@@ -514,7 +530,12 @@ export const ledgerEntries = pgTable(
     marketId: uuid('market_id').references(() => markets.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
-  (t) => [index('ledger_entries_account_id_idx').on(t.accountId), index('ledger_entries_order_id_idx').on(t.orderId)],
+  (t) => [
+    index('ledger_entries_account_id_idx').on(t.accountId),
+    index('ledger_entries_order_id_idx').on(t.orderId),
+    // Without it, deleting a market scans the whole ledger for its `set null`.
+    index('ledger_entries_market_id_idx').on(t.marketId),
+  ],
 );
 
 /**
