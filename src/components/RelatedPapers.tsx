@@ -87,11 +87,8 @@ export function RelatedPapers({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 text-center">
             <p className="font-sans text-sm text-ink">
               {unlock === 'open'
-                ? 'Open the market on this paper'
-                : unlock === 'bet'
-                  ? 'Place a bet on this paper'
-                  : 'Once this paper has a bet,'}{' '}
-              to see more related papers.
+                ? 'See more related submissions when the market opens.'
+                : `${unlock === 'bet' ? 'Place a bet on this paper' : 'Once this paper has a bet,'} to see more related papers.`}
             </p>
             {/* With no market yet, `JevPrice` is just above: the sentence says enough. */}
             {unlock === 'bet' && (

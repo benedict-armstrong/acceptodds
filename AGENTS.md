@@ -849,7 +849,7 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   `GET /listings/{id}/related` send those and a count, `hidden`, of the
   rest. A bet is a fill on any of the listing's markets; per paper, not
   per viewer. The page (`RelatedPapers`) draws the hidden ones as blurred
-  placeholders, never their titles, under what unlocks them: "Open the market" while the paper has none
+  placeholders, never their titles, under what unlocks them: "See more related submissions when the market opens" while the paper has none
   (a sentence, no button), else "Place a bet ↑" (a `ScrollLink`, an eased scroll up until the trade box's outcome buttons sit in the window's lower third),
   and no minimap. The map's own reads (`/map/related`, the minimap, via
   `{ all: true }`) are not held back, on the owner's call, and its side
