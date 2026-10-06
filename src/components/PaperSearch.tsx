@@ -28,17 +28,22 @@ export function tradableListingMarket(l: Listing): Market | null {
  * Search the venue's papers, with the home page's search box and rows;
  * before anything is typed, the most traded ones. Live as it is typed (Enter
  * only skips the wait), so it has no button, and a row picks rather than navigates.
+ * A paper with no market yet is offered too when `canOpen`: picking it is
+ * what opens its market (`POST /listings/{id}/market`).
  */
 export function PaperSearch({
   kind,
   suggestions,
   sparks,
+  canOpen,
   onPick,
 }: {
   kind: string;
   suggestions: Listing[];
   /** Sparklines by market id, for the suggestions; a search's results have none. */
   sparks: Record<string, number[]>;
+  /** Whether the viewer may open a paper's market: its kind's template is open, and they may trade or are signed out. */
+  canOpen: boolean;
   onPick: (l: Listing) => void;
 }) {
   const [q, setQ] = useState('');
@@ -53,7 +58,9 @@ export function PaperSearch({
       : null,
     publicJson,
   );
-  const shown = (debounced ? (data?.listings ?? []) : suggestions).filter((l) => tradableListingMarket(l));
+  const shown = (debounced ? (data?.listings ?? []) : suggestions).filter(
+    (l) => tradableListingMarket(l) || (canOpen && l.markets.length === 0),
+  );
 
   return (
     <>
@@ -78,8 +85,10 @@ export function PaperSearch({
       {!debounced && shown.length > 0 && <div className="mt-4 font-sans text-xs text-faint">Most traded</div>}
       <div className={debounced ? 'mt-4' : 'mt-1'}>
         {shown.map((l) => {
-          const market = l.markets[0];
           const traded = l.markets.some((m) => m.orderCount > 0);
+          // No price before the first trade: an untraded market's is only JEV's.
+          const main = l.markets.at(0);
+          const market = main && main.orderCount > 0 ? main : null;
           return (
             <PaperRow
               key={l.id}
@@ -88,7 +97,7 @@ export function PaperSearch({
               pdf={l.links.find((link) => link.label.toLowerCase() === 'pdf')}
               market={market}
               volumeMicro={traded ? l.markets.reduce((sum, m) => sum + BigInt(m.volumeMicro), 0n) : null}
-              spark={sparks[market.id] ?? []}
+              spark={market ? (sparks[market.id] ?? []) : []}
               onPick={() => onPick(l)}
             />
           );

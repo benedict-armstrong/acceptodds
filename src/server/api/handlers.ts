@@ -1,6 +1,13 @@
 import { readingList, readingStatuses, setListingRead, setReadingList } from '../reading';
 import { isUniqueViolation } from '@/db/errors';
-import { authenticate, requireAuth, requireSession, requireTradingEligibility, type Principal } from '../auth';
+import {
+  authenticate,
+  requireAuth,
+  requireScope,
+  requireSession,
+  requireTradingEligibility,
+  type Principal,
+} from '../auth';
 import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
 import { buyOnListing, openListingMarket } from '../market-start';
@@ -448,13 +455,19 @@ export const postOrder = route(async (req, params) => {
 /**
  * Open a listing's market at JEV's prices, with no trade
  * (`market-start.openListingMarket`). Idempotent: a listing that has one
- * answers it with `created: false` and a 200.
+ * answers it with `created: false` and a 200. A visitor with no credential
+ * may open one too (`/welcome` asks for the price before there is an
+ * account), from the visitors' shared budget; a credential that is sent must
+ * hold `trade` and be trading-eligible, as for the order that follows.
  */
 export const postListingMarket = route(async (req, params) => {
-  const principal = await requireAuth(req, 'trade');
-  requireTradingEligibility(principal);
+  const principal = await authenticate(req);
+  if (principal) {
+    requireScope(principal, 'trade');
+    requireTradingEligibility(principal);
+  }
   const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
-  const { market, created } = await openListingMarket(listing, principal.account.id);
+  const { market, created } = await openListingMarket(listing, principal?.account.id ?? null);
   return respond(
     S.OpenedMarket,
     { market: presentMarket(await marketView(market)), created },

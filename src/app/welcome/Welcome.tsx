@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { BetSummary } from '@/components/BetSummary';
 import { MathText } from '@/components/MathText';
@@ -85,6 +85,7 @@ export function Welcome({
   next,
   suggestions,
   sparks,
+  canOpen,
   chosen,
   viewer,
 }: {
@@ -94,6 +95,8 @@ export function Welcome({
   suggestions: Listing[];
   /** The suggestions' sparklines, by market id. */
   sparks: Record<string, number[]>;
+  /** Whether a paper with no market may be picked, its market opened at JEV's price (`PaperSearch`). */
+  canOpen: boolean;
   chosen: Chosen | null;
   viewer: { signedIn: boolean; canTrade: boolean; cashMicro: string };
 }) {
@@ -101,10 +104,12 @@ export function Welcome({
   const steps = viewer.signedIn ? SIGNED_IN : chosen ? CHOSEN : ANON;
   const [pick, setPick] = useState<Pick | null>(chosen?.pick ?? null);
   const [choice, setChoice] = useState<Choice | null>(chosen?.choice ?? null);
+  /** A paper picked with no market: the bet step opens it, then it is the pick. */
+  const [opening, setOpening] = useState<Listing | null>(null);
   function reachable(s: Step | null): Step {
     if (!s || !steps.includes(s)) return steps[0];
     const need = NEEDS[s];
-    if ((need === 'pick' && !pick) || (need === 'choice' && (!pick || !choice))) return 'search';
+    if ((need === 'pick' && !pick && !opening) || (need === 'choice' && (!pick || !choice))) return 'search';
     return s;
   }
 
@@ -187,9 +192,17 @@ export function Welcome({
             kind={kind}
             suggestions={suggestions}
             sparks={sparks}
+            canOpen={canOpen}
             onPick={(l) => {
-              const market = tradableListingMarket(l) ?? l.markets[0];
-              setPick({ market, title: l.title, href: marketHref({ marketSlug: market.slug, listingSlug: l.slug }) });
+              const market = tradableListingMarket(l);
+              setPick(
+                market && {
+                  market,
+                  title: l.title,
+                  href: marketHref({ marketSlug: market.slug, listingSlug: l.slug }),
+                },
+              );
+              setOpening(market ? null : l);
               setChoice(null);
               go('bet');
             }}
@@ -199,6 +212,22 @@ export function Welcome({
       );
 
     case 'bet':
+      if (!pick) {
+        return card(
+          <MathText text={opening!.title} />,
+          <OpenMarket
+            listing={opening!}
+            onOpened={(market) => {
+              setPick({
+                market,
+                title: opening!.title,
+                href: marketHref({ marketSlug: market.slug, listingSlug: opening!.slug }),
+              });
+              setOpening(null);
+            }}
+          />,
+        );
+      }
       return card(
         <MathText text={pick!.title} />,
         <OnboardingTrade
@@ -231,6 +260,42 @@ export function Welcome({
         />,
       );
   }
+}
+
+/**
+ * The first price of a paper nobody has opened a market on: its market,
+ * opened now at JEV's prices (`POST /listings/{id}/market`, which a visitor
+ * may call without an account), then the bet as on any other. Once, even
+ * under React's double effects in development; the call is idempotent anyway.
+ */
+function OpenMarket({ listing, onOpened }: { listing: Listing; onOpened: (market: Market) => void }) {
+  const [note, setNote] = useState<string | null>(null);
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/v1/listings/${listing.id}/market`, { method: 'POST' });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) return onOpened(body.market as Market);
+        setNote(
+          res.status === 429
+            ? 'Too many new markets were opened today. Try again later, or pick a paper that already has one.'
+            : (body.error?.message ?? 'Something went wrong.'),
+        );
+      } catch {
+        setNote('Network error. Go back and pick the paper again.');
+      }
+    })();
+  }, [listing.id, onOpened]);
+  return note ? (
+    <p className="my-4 text-muted">{note}</p>
+  ) : (
+    <p className="my-4 text-muted" aria-live="polite">
+      Nobody has traded this paper yet. Opening its market…
+    </p>
+  );
 }
 
 /** Institutional email: `POST /onboarding` stores the bet and mails a link and a code. */

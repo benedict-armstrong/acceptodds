@@ -783,11 +783,11 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['trading'],
       summary: 'Open a listing’s market at a model’s prices, without trading',
       description:
-        'A listing has no market until someone opens it, by this call or by a first order (`POST /listings/{id}/orders`). The market opens at JEV’s prices for the listing, else the venue’s base rate. Idempotent: on a listing with a market, that market and `created: false`. Each account may open 50 a day.',
-      scope: 'trade',
+        'A listing has no market until someone opens it, by this call or by a first order (`POST /listings/{id}/orders`). The market opens at JEV’s prices for the listing, else the venue’s base rate. Idempotent: on a listing with a market, that market and `created: false`. Each account may open 50 a day. Without a credential it opens too, for a visitor choosing a first bet before signing up, from one budget all visitors share; a credential that is sent needs the `trade` scope and a trading-eligible account.',
       request: { params: listingIdParam },
       ok: { status: 201, schema: S.OpenedMarket, description: 'The market (200 when it already existed).' },
       errors: {
+        401: 'unauthorized: a credential was sent and is invalid.',
         403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
         404: 'not_found',
         409: 'market_not_open: no market is made for this listing’s kind | market_closed',

@@ -107,20 +107,24 @@ export async function buyOnListing(
 
 /**
  * The listing's main market, opened from its template at JEV's prices
- * without a trade, for a trader who asked for the opening price ("Get the
- * initial price from JEV"); they are then asked for the first trade.
- * `created` is false when the listing already had one. Making markets spends
- * the house's subsidy and a model call, so each account may make at most
- * {@link OPEN_BUDGET} a day; asking for one that exists costs nothing.
+ * without a trade, for someone who asked for the opening price: the paper
+ * page's "Open Market", or `/welcome` when a visitor picks a paper nobody has
+ * opened; they are then asked for the first trade. `created` is false when
+ * the listing already had one. Making markets spends the house's subsidy and
+ * a model call, so each account may make at most {@link OPEN_BUDGET} a day,
+ * and visitors with no account (`accountId` null) {@link ANONYMOUS_OPEN_BUDGET}
+ * between them; asking for one that exists costs nothing.
  */
 export async function openListingMarket(
   listing: Listing,
-  accountId: string,
+  accountId: string | null,
   database: Database = getDb(),
 ): Promise<{ market: Market; created: boolean }> {
   const existing = await mainMarket(listing.id, database);
   if (existing) return { market: existing, created: false };
-  const budget = await consume(`market-open:${accountId}`, OPEN_BUDGET);
+  const budget = accountId
+    ? await consume(`market-open:${accountId}`, OPEN_BUDGET)
+    : await consume('market-open:anonymous', ANONYMOUS_OPEN_BUDGET);
   if (!budget.allowed) {
     throw new ApiError(
       429,
@@ -135,6 +139,14 @@ export async function openListingMarket(
 
 /** Markets one account may open a day. */
 export const OPEN_BUDGET: RateLimitConfig = { burst: 50, perSecond: 50 / 86_400 };
+
+/**
+ * Markets all visitors without an account may open a day, together: one
+ * bucket, since nothing anonymous is keyed on the client. It bounds what an
+ * anonymous caller can spend of the subsidy and the model; past it they are
+ * asked to try again later, and signed-in traders keep their own budgets.
+ */
+export const ANONYMOUS_OPEN_BUDGET: RateLimitConfig = { burst: 200, perSecond: 200 / 86_400 };
 
 /** How many times a stake is sized before its order is refused as `slippage_exceeded`. */
 const STAKE_ATTEMPTS = 5;
@@ -158,7 +170,8 @@ const inFlight = new Map<string, Promise<{ market: Market; created: boolean }>>(
 /** The listing's main market, made from its template if it has none. `created` is whether this call made it. */
 export async function ensureMainMarket(
   listing: Listing,
-  accountId: string,
+  /** Who opened it (`created_by`); null for a visitor without an account. */
+  accountId: string | null,
   database: Database = getDb(),
 ): Promise<{ market: Market; created: boolean }> {
   const existing = await mainMarket(listing.id, database);
@@ -177,7 +190,7 @@ export async function ensureMainMarket(
 
 async function createFromTemplate(
   listing: Listing,
-  accountId: string,
+  accountId: string | null,
   database: Database,
 ): Promise<{ market: Market; created: boolean }> {
   const template = marketTemplate(listing.kind);

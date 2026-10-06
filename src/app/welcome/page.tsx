@@ -5,6 +5,7 @@ import { PAPER_SEARCH_LIMIT, parseChosenBet } from '@/lib/onboarding';
 import { safeReturnTo } from '@/lib/return-to';
 import { defaultMarketKind } from '@/lib/venue';
 import { startingBalanceMicro } from '@/server/accounts';
+import { openMarketTemplate } from '@/server/market-templates';
 import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
@@ -55,6 +56,11 @@ export default async function WelcomePage({
       next={safeReturnTo(params.next)}
       suggestions={suggestions}
       sparks={sparks}
+      // A paper with no market opens one at JEV's price when picked: while its kind's template is open,
+      // for a visitor or a viewer who may trade (the call's own gate).
+      canOpen={
+        openMarketTemplate(kind) !== null && (!viewer || viewer.account.isBot || viewer.account.verifiedAt !== null)
+      }
       chosen={chosen}
       viewer={
         viewer

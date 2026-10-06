@@ -4,6 +4,8 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { listingTexts, markets, usdCosts } from '@/db/schema';
 import { setRelated, setText, upsertListing } from '@/server/listings';
+import { ANONYMOUS_OPEN_BUDGET } from '@/server/market-start';
+import { consume } from '@/server/ratelimit';
 import { browseListings, marketKinds } from '@/server/views';
 import { api, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO } from './helpers';
@@ -245,12 +247,31 @@ describe('opening a market at JEV’s price, without a trade', () => {
     expect(await mainMarketOf(p.id)).toHaveLength(1);
   });
 
-  it('refuses a visitor and an unverified account, and makes nothing', async () => {
+  it('refuses an unverified account, a read-only token and a bad one, and makes nothing', async () => {
     const p = await paper('p');
     const unverified = await trader('u', ['read', 'trade'], { verified: false });
-    expect((await open(undefined, p.id)).status).toBe(401);
+    const reader = await trader('r', ['read']);
     expect((await open(unverified.token, p.id)).status).toBe(403);
+    expect((await open(reader.token, p.id)).status).toBe(403);
+    expect((await open('pm_live_not-a-key', p.id)).status).toBe(401);
     expect(await mainMarketOf(p.id)).toHaveLength(0);
+  });
+
+  it('opens it for a visitor with no credential, made by nobody, from the visitors’ shared budget', async () => {
+    stubJev({ probabilities: { Accept: 0.3, Reject: 0.7 } });
+    const [a, b] = await Promise.all([paper('a'), paper('b')]);
+
+    const first = await open(undefined, a.id);
+    expect(first.status).toBe(201);
+    expect((first.body as any).market.outcomes[0].price).toBeCloseTo(0.32);
+    const [m] = await mainMarketOf(a.id);
+    expect(m.createdBy).toBeNull();
+
+    // Out of budget: an existing market is still free, a new one is refused.
+    for (let i = 0; i < ANONYMOUS_OPEN_BUDGET.burst; i++) await consume('market-open:anonymous', ANONYMOUS_OPEN_BUDGET);
+    expect((await open(undefined, a.id)).status).toBe(200);
+    expect((await open(undefined, b.id)).status).toBe(429);
+    expect(await mainMarketOf(b.id)).toHaveLength(0);
   });
 
   it('lists an opened but untraded paper with no price, after the traded ones', async () => {

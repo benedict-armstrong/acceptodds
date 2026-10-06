@@ -1157,7 +1157,8 @@ unpaginated, and 5 s for that search.
 ### Markets opened on demand
 
 - **The venue opens with no markets on its listings.** Two calls open
-  one (`trade` scope, trading eligibility), both `server/market-start.ts`:
+  one (`trade` scope, trading eligibility; the first also with no
+  credential, for `/welcome`, below), both `server/market-start.ts`:
   - `POST /listings/{id}/market` (`openListingMarket`) opens it at JEV's
     price with no trade; idempotent (`created: false`, 200, when it
     exists). Opening spends a subsidy and a model call, so at most 50 a day
@@ -1215,9 +1216,16 @@ unpaginated, and 5 s for that search.
   makes the loser read the winner's market. A balance too small for the
   stake is refused before anything is made, so a failed first order leaves
   no untraded market.
-- **Onboarding bets only on traded papers**: `/welcome`'s suggestions and
-  the tutorial's example pass `traded: true`, since a pending bet names a
-  market.
+- **Onboarding can pick a paper with no market**: `/welcome`'s search
+  offers it while its kind's template is open (to a visitor, or a viewer
+  who may trade), and picking it opens the market at JEV's price
+  (`POST /listings/{id}/market`) before the bet step shows a price, so a
+  pending bet still names a market. Its suggestions ("Most traded") and the
+  tutorial's example still pass `traded: true`. **That call takes no
+  credential** for this: a visitor's opens come from one shared bucket,
+  `market-open:anonymous` (`ANONYMOUS_OPEN_BUDGET`, 200 a day), with
+  `created_by` null; a credential that is sent still needs `trade` and
+  trading eligibility.
 
 ### Leaderboard, people search and search syntax (#10)
 
