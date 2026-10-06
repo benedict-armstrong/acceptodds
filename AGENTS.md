@@ -520,6 +520,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   a pseudo-terminal (`script -qfc`) and answer "create", or squash (above).
 - **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
   server log, outside production; in production a missing key throws.
+- **Every mail is sent with an HTML part made from its text**
+  (`lib/mail-html.ts`, in `sendMail`): text kept as written, URLs as
+  anchors. Text-only, our long auth links were wrapped at a hyphen and cut
+  (`/verify-`, now redirected to `/verify-email`). Write mails as text;
+  never send one without the HTML part.
 
 ### UI (M6)
 
