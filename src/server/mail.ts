@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { htmlFromText } from '@/lib/mail-html';
 
 /**
  * Outbound email, in one place (IMPLEMENTATION.md §8: Resend, because
@@ -45,6 +46,13 @@ export async function sendMail(mail: Mail): Promise<void> {
   const from = process.env.MAIL_FROM;
   if (!from) throw new Error('MAIL_FROM is not set');
   client ??= new Resend(key);
-  const { error } = await client.emails.send({ from, to: mail.to, subject: mail.subject, text: mail.text });
+  // With an HTML part, so no client has to find (and cut) a long link in wrapped text (`lib/mail-html.ts`).
+  const { error } = await client.emails.send({
+    from,
+    to: mail.to,
+    subject: mail.subject,
+    text: mail.text,
+    html: htmlFromText(mail.text),
+  });
   if (error) throw new Error(`resend: ${error.message}`);
 }
