@@ -83,6 +83,21 @@ const DISABLED_OTP_PATHS = [
 ];
 
 /**
+ * The API-key plugin's own routes, all off. Keys are minted, listed and
+ * revoked only through `/api/v1/me/tokens` (`server/tokens.ts`, calling the
+ * plugin server-side, which `disabledPaths` does not affect). Left on,
+ * `/api-key/update` would let a session switch a revoked key back on, and
+ * `/api-key/create` would mint keys past `/me/tokens`.
+ */
+const DISABLED_API_KEY_PATHS = [
+  '/api-key/create',
+  '/api-key/get',
+  '/api-key/list',
+  '/api-key/update',
+  '/api-key/delete',
+];
+
+/**
  * Marks a sign-in link as onboarding's, for an address that already has an
  * account (`mailExistingAccount`). Random per process and never sent to a
  * client, so `/sign-in/magic-link`'s client-supplied `metadata` cannot forge it.
@@ -279,8 +294,8 @@ export function createAuth(database: Database) {
     },
 
     // Sign-up is ours (`server/onboarding.ts`): it takes no password, so
-    // Better Auth's, which does, is off.
-    disabledPaths: ['/sign-up/email', ...DISABLED_OTP_PATHS],
+    // Better Auth's, which does, is off. So are the API-key routes (above).
+    disabledPaths: ['/sign-up/email', ...DISABLED_OTP_PATHS, ...DISABLED_API_KEY_PATHS],
 
     advanced: {
       // Better Auth skips its origin/CSRF check when NODE_ENV=test. Pin it on,

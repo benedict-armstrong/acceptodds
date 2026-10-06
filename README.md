@@ -55,7 +55,7 @@ src/
   app/                 pages, and app/api/v1 route files that only re-export handlers
   components/          the UI's shared pieces (ui.ts holds the class lists)
 config/                institution-domains.json, the sign-up allowlist
-scripts/               token:mint, api:smoke, digest:send, institutions:build
+scripts/               token:mint, api:smoke, digest:send, users:prune, institutions:build
 drizzle/               generated migrations, checked in
 tests/unit/            no database, fast, property-based
 tests/integration/     real Postgres
@@ -161,6 +161,17 @@ It sends at most one mail per account per day (`DIGEST_TIMEZONE`, default
 `Europe/Zurich`), so a second run is harmless, and exits non-zero if a mail
 failed (re-running the same day retries those). People turn it off on
 `/profile`.
+
+## Pruning unconfirmed sign-ups
+
+Anyone can start a sign-up for any allowlisted address, which makes a Better
+Auth user before the address is confirmed. `npm run users:prune` deletes those
+never confirmed after a week (`--older-than-days` overrides), keeping any with
+a pending bet stored within it. Run it weekly from the host's cron:
+
+```cron
+0 4 * * 0  cd /srv/papermarket && docker compose -f docker-compose.prod.yml --env-file .env.production run --rm tools npm run users:prune
+```
 
 ## Page analytics
 

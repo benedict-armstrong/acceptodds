@@ -11,6 +11,8 @@ export const metadata: Metadata = {
 };
 
 const CONTACT = 'hello@acceptodds.com';
+/** Where account deletion is asked for. */
+const ACCOUNTS_CONTACT = 'accounts@acceptodds.com';
 const prose = 'mt-2 space-y-3 leading-relaxed';
 const list = 'mt-2 list-disc space-y-1.5 pl-5 leading-relaxed';
 
@@ -60,7 +62,14 @@ export default function PrivacyPage() {
         </ul>
         <p>
           The legal basis is the contract you enter by signing up (GDPR Art. 6(1)(b)). It is kept while your account
-          exists.
+          exists. A sign-up whose address is never confirmed is deleted after a week.
+        </p>
+        <p>
+          To delete your account, write to{' '}
+          <a href={`mailto:${ACCOUNTS_CONTACT}`} className={ui.hyperref}>
+            {ACCOUNTS_CONTACT}
+          </a>{' '}
+          from the address you signed up with.
         </p>
       </div>
 
@@ -71,8 +80,8 @@ export default function PrivacyPage() {
         <p>
           Your display name, handle, institutions, rank and net worth appear on the leaderboard and on your page at{' '}
           <span className="font-mono">/people/&lt;handle&gt;</span>. Comments are shown under a random alias per paper,
-          with your current position in that market, never your name. A position is public only if you make it so, one
-          at a time. Your email address is never shown to anyone else.
+          with your current position in that market, rounded to two figures, never your name. A position is public only
+          if you make it so, one at a time. Your email address is never shown to anyone else.
         </p>
       </div>
 

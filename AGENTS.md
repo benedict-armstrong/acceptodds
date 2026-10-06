@@ -317,7 +317,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   lookup or byte comparison to time; that replaces §7's "look up by prefix,
   compare in constant time". Scopes live in the plugin's `permissions` as
   `{ api: [...] }` and are checked by `server/auth.ts`, so a missing scope is a
-  403, not the plugin's 401.
+  403, not the plugin's 401. The plugin's own `/api/auth/api-key/*` routes are in
+  `disabledPaths`: keys are managed only through `/me/tokens`, which calls the
+  plugin server-side. Open, `/api-key/update` re-enabled revoked keys.
 - **Bots have a Better Auth user, login-less.** The plugin keys every token on
   a `user`, which contradicts §8's "bots have no user_id". A bot gets a user
   the first time it is issued a token: email `<handle>@bots.papermarket.invalid`
@@ -678,6 +680,10 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   has foreign keys (unlike `events`) because it is written in its own tiny
   transaction, never inside a trade. `comment_backings` is the exception
   (below): the engine trims it inside `trade()`.
+  **The stake is rounded down to two significant figures** (`lib/stake.ts`),
+  in the API too: the tape has every fill's exact size and the leaderboard
+  every trader's exact net worth, live, and an exact stake matched against
+  both ties the alias to a handle. Never send it exact.
 - **Replies nest** (#31): `comments.parent_id` names the comment answered,
   on the same market, at any depth; the UI indents each level. A
   discussion is never read whole: `GET /markets/{id}/comments` pages
@@ -1274,6 +1280,10 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   Better Auth's server-only `setPassword`).
   Another onboarding with the same unconfirmed address may replace it, so
   it is placed unasked only in the browser that chose it (below).
+  **Unconfirmed users are pruned weekly** (`npm run users:prune`, host cron,
+  `onboarding.pruneUnconfirmedUsers`): never confirmed, a week old, no
+  trader account (bots' login-less users have one) and no pending bet
+  stored within the week.
 - **An unmoved bet is placed without asking** (`pending_bets.seen_order_count`,
   `seenOrderCount` in `POST /onboarding`): the market's `orderCount` on the
   board the bet was chosen from. Prices move only by fills, so while it is

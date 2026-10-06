@@ -1155,9 +1155,10 @@ export const Comment = z
         }),
         isBot: z.boolean(),
         isYou: z.boolean().meta({ description: 'True when the authenticated caller wrote this comment.' }),
-        stake: z
-          .array(z.object({ outcomeId: Id, outcomeLabel: z.string(), sharesMicro: Micro }))
-          .meta({ description: "The author's current holdings in this market. Empty once it settles." }),
+        stake: z.array(z.object({ outcomeId: Id, outcomeLabel: z.string(), sharesMicro: Micro })).meta({
+          description:
+            "The author's current holdings in this market, each rounded down to two significant figures so it cannot be matched against the tape. Empty once it settles.",
+        }),
       })
       .meta({ description: 'Pseudonymous by design: an alias per paper, never a handle or an account id.' }),
     backing: CommentBacking,

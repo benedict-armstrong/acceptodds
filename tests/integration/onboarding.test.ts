@@ -6,7 +6,15 @@ import { accounts, pendingBets } from '@/db/schema';
 import { VERIFY_EMAIL } from '@/lib/return-to';
 import { getAuth } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
-import { choseHere, ONBOARDING_BROWSER_COOKIE, pendingBetFor, pendingBetOrderKey } from '@/server/onboarding';
+import {
+  choseHere,
+  ONBOARDING_BROWSER_COOKIE,
+  pendingBetFor,
+  pendingBetOrderKey,
+  pruneUnconfirmedUsers,
+} from '@/server/onboarding';
+import { createAccount } from '@/server/accounts';
+import { mintToken } from '@/server/tokens';
 import { api, authCall, cookieFrom, signUp } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -288,5 +296,43 @@ describe('onboarding', () => {
   it('password and pending-bet endpoints are session only', async () => {
     expect((await api('POST', '/me/password', { body: { password: 'correct horse battery' } })).status).toBe(401);
     expect((await api('DELETE', '/me/pending-bet')).status).toBe(401);
+  });
+
+  it('prunes only unconfirmed sign-ups older than a week, keeping traders, bots and sign-ups in progress', async () => {
+    const DAY = 86_400_000;
+    const old = new Date(Date.now() - 8 * DAY);
+    const userOf = async (email: string) => (await db.select().from(user).where(eq(user.email, email)))[0];
+
+    // Unconfirmed, a week old, its bet as old: pruned, bet with it.
+    await start('stale@example.org');
+    await db.update(user).set({ createdAt: old }).where(eq(user.email, 'stale@example.org'));
+    const stale = await userOf('stale@example.org');
+    await db.update(pendingBets).set({ createdAt: old }).where(eq(pendingBets.userId, stale.id));
+
+    // Unconfirmed and old, but re-started today: a sign-up in progress.
+    await start('retry@example.org');
+    await db.update(user).set({ createdAt: old }).where(eq(user.email, 'retry@example.org'));
+
+    // Unconfirmed and new.
+    await start('fresh@example.org');
+
+    // A confirmed trader, and a bot's login-less (unconfirmed) user, both old.
+    await signUp('ada@example.org', 'Ada');
+    await db.update(user).set({ createdAt: old }).where(eq(user.email, 'ada@example.org'));
+    const bot = await createAccount({ handle: 'prune-bot', displayName: 'Bot', isBot: true });
+    await mintToken({ account: bot, name: 'bot', scopes: ['read'] });
+    await db.update(user).set({ createdAt: old }).where(eq(user.email, 'prune-bot@bots.papermarket.invalid'));
+
+    expect(await pruneUnconfirmedUsers()).toBe(1);
+    expect(await userOf('stale@example.org')).toBeUndefined();
+    expect(await pendingBetFor(stale.id)).toBeNull();
+    for (const kept of [
+      'retry@example.org',
+      'fresh@example.org',
+      'ada@example.org',
+      'prune-bot@bots.papermarket.invalid',
+    ]) {
+      expect(await userOf(kept)).toBeDefined();
+    }
   });
 });

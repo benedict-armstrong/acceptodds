@@ -56,7 +56,7 @@ export function TradeBox({
   viewer,
   onFilled,
   onChoose,
-  lockedIndex,
+  initialIndex = 0,
 }: {
   market: Market;
   /** The viewer's cash, from their polled portfolio; `null` when signed out. */
@@ -66,10 +66,10 @@ export function TradeBox({
   onFilled: (choice: Choice) => void;
   /** Instead of placing the order: the outcome and the stake. */
   onChoose?: (choice: Choice) => void;
-  /** The outcome already picked (`FirstTrade`): fixed, with no selector. */
-  lockedIndex?: number;
+  /** The outcome selected at first (`FirstTrade`'s pick). */
+  initialIndex?: number;
 }) {
-  const [idx, setIdx] = useState(lockedIndex ?? 0);
+  const [idx, setIdx] = useState(initialIndex);
   const [stake, setStake] = useState('100');
   const outcome = market.outcomes[idx];
   const slot = slotOf(idx, market.outcomes.length);
@@ -92,20 +92,18 @@ export function TradeBox({
   return (
     <div className={ui.box}>
       {/* Four outcomes don't fit in one row on a phone: two by two there. */}
-      {lockedIndex === undefined && (
-        <div className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}>
-          {market.outcomes.map((o, i) => (
-            <button
-              key={o.id}
-              aria-pressed={i === idx}
-              className={segment(i === idx, slotOf(i, market.outcomes.length))}
-              onClick={() => setIdx(i)}
-            >
-              {o.label} {pct(o.price)}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className={`mb-2 flex gap-1.5 ${market.outcomes.length > 2 ? 'narrow:grid narrow:grid-cols-2' : ''}`}>
+        {market.outcomes.map((o, i) => (
+          <button
+            key={o.id}
+            aria-pressed={i === idx}
+            className={segment(i === idx, slotOf(i, market.outcomes.length))}
+            onClick={() => setIdx(i)}
+          >
+            {o.label} {pct(o.price)}
+          </button>
+        ))}
+      </div>
       {/* A sentence, "Stake 10 $rep", whose number is an input sized to what
           is typed, marked only by a dashed underline (solid while hovered or
           focused). The whole line is the label, so a click anywhere on it

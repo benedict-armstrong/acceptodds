@@ -311,10 +311,20 @@ export function MarketLive({
   );
 }
 
-/** The first bet on a market is its own flow (`FirstTrade`); after that, the plain trade box. */
+/**
+ * The first bet on a market is its own flow (`FirstTrade`); after that, the
+ * plain trade box, on a paper under the same reassurance the first bet gives.
+ */
 function Trading(props: ComponentProps<typeof TradeBox> & { paper: boolean }) {
   const { paper, ...box } = props;
-  return box.market.orderCount === 0 ? <FirstTrade {...box} paper={paper} /> : <TradeBox {...box} />;
+  if (box.market.orderCount === 0) return <FirstTrade {...box} paper={paper} />;
+  if (!paper) return <TradeBox {...box} />;
+  return (
+    <div>
+      <p className="mb-2 text-xs text-muted">All positions stay anonymous.</p>
+      <TradeBox {...box} />
+    </div>
+  );
 }
 
 function statusLine(m: Market): string {

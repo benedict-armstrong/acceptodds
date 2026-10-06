@@ -12,6 +12,7 @@ import {
 } from '@/db/schema';
 import { mentionedAliases, randomAlias } from '@/lib/aliases';
 import { prices } from '@/lib/lmsr';
+import { coarseStakeMicro } from '@/lib/stake';
 import { costToMicro, microToFloat } from '@/lib/money';
 import { ApiError } from './api/errors';
 import { encodeCursor } from './views';
@@ -32,7 +33,9 @@ import { encodeCursor } from './views';
  * The stake is read at display time from `positions`, so it moves as the
  * author trades and is empty once a market settles (settlement zeroes every
  * position). That is deliberate: it answers "what does this person hold
- * now", which is what a reader weighs a comment by.
+ * now", which is what a reader weighs a comment by. It is rounded down to
+ * two significant figures (`lib/stake.ts`): exact, it could be matched
+ * against the tape and the leaderboard to unmask the alias.
  *
  * Each comment also carries its **backing**: shares other traders have put
  * behind it (`server/backings.ts`), marked at the current price. That is a
@@ -467,7 +470,12 @@ async function decorate(
         isYou: viewerAccountId === r.accountId,
         stake: stakes
           .filter((s) => s.accountId === r.accountId)
-          .map((s) => ({ outcomeId: s.outcomeId, outcomeLabel: s.outcomeLabel, sharesMicro: s.sharesMicro })),
+          // Two significant figures, never exact: see `lib/stake.ts`.
+          .map((s) => ({
+            outcomeId: s.outcomeId,
+            outcomeLabel: s.outcomeLabel,
+            sharesMicro: coarseStakeMicro(s.sharesMicro),
+          })),
       },
       backing: {
         totalMicro: byOutcome.reduce((s, o) => s + o.valueMicro, 0n),

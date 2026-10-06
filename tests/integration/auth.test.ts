@@ -485,6 +485,22 @@ describe('token management', () => {
     expect((await api('GET', '/me/tokens', { cookie })).body.tokens[0].enabled).toBe(false);
   });
 
+  it("closes the API-key plugin's own routes, so a revoked key stays revoked", async () => {
+    const cookie = await signUp('revoker@example.org');
+    const minted = await api('POST', '/me/tokens', { cookie, body: { name: 'old', scopes: ['read'] } });
+    await api('DELETE', `/me/tokens/${minted.body.id}`, { cookie });
+
+    const revived = await authCall('POST', '/api-key/update', {
+      cookie,
+      body: { keyId: minted.body.id, enabled: true },
+    });
+    expect(revived.status).toBe(404);
+    expect((await api('GET', '/me', { token: minted.body.token })).status).toBe(401);
+    for (const path of ['/api-key/create', '/api-key/list', '/api-key/get', '/api-key/delete']) {
+      expect((await authCall('POST', path, { cookie, body: { name: 'side door' } })).status).toBe(404);
+    }
+  });
+
   it('never mints admin tokens from a session', async () => {
     const cookie = await signUp('greedy@example.org');
     const res = await api('POST', '/me/tokens', { cookie, body: { name: 'x', scopes: ['admin'] } });

@@ -1,9 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { user } from '@/db/auth-schema';
 import { isUniqueViolation } from '@/db/errors';
-import { markets, outcomes, pendingBets, type PendingBet } from '@/db/schema';
+import { accounts, markets, outcomes, pendingBets, type PendingBet } from '@/db/schema';
 import { VERIFY_EMAIL } from '@/lib/return-to';
 import { normalizeEmail } from './affiliations';
 import { ApiError } from './api/errors';
@@ -190,4 +190,38 @@ export async function setFirstPassword(headers: Headers, password: string): Prom
     }
     throw err;
   }
+}
+
+/** How long an unconfirmed sign-up is kept: a confirmation lasts an hour, so a week is generous. */
+export const UNCONFIRMED_USER_TTL_DAYS = 7;
+
+/**
+ * Delete the Better Auth users onboarding made whose address was never
+ * confirmed, once they are `olderThanDays` old (`npm run users:prune`, weekly
+ * from the host's cron). Anyone can make one for any allowlisted address, so
+ * without this they pile up, each holding an address and maybe a bet.
+ *
+ * Never a user with a trader account (every confirmed user, and every bot's
+ * login-less user, which is unconfirmed by design), and never one whose
+ * pending bet was stored within the window: that is a sign-up in progress,
+ * whose confirmation mail may still be open. Sessions, credentials and the
+ * pending bet go with the user (`on delete cascade`). Returns how many.
+ */
+export async function pruneUnconfirmedUsers(
+  { olderThanDays = UNCONFIRMED_USER_TTL_DAYS, now = new Date() }: { olderThanDays?: number; now?: Date } = {},
+  database: Database = getDb(),
+): Promise<number> {
+  const cutoff = new Date(now.getTime() - olderThanDays * 86_400_000);
+  const deleted = await database
+    .delete(user)
+    .where(
+      and(
+        eq(user.emailVerified, false),
+        lt(user.createdAt, cutoff),
+        sql`not exists (select 1 from ${accounts} where ${accounts.userId} = ${user.id})`,
+        sql`not exists (select 1 from ${pendingBets} where ${pendingBets.userId} = ${user.id} and ${pendingBets.createdAt} >= ${cutoff})`,
+      ),
+    )
+    .returning({ id: user.id });
+  return deleted.length;
 }
