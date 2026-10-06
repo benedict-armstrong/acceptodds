@@ -1,6 +1,7 @@
 'use client';
 
 import { hasSubaddress, SUBADDRESS_REFUSED } from '@/lib/email-address';
+import { asksJevPrice } from '@/lib/links';
 import { track } from '@/lib/track';
 import { MESSAGES } from './orders';
 
@@ -27,7 +28,9 @@ export async function sendSignUp(body: SignUpBody): Promise<string | null> {
     body: JSON.stringify(body),
   }).catch(() => null);
   if (res?.ok) {
-    track('signup_submitted');
+    // Where it started: a bet chosen before signing up, a paper's "Open Market", or the email alone.
+    const target = body.bet ? 'bet' : body.next && asksJevPrice(body.next) ? 'open_market' : 'email';
+    track('signup_submitted', { target });
     return null;
   }
   const json = await res?.json().catch(() => null);
