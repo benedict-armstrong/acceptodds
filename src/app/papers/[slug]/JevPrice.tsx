@@ -10,6 +10,7 @@ import { SignUpEmail } from '@/components/SignUpEmail';
 import { ui } from '@/components/ui';
 import { barOrder, headlineLabel } from '@/lib/headline';
 import { jevPricePath } from '@/lib/links';
+import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import {
   clearPending,
@@ -67,19 +68,22 @@ export function JevPrice({
   // confirming goes by `/verify-email` like any other code, and back here to the button.
   const forHere = pending?.next === back;
 
-  async function open() {
+  async function open(target: 'click' | 'return') {
     setBusy(true);
     setNote(null);
     try {
       const res = await fetch(`/api/v1/listings/${listingId}/market`, { method: 'POST' });
       if (res.ok) {
+        track('market_opened', { target });
         router.replace(`${here}#trade`);
         router.refresh();
         return;
       }
       const body = await res.json().catch(() => ({}));
+      track('market_open_refused', { reason: String(body.error?.code ?? res.status) });
       setNote(MESSAGES[body.error?.code] ?? body.error?.message ?? 'Something went wrong.');
     } catch {
+      track('market_open_refused', { reason: 'network' });
       setNote('Network error. Try again.');
     }
     setBusy(false);
@@ -91,7 +95,7 @@ export function JevPrice({
   useEffect(() => {
     if (!asked || !viewer.canTrade || started.current) return;
     started.current = true;
-    void open();
+    void open('return');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `open` is this render's, and only runs once
   }, [asked, viewer.canTrade]);
 
@@ -150,7 +154,11 @@ export function JevPrice({
         type="button"
         className={`${ui.btn({ inline: true, flush: true })} shadow-md`}
         disabled={busy}
-        onClick={() => (viewer.signedIn ? void open() : setEmailing(true))}
+        onClick={() => {
+          track('market_open_clicked', { signedIn: viewer.signedIn });
+          if (viewer.signedIn) void open('click');
+          else setEmailing(true);
+        }}
       >
         {busy ? 'Opening market…' : LABEL}
       </button>

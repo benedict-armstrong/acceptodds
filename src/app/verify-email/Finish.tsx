@@ -131,6 +131,7 @@ export function Finish({
       body: JSON.stringify({ displayName: name }),
     }).catch(() => null);
     if (res?.ok) {
+      track('finish_step', { target: 'name' });
       setNameSet(true);
       return true;
     }
@@ -147,6 +148,7 @@ export function Finish({
     }).catch(() => null);
     const code = res?.ok ? null : (await res?.json().catch(() => null))?.error?.code;
     if (res?.ok || code === 'password_already_set') {
+      if (res?.ok) track('finish_step', { target: 'password' });
       setPasswordSet(true);
       return true;
     }
@@ -202,6 +204,7 @@ export function Finish({
    * owed, to "Bet placed" or straight on to `to` for a skipped one.
    */
   async function betSettled({ placed, firstTrade, to }: { placed: string | null; firstTrade: boolean; to: string }) {
+    track('finish_step', { target: placed === null ? 'bet_skipped' : 'bet_placed' });
     await fetch('/api/v1/me/pending-bet', { method: 'DELETE' }).catch(() => null);
     if (firstTrade) {
       router.push(FIRST_TRADE_PATH);

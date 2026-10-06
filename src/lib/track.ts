@@ -26,12 +26,17 @@ export type EventName =
   | 'code_confirmed'
   | 'code_failed'
   | 'code_resent'
-  // /verify-email once signed in: what is owed, and done
+  // /verify-email once signed in: what is owed, each part of it done, and all of it done
   | 'finish_shown'
+  | 'finish_step'
   | 'finish_completed'
   // trading
   | 'order_placed'
   | 'order_refused'
+  // a paper's "Open Market": pressed, the market opened (by the press or on return from sign-up), refused
+  | 'market_open_clicked'
+  | 'market_opened'
+  | 'market_open_refused'
   // the [getting started] tutorial: opened, each step first reached (2 and 3), and its last button
   | 'tutorial_opened'
   | 'tutorial_step'
@@ -52,9 +57,12 @@ export interface EventData {
   needsName?: boolean;
   needsPassword?: boolean;
   following?: boolean;
+  signedIn?: boolean;
   /**
    * What was copied: 'paper' | 'badge' | 'profile'; or where it was sent: 'x' | 'whatsapp'; or where the
-   * tutorial's last button went: 'welcome' | 'close'.
+   * tutorial's last button went: 'welcome' | 'close'; or where a sign-up started: 'bet' | 'open_market' |
+   * 'email'; or what a Finish step did: 'bet_placed' | 'bet_skipped' | 'name' | 'password'; or what opened a
+   * market: 'click' | 'return'.
    */
   target?: string;
   /** A tutorial step, counted from 1. */
