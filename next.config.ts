@@ -2,10 +2,14 @@ import type { NextConfig } from 'next';
 import { PRIVATE_PAGES } from './src/lib/private-paths';
 
 const nextConfig: NextConfig = {
-  // A mail link wrapped at its hyphen and cut there (before mails had an HTML part, `lib/mail-html.ts`)
-  // still confirmed the address, then landed here. The query, if any survived, carries over.
   async redirects() {
-    return [{ source: '/verify-', destination: '/verify-email', permanent: false }];
+    return [
+      // A mail link wrapped at its hyphen and cut there (before mails had an HTML part, `lib/mail-html.ts`)
+      // still confirmed the address, then landed here. The query, if any survived, carries over.
+      { source: '/verify-', destination: '/verify-email', permanent: false },
+      // A guessed address: there is no sign-up page of its own. `/signin` sends a first visit on to `/welcome`.
+      { source: '/signup', destination: '/signin', permanent: false },
+    ];
   },
   async headers() {
     return PRIVATE_PAGES.map((source) => ({
