@@ -15,7 +15,7 @@ import {
 } from '@/server/onboarding';
 import { createAccount } from '@/server/accounts';
 import { mintToken } from '@/server/tokens';
-import { api, authCall, cookieFrom, signUp } from './api-client';
+import { api, authCall, authPathOf, cookieFrom, signUp } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
@@ -57,7 +57,7 @@ async function clickLink(email: string) {
   const mail = devOutbox().findLast((m) => m.to === email);
   if (!mail) throw new Error('no mail');
   const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-  const res = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+  const res = await authCall('GET', `${authPathOf(link)}${link.search}`);
   return { cookie: cookieFrom(res), location: res.headers.get('location') };
 }
 
@@ -222,7 +222,7 @@ describe('onboarding', () => {
 
     // The link redirects to /set-password with the address and a token.
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-    const res = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    const res = await authCall('GET', `${authPathOf(link)}${link.search}`);
     const landing = new URL(res.headers.get('location')!, 'http://test.local');
     expect(landing.pathname).toBe('/set-password');
     expect(landing.searchParams.get('email')).toBe('ada@example.org');
@@ -293,7 +293,7 @@ describe('onboarding', () => {
     await start('ada@example.org');
     const mail = devOutbox().findLast((m) => m.to === 'ada@example.org')!;
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-    const path = link.pathname.replace(/^\/api\/auth/, '');
+    const path = authPathOf(link);
 
     // Tampered: back to the callback with ?error=, and no session.
     const bad = new URLSearchParams(link.search);

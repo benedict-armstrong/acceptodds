@@ -10,6 +10,7 @@ import { accounts, type TokenScope } from '@/db/schema';
 import { createAccount } from '@/server/accounts';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { mintToken } from '@/server/tokens';
+import { SIGN_IN_LINK_PATH } from '@/lib/links';
 import * as authRoute from '@/app/api/auth/[...all]/route';
 import * as marketsRoute from '@/app/api/v1/markets/route';
 import * as marketRoute from '@/app/api/v1/markets/[id]/route';
@@ -193,6 +194,17 @@ export async function api<T = any>(
   return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : null };
 }
 
+/**
+ * The Better Auth path a mailed link opens, for `authCall`: a confirmation
+ * link is Better Auth's own; a sign-in link lands on `/signin/link`, whose
+ * button submits the same query to `/magic-link/verify`.
+ */
+export function authPathOf(link: URL): string {
+  if (link.pathname === SIGN_IN_LINK_PATH) return '/magic-link/verify';
+  if (!link.pathname.startsWith('/api/auth/')) throw new Error(`not an auth link: ${link}`);
+  return link.pathname.replace(/^\/api\/auth/, '');
+}
+
 /** Better Auth's own endpoints, under /api/auth. */
 export async function authCall(
   method: string,
@@ -232,7 +244,7 @@ export async function signUp(email: string, name = 'Test Person', password = 'co
   const mail = devOutbox().find((m) => m.to === email);
   if (!mail) throw new Error('no sign-in mail');
   const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-  const opened = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+  const opened = await authCall('GET', `${authPathOf(link)}${link.search}`);
   const cookie = cookieFrom(opened);
   if (!cookie.includes('session_token')) throw new Error(`the link gave no session: ${opened.status}`);
   const named = await api('PATCH', '/me', { cookie, body: { displayName: name } });

@@ -9,7 +9,7 @@ import { accounts, ledgerEntries } from '@/db/schema';
 import { ensureAccountForUser } from '@/server/accounts';
 import { getAuth, missingFromUser } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
-import { api, authCall, cookieFrom, ORIGIN, signUp, trader } from './api-client';
+import { api, authCall, authPathOf, cookieFrom, ORIGIN, signUp, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
@@ -121,13 +121,13 @@ describe('sign-up', () => {
     // Clicking the link now creates it, with exactly one grant.
     const mail = devOutbox().find((m) => m.to === 'later@example.org')!;
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-    await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    await authCall('GET', `${authPathOf(link)}${link.search}`);
     const [row] = await accountsFor('later@example.org');
     expect(row.account.balanceMicro).toBe(STARTING_MICRO);
     expect(row.account.verifiedAt).not.toBeNull();
 
     // A second click grants nothing more.
-    await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    await authCall('GET', `${authPathOf(link)}${link.search}`);
     const grants = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, row.account.id));
     expect(grants).toHaveLength(1);
   });
@@ -205,7 +205,7 @@ describe('sign-up', () => {
       expect.objectContaining({
         to: 'taken@example.org',
         subject: expect.stringContaining('sign-in code'),
-        text: expect.stringMatching(/already has an acceptodds account[\s\S]*magic-link/),
+        text: expect.stringMatching(/already has an acceptodds account[\s\S]*\/signin\/link\?token=/),
       }),
     ]);
     const [row] = await db.select().from(user).where(eq(user.email, 'taken@example.org'));
@@ -434,7 +434,7 @@ describe('the institution allowlist', () => {
 
     const mail = devOutbox().find((m) => m.to === 'dropped@example.org')!;
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-    const verified = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+    const verified = await authCall('GET', `${authPathOf(link)}${link.search}`);
     const cookie = cookieFrom(verified);
 
     const me = await api('GET', '/me', { cookie });

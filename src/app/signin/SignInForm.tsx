@@ -10,7 +10,11 @@ import { track } from '@/lib/track';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 
 /**
- * Email and password, back to `next` afterwards. An unconfirmed address with
+ * An email first, and a sign-in link to it: for anyone without a password or
+ * without an account (the link makes one), so a new address signs up here
+ * too. The password field stays hidden until asked for.
+ *
+ * With a password, back to `next` afterwards. An unconfirmed address with
  * the right password is not a dead end: Better Auth sends a fresh code and
  * link (`sendOnSignIn`), and this goes on to `/verify-email` for it (issue #15).
  *
@@ -27,6 +31,7 @@ export function SignInForm({ next }: { next: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [linkSent, setLinkSent] = useState<string | null>(null);
+  const [withPassword, setWithPassword] = useState(false);
   const emailField = useRef<HTMLInputElement>(null);
 
   async function sendLink() {
@@ -64,6 +69,7 @@ export function SignInForm({ next }: { next: string }) {
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        if (!withPassword) return sendLink();
         setBusy(true);
         setError(null);
         const address = email.trim();
@@ -101,24 +107,47 @@ export function SignInForm({ next }: { next: string }) {
           className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base"
         />
       </label>
-      <label className="mt-2.5 block font-sans text-[13px] text-muted">
-        Password
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-          className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base"
-        />
-      </label>
-      <button className={ui.btn()} disabled={busy}>
-        Sign in
-      </button>
-      <div className="my-3 text-center font-sans text-[13px] text-faint">or, without a password</div>
-      <button type="button" className={ui.btn({ ghost: true })} disabled={busy} onClick={sendLink}>
-        Email me a sign-in link
-      </button>
+      {withPassword ? (
+        <>
+          <label className="mt-2.5 block font-sans text-[13px] text-muted">
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoFocus
+              autoComplete="current-password"
+              className="w-full border border-rule-strong bg-white p-[7px] font-sans text-[15px] leading-[normal] text-ink narrow:text-base"
+            />
+          </label>
+          <button className={ui.btn()} disabled={busy}>
+            Sign in
+          </button>
+          <div className="my-3 text-center font-sans text-[13px] text-faint">or, without a password</div>
+          <button type="button" className={ui.btn({ ghost: true })} disabled={busy} onClick={sendLink}>
+            Email me a sign-in link
+          </button>
+        </>
+      ) : (
+        <>
+          <p className={ui.fine}>
+            We email you a link that signs you in. No account yet? The same link makes one: just enter your email.
+          </p>
+          <button className={ui.btn()} disabled={busy}>
+            Email me a sign-in link
+          </button>
+          <div className="my-3 text-center font-sans text-[13px] text-faint">or</div>
+          <button
+            type="button"
+            className={ui.btn({ ghost: true })}
+            disabled={busy}
+            onClick={() => setWithPassword(true)}
+          >
+            Use a password
+          </button>
+        </>
+      )}
       {linkSent && (
         <div className={ui.note(true)}>
           Sent to <b>{linkSent}</b>. Open the link in it to sign in; it works for 15 minutes. No account yet? The link

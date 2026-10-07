@@ -13,6 +13,7 @@ import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
 import { consume, type RateLimitConfig } from './ratelimit';
 import { confirmationMail, existingAccountMail, magicLinkMail, passwordMail } from '@/lib/auth-mails';
+import { signInLinkUrl } from '@/lib/links';
 import { sendMail } from './mail';
 
 /**
@@ -305,8 +306,10 @@ export function createAuth(database: Database) {
       // account; only the inbox learns.
       magicLink({
         expiresIn: MAGIC_LINK_TTL_SECONDS,
-        sendMagicLink: async ({ email, url, metadata }) => {
+        sendMagicLink: async ({ email, url: verifyUrl, metadata }) => {
           const address = email.trim().toLowerCase();
+          // Never the verify URL itself: a mail scanner's GET would spend the token (`signInLinkUrl`).
+          const url = signInLinkUrl(verifyUrl);
           if (!institutionForEmail(address)) {
             throw new APIError('UNPROCESSABLE_ENTITY', {
               code: EMAIL_DOMAIN_NOT_ALLOWED,

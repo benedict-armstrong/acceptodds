@@ -28,6 +28,22 @@ export function setPasswordPath(email: string): string {
   return `/set-password?${new URLSearchParams({ email })}`;
 }
 
+/**
+ * Where a sign-in link from a mail lands (`app/signin/link`): a button, not
+ * the sign-in itself. Better Auth's `/magic-link/verify` spends its one-time
+ * token on the first GET, and institutional mail scanners (Safe Links,
+ * Proofpoint, …) open every link in a mail before the person does, so a link
+ * straight to it is already used by the time it is clicked. The query is
+ * Better Auth's, passed through whole to the verify URL.
+ */
+export const SIGN_IN_LINK_PATH = '/signin/link';
+
+/** The sign-in link to mail, from the verify URL Better Auth built: same origin and query, our landing page. */
+export function signInLinkUrl(verifyUrl: string): string {
+  const url = new URL(verifyUrl);
+  return `${url.origin}${SIGN_IN_LINK_PATH}${url.search}`;
+}
+
 /** A public position's page (#36): the link its holder shares. */
 export function publicPositionPath(id: string): string {
   return `/positions/${id}`;

@@ -9,6 +9,7 @@ export const PRIVATE_PAGES = [
   '/profile',
   '/portfolio',
   '/signin',
+  '/signin/link',
   '/welcome',
   '/verify-email',
   '/set-password',

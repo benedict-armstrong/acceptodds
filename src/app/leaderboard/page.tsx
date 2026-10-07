@@ -363,6 +363,7 @@ export default async function LeaderboardPage({
                   money={signedIn}
                   focus={focus >= 0 ? field[focus].accountId : null}
                   institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
+                  signInHref={authHref('/signin', href({}))}
                 />
               ))}
             </tbody>
@@ -431,6 +432,7 @@ function Segment({
   money,
   focus,
   institutionHref,
+  signInHref,
 }: {
   rows: LeaderboardRow[];
   gapBefore: boolean;
@@ -440,6 +442,8 @@ function Segment({
   money: boolean;
   focus: string | null;
   institutionHref: (name: string) => string;
+  /** Where a held-back figure links: sign-in, back to this board. */
+  signInHref: string;
 }) {
   return (
     <>
@@ -487,7 +491,7 @@ function Segment({
               </>
             ) : (
               <td className={`${ui.td} ${ui.num}`}>
-                <Blurred>{`+???.?? ${REP}`}</Blurred>
+                <Blurred signInHref={signInHref}>{`+???.?? ${REP}`}</Blurred>
               </td>
             )}
           </tr>
@@ -497,11 +501,23 @@ function Segment({
   );
 }
 
-/** A figure held back from a signed-out viewer: placeholders only, never the number, blurred past reading. */
-function Blurred({ children }: { children: string }) {
+/**
+ * A figure held back from a signed-out viewer: placeholders only, never the
+ * number, blurred past reading. "Sign in to view" shows over it on hover or
+ * focus, and it links to sign-in, so a tap on a phone goes there too.
+ */
+function Blurred({ children, signInHref }: { children: string; signInHref: string }) {
   return (
-    <span aria-label="Sign in to see" className="inline-block blur-[4px] select-none">
-      {children}
-    </span>
+    <Link href={signInHref} aria-label="Sign in to view" className="group relative inline-block no-underline">
+      <span aria-hidden className="inline-block blur-[4px] select-none text-ink">
+        {children}
+      </span>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute bottom-full right-0 mb-1 hidden whitespace-nowrap border border-frame bg-card px-2 py-1 font-sans text-xs text-ink shadow-sm group-hover:block group-focus-visible:block"
+      >
+        Sign in to view
+      </span>
+    </Link>
   );
 }

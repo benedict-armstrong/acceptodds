@@ -414,8 +414,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Three pages, one per step: `/welcome`, `/signin`, `/verify-email`.**
   `/welcome` is the only sign-up page (below; a paper's `JevPrice` also
   takes an email and its code in place, under "Markets opened on demand"); `/signin` is for people who
-  have an account (password, or "Email me a sign-in link", which also makes
-  an account for a new address). **`/verify-email` is the one page after an
+  have an account ("Email me a sign-in link" first, which also makes an
+  account for a new address and says so; the password only after "Use a
+  password"). **`/verify-email` is the one page after an
   email**: every mail's link lands on it and every code is typed on it, and
   what it shows follows from the session, never from how the person got
   there. Signed in with nothing owed: on to `next`. Signed in and owing a
@@ -485,12 +486,18 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   page but the sign-in ones, through the profile's `EditName` dialog;
   dismissed, it stays away from that browser for a week.
 - **Sign-in links** (Better Auth's `magicLink` plugin): `/signin` offers
-  "Email me a sign-in link" under the password, for the address typed. The
+  "Email me a sign-in link" for the address typed, before any password
+  field (hidden until "Use a password", then under it). The
   allowlist and a per-address budget (`magic-link-mail:<email>`, 5 a day)
   are checked in `sendMagicLink`, before any mail, so an unlisted address
   is a 422 on the page, never a dead link; otherwise the answer is the same
   whether or not the address has an account. A link works once, 15
-  minutes. Opened, it signs in — and for an address with no user, makes
+  minutes. **The mail links to `/signin/link`, never to Better Auth's
+  `/magic-link/verify`** (`links.signInLinkUrl`): that GET spends the
+  token, and institutional mail scanners open every link before the person
+  does, so a direct link was "already used" when clicked. The page is a
+  button, a GET form to the verify route, which scanners don't submit.
+  Opened, it signs in — and for an address with no user, makes
   one, confirmed (the link proves the inbox), with no name and no password;
   the trader account follows lazily as for any session. Every link lands on
   `/verify-email` (`authHref(VERIFY_EMAIL, next)`, errors too), which asks
@@ -1281,7 +1288,7 @@ unpaginated, and 5 s for that search.
   **Signed out, the page shows only the top 10** (of the board or of a
   search), says so with a sign-in link and has no pager; it drops the
   net worth column and P/L is a blurred placeholder (`Blurred`), never
-  the figure. UI only: the API and `/people/<handle>` still publish them.
+  the figure, a link to sign-in with "Sign in to view" over it on hover. UI only: the API and `/people/<handle>` still publish them.
 - **People search is `views.searchPeople`**: substring (ILIKE, LIKE
   characters escaped) or `pg_trgm` word similarity (`<%`), over
   `handle || ' ' || display_name` — written exactly that way, since the

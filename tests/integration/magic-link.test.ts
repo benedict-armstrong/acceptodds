@@ -4,7 +4,7 @@ import { getDb } from '@/db';
 import { user } from '@/db/auth-schema';
 import { getAuth, missingFromUser, resetTokenEmail } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
-import { api, authCall, cookieFrom, signUp } from './api-client';
+import { api, authCall, authPathOf, cookieFrom, signUp } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO } from './helpers';
 
 const db = getDb();
@@ -34,7 +34,7 @@ async function openLink(email: string) {
   const mail = devOutbox().findLast((m) => m.to === email);
   if (!mail) throw new Error('no mail');
   const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
-  const res = await authCall('GET', `${link.pathname.replace(/^\/api\/auth/, '')}${link.search}`);
+  const res = await authCall('GET', `${authPathOf(link)}${link.search}`);
   const location = res.headers.get('location');
   const at = location ? new URL(location, 'http://test.local') : null;
   return { cookie: cookieFrom(res), location: at ? `${at.pathname}${at.search}` : null };
@@ -46,6 +46,17 @@ async function userRow(email: string) {
 }
 
 describe('sign-in links', () => {
+  it('are mailed as the landing page, never the verify URL a mail scanner would spend', async () => {
+    await requestLink('ada@example.org');
+    const mail = devOutbox().findLast((m) => m.to === 'ada@example.org')!;
+    expect(mail.text).not.toContain('/magic-link/verify');
+    expect(mail.html).not.toContain('/magic-link/verify');
+    const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+    expect(link.pathname).toBe('/signin/link');
+    expect(link.searchParams.get('token')).toBeTruthy();
+    expect(link.searchParams.get('callbackURL')).toBe(LANDING);
+  });
+
   it('make an account for a new address, which then needs a name and a password', async () => {
     expect((await requestLink('ada@example.org')).status).toBe(200);
     expect(await userRow('ada@example.org')).toBeUndefined(); // nothing before the link is opened
