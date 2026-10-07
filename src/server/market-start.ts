@@ -7,6 +7,7 @@ import { startingBalanceMicro } from './accounts';
 import { ApiError } from './api/errors';
 import * as engine from './engine';
 import { EngineError } from './errors';
+import * as follows from './follows';
 import { jevPrices } from './jev';
 import { marketTemplate } from './market-templates';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
@@ -134,7 +135,16 @@ export async function openListingMarket(
       rateLimitHeaders(budget),
     );
   }
-  return ensureMainMarket(listing, accountId, database);
+  const opened = await ensureMainMarket(listing, accountId, database);
+  // Whoever opens a paper's market follows it. Only the call that made it, so
+  // a repeat open never undoes an unfollow; and after the market's commit, so a
+  // failed follow costs only the follow.
+  if (accountId && opened.created) {
+    await follows.follow(accountId, listing.id, database).catch((err) => {
+      console.error('following an opened market failed', err);
+    });
+  }
+  return opened;
 }
 
 /** Markets one account may open a day. */

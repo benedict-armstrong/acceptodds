@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
-import { accounts, listingFollows, listings, orders, type Listing } from '@/db/schema';
+import { accounts, listingFollows, listings, markets, orders, type Listing } from '@/db/schema';
 import { moveOf, type Move } from '@/lib/digest';
 import { prices } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
@@ -30,6 +30,36 @@ export async function unfollow(accountId: string, listingId: string, database: D
     .where(and(eq(listingFollows.accountId, accountId), eq(listingFollows.listingId, listingId)))
     .returning({ accountId: listingFollows.accountId });
   return rows.length > 0;
+}
+
+/**
+ * Backfill: every account that opened a listing's main market follows the
+ * listing, as `market-start.openListingMarket` now does on opening. One
+ * statement; already-following pairs are left alone. A dry run unless
+ * `apply`, which counts what it would add. Unfollows were never recorded, so
+ * an opener who has since unfollowed is followed again.
+ */
+export async function followOpenedListings(
+  { apply }: { apply: boolean },
+  database: Database = getDb(),
+): Promise<number> {
+  const opened = sql`
+    select ${markets.createdBy} as account_id, ${markets.listingId} as listing_id
+    from ${markets}
+    where ${markets.isMain} and ${markets.listingId} is not null and ${markets.createdBy} is not null`;
+  if (!apply) {
+    const { rows } = await database.execute<{ n: number }>(sql`
+      select count(*)::int as n from (${opened}) o
+      where not exists (
+        select 1 from ${listingFollows} f where f.account_id = o.account_id and f.listing_id = o.listing_id
+      )`);
+    return rows[0].n;
+  }
+  const { rows } = await database.execute(sql`
+    insert into ${listingFollows} (account_id, listing_id) ${opened}
+    on conflict do nothing
+    returning account_id`);
+  return rows.length;
 }
 
 /** The ids of the listings an account follows. */

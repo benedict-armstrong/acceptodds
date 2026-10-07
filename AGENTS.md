@@ -1199,7 +1199,11 @@ unpaginated, and 5 s for that search.
 - **The market is the kind's template** (`market-templates.ts`), slug
   `<listing>-decision`, rank 0, `created_by` the trader who opened it.
   `created_by` is stored, never shown: the tape is anonymous, and
-  "opened by @x" would point at the first fill. No template, or past its
+  "opened by @x" would point at the first fill. Whoever opens it follows the
+  listing (`follows.follow`, after the commit, best-effort), only on the
+  call that made it, so asking again never undoes an unfollow; a visitor's
+  open follows nothing. Opens from before this are backfilled by
+  `npm run follows:backfill-openers` (a dry run without `--apply`). No template, or past its
   `closesAt`: refused, and nothing is made.
 - **It opens at JEV's prices**, floored (`jev.floored`: `(1 − n·f)·p + f`,
   `PRICE_FLOOR` 0.05), so one market costs the house at most

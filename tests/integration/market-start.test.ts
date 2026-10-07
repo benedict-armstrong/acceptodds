@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { listingTexts, markets, usdCosts } from '@/db/schema';
+import { followedListingIds, followOpenedListings, unfollow } from '@/server/follows';
 import { setRelated, setText, upsertListing } from '@/server/listings';
 import { ANONYMOUS_OPEN_BUDGET } from '@/server/market-start';
 import { consume } from '@/server/ratelimit';
@@ -245,6 +246,44 @@ describe('opening a market at JEV’s price, without a trade', () => {
     expect((again.body as any).created).toBe(false);
     expect((again.body as any).market.id).toBe(m.id);
     expect(await mainMarketOf(p.id)).toHaveLength(1);
+  });
+
+  it('follows the paper for whoever opened it, once, and nobody for a visitor', async () => {
+    const [p, q] = await Promise.all([paper('p'), paper('q')]);
+    const t = await trader('t');
+    const other = await trader('o');
+
+    expect((await open(t.token, p.id)).status).toBe(201);
+    expect(await followedListingIds(t.id)).toEqual(new Set([p.id]));
+
+    // Opening it again, or someone else asking for it, follows nothing: an unfollow stays.
+    await unfollow(t.id, p.id);
+    expect((await open(t.token, p.id)).status).toBe(200);
+    expect((await open(other.token, p.id)).status).toBe(200);
+    expect(await followedListingIds(t.id)).toEqual(new Set());
+    expect(await followedListingIds(other.id)).toEqual(new Set());
+
+    expect((await open(undefined, q.id)).status).toBe(201);
+    expect(await followedListingIds(t.id)).toEqual(new Set());
+  });
+
+  it('backfills a follow for every account that opened a paper’s market, and nobody else', async () => {
+    const [p, q, r] = await Promise.all([paper('p'), paper('q'), paper('r')]);
+    const t = await trader('t');
+    const other = await trader('o');
+    await open(t.token, p.id);
+    await open(t.token, q.id);
+    await open(undefined, r.id);
+    await order(other.token, r.id, 'Accept', '1000000');
+    // As before opening followed: t follows only q.
+    await unfollow(t.id, p.id);
+
+    expect(await followOpenedListings({ apply: false })).toBe(1);
+    expect(await followedListingIds(t.id)).toEqual(new Set([q.id]));
+    expect(await followOpenedListings({ apply: true })).toBe(1);
+    expect(await followedListingIds(t.id)).toEqual(new Set([p.id, q.id]));
+    expect(await followedListingIds(other.id)).toEqual(new Set());
+    expect(await followOpenedListings({ apply: true })).toBe(0);
   });
 
   it('refuses an unverified account, a read-only token and a bad one, and makes nothing', async () => {
