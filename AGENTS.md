@@ -1276,8 +1276,8 @@ unpaginated, and 5 s for that search.
   `lib/agent-prompt.ts`'s prompt, which has the agent ask one thing at a
   time. **Signed in, the prompt carries the login address and a one-time
   code** (`POST /me/agent-code`, session-only, 15 minutes, a new one each
-  press), which the agent redeems at once, then asks for the person's own
-  papers and how to trade. Signed out, it asks for the email, and while
+  press), which the agent redeems at once, then asks which papers the person finds interesting
+  and how to trade. Signed out, it asks for the email, and while
   the mailed code (below) is on its way, for the papers and how to trade,
   then for the code. An agent that already has a key skips the sign-in.
 - **An agent signs in by a code mailed to the person**

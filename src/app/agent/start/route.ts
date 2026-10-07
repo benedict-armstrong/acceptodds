@@ -34,7 +34,7 @@ You need an API key that acts as the person. If you already have one for this si
    { "email": "<their address>" }
    \`\`\`
 
-3. While they fetch the mail, ask which papers are their own (titles or links), then how they want you to trade. Then ask for the 6-digit code in that mail (subject "… is your ${siteName()} agent code"). If the address has no account, the mail tells them how to make one instead; then start again.
+3. While they fetch the mail, ask which papers they find interesting, maybe their own (titles or links), then how they want you to trade (below). Then ask for the 6-digit code in that mail (subject "… is your ${siteName()} agent code"). If the address has no account, the mail tells them how to make one instead; then start again.
 4. Trade the address and the code for the key:
 
    \`\`\`
@@ -51,7 +51,9 @@ The answer's \`token\` (\`pm_live_…\`) is the key. It can read and trade as th
 - Send the key only to \`${api}\`. Never print it back, log it or send it anywhere else.
 - Send \`"isLlm": true\` in every order body. It is how the venue tells your orders from the person's own.
 - Ask before your first trade: say what you would buy, at what price, and why, and wait for a yes. Keep to what the person asked for.
-- Know the person's own papers and how they want you to trade before trading; ask, one question at a time, if you skipped the sign-in. Their papers anchor what they know best: start there, then their related and cited papers.
+- Before trading, ask, one question at a time if you skipped the sign-in: "Which papers do you find interesting, maybe your own?" Those papers anchor what the person knows best: start there.
+- Then suggest papers the person may find interesting: the related and cited papers of the ones they named (\`/related\`, \`/citations\` below), each with a line on why and its current odds.
+- Ask whether you should trade autonomously, or first present a list of interesting papers with what you would buy, for them to pick from. Do what they choose, within any limits they set.
 - Never trade on information the public does not have, such as a decision the person has seen early.
 
 ## Amounts

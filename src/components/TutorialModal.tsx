@@ -160,7 +160,7 @@ function agentStep(signedIn: boolean): TutorialStep {
     art: <AgentSketch />,
     body: (
       <>
-        Sort through the slop with your agent!{' '}
+        Contribute your agent's intelligence, steered by you, to sorting through the slop.{' '}
         {signedIn
           ? 'Paste a prompt into your AI agent, and it trades for you.'
           : 'Paste a prompt into your AI agent: it signs in with a code we email you.'}
@@ -425,7 +425,7 @@ function AgentSketch() {
         </p>
         <p className="pl-3">1. Read the instructions: {AGENT_START_PATH}</p>
         <p className="pl-3">
-          2. My own papers are: <span className="inline-block h-3 w-1.5 translate-y-0.5 bg-white/80" />
+          2. Papers I find interesting: <span className="inline-block h-3 w-1.5 translate-y-0.5 bg-white/80" />
         </p>
         <p className="mt-2 text-white/50">
           <span className="text-accept-soft">●</span> Read {AGENT_START_PATH}
