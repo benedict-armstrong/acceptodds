@@ -30,11 +30,18 @@ export interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
-export function rateLimitConfig(): RateLimitConfig {
-  const burst = Number(process.env.API_RATE_LIMIT_BURST ?? 60);
-  const perSecond = Number(process.env.API_RATE_LIMIT_PER_SECOND ?? 2);
+/**
+ * A credential's bucket. One with the `admin` scope gets its own, larger one
+ * (`API_ADMIN_RATE_LIMIT_*`): `../research` bulk-writes listings and texts
+ * with it, and only an operator can mint one, so the per-bot limit that keeps
+ * trading fair has nothing to protect there.
+ */
+export function rateLimitConfig(admin = false): RateLimitConfig {
+  const prefix = admin ? 'API_ADMIN_RATE_LIMIT' : 'API_RATE_LIMIT';
+  const burst = Number(process.env[`${prefix}_BURST`] ?? (admin ? 600 : 60));
+  const perSecond = Number(process.env[`${prefix}_PER_SECOND`] ?? (admin ? 50 : 2));
   if (!(burst >= 1) || !(perSecond > 0)) {
-    throw new Error('API_RATE_LIMIT_BURST must be >= 1 and API_RATE_LIMIT_PER_SECOND > 0');
+    throw new Error(`${prefix}_BURST must be >= 1 and ${prefix}_PER_SECOND > 0`);
   }
   return { burst, perSecond };
 }

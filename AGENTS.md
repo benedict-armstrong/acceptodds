@@ -270,7 +270,10 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `SELECT … FOR UPDATE`, on Postgres's clock. It has no foreign keys, like
   `events`, so it can never take a lock on a row anything else holds. Every
   token-authenticated request costs one unit, reads included. Anonymous traffic
-  is the edge's job (§11) and is not limited in-app.
+  is the edge's job (§11) and is not limited in-app. A credential with the
+  `admin` scope has a larger bucket of its own (`API_ADMIN_RATE_LIMIT_*`,
+  600 and 50/s by default), for `../research`'s bulk writes; only an
+  operator can mint one.
 - **Client IP is read only by `clientIp()`** in `server/api/http.ts`, from
   `Cf-Connecting-Ip`. An ESLint rule rejects the header names anywhere else.
   Nothing is keyed on it yet.

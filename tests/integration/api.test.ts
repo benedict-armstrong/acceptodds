@@ -369,6 +369,29 @@ describe('rate limiting', () => {
     expect((await api('GET', '/markets')).status).toBe(200);
   });
 
+  it('gives an admin credential its own, larger bucket', async () => {
+    process.env.API_RATE_LIMIT_BURST = '1';
+    process.env.API_RATE_LIMIT_PER_SECOND = '0.01';
+    process.env.API_ADMIN_RATE_LIMIT_BURST = '3';
+    process.env.API_ADMIN_RATE_LIMIT_PER_SECOND = '0.01';
+    try {
+      const admin = await trader('ops', ['admin', 'read']);
+      const ok = [];
+      for (let i = 0; i < 3; i += 1) ok.push(await api('GET', '/me', { token: admin.token }));
+      expect(ok.map((r) => r.status)).toEqual([200, 200, 200]);
+      expect(ok[0].headers.get('x-ratelimit-limit')).toBe('3');
+      expect((await api('GET', '/me', { token: admin.token })).status).toBe(429);
+
+      // A trading key keeps the ordinary bucket.
+      const bot = await trader('bot', ['read', 'trade']);
+      expect((await api('GET', '/me', { token: bot.token })).status).toBe(200);
+      expect((await api('GET', '/me', { token: bot.token })).status).toBe(429);
+    } finally {
+      delete process.env.API_ADMIN_RATE_LIMIT_BURST;
+      delete process.env.API_ADMIN_RATE_LIMIT_PER_SECOND;
+    }
+  });
+
   it('holds under concurrency: exactly `burst` of a simultaneous flood get through', async () => {
     process.env.API_RATE_LIMIT_BURST = '5';
     process.env.API_RATE_LIMIT_PER_SECOND = '0.001';

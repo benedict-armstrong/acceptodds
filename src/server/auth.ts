@@ -5,7 +5,7 @@ import { accounts, type Account, type TokenScope } from '@/db/schema';
 import { ApiError } from './api/errors';
 import { ensureAccountForUser } from './accounts';
 import { getAuth } from './better-auth';
-import { consume, rateLimitHeaders, type RateLimitResult } from './ratelimit';
+import { consume, rateLimitConfig, rateLimitHeaders, type RateLimitResult } from './ratelimit';
 import { verifyToken } from './tokens';
 
 /**
@@ -60,8 +60,8 @@ function bearer(req: Request): string | null | undefined {
   return match ? match[1] : null;
 }
 
-async function limit(key: string): Promise<RateLimitResult> {
-  const rateLimit = await consume(key);
+async function limit(key: string, scopes: readonly TokenScope[]): Promise<RateLimitResult> {
+  const rateLimit = await consume(key, rateLimitConfig(scopes.includes('admin')));
   if (!rateLimit.allowed) {
     throw new ApiError(
       429,
@@ -120,7 +120,7 @@ async function authenticateToken(token: string | null): Promise<Principal> {
   const [account] = await getDb().select().from(accounts).where(eq(accounts.userId, verified.userId));
   if (!account) throw new ApiError(401, 'unauthorized', 'token has no account');
 
-  const rateLimit = await limit(`apikey:${verified.id}`);
+  const rateLimit = await limit(`apikey:${verified.id}`, verified.scopes);
   return { account, method: 'token', scopes: verified.scopes, credentialId: verified.id, rateLimit };
 }
 
@@ -134,10 +134,10 @@ async function authenticateSession(req: Request): Promise<Principal | null> {
 
   // Normally created on email confirmation; this makes a missed hook harmless.
   const account = await ensureAccountForUser(session.user);
-  const rateLimit = await limit(`user:${session.user.id}`);
   const scopes: readonly TokenScope[] = isAdminEmail(session.user.email)
     ? [...SESSION_SCOPES, 'admin']
     : SESSION_SCOPES;
+  const rateLimit = await limit(`user:${session.user.id}`, scopes);
   return { account, method: 'session', scopes, credentialId: session.session.id, rateLimit };
 }
 
