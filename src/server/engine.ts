@@ -64,6 +64,20 @@ export interface Quote {
   priceAfter: number;
 }
 
+/**
+ * Where an order came from, recorded on it and never read by the engine:
+ * `via` is the credential that placed it (`web`, a session, as the UI's
+ * fetches are; `api`, an API key), null for an order placed in process (the
+ * seed, scripts, tests). `isLlm` is the client's own say-so that a language
+ * model placed it: voluntary, unchecked, and nothing more than a label.
+ */
+export interface OrderOrigin {
+  via: 'web' | 'api' | null;
+  isLlm: boolean;
+}
+
+const NO_ORIGIN: OrderOrigin = { via: null, isLlm: false };
+
 export interface Fill {
   orderId: string;
   accountId: string;
@@ -393,9 +407,19 @@ export async function trade(
   maxCostMicro: bigint,
   idempotencyKey: string | null = null,
   database: Db = getDb(),
+  origin: OrderOrigin = NO_ORIGIN,
 ): Promise<Fill> {
   try {
-    const fill = await runTrade(accountId, marketId, outcomeId, sharesMicro, maxCostMicro, idempotencyKey, database);
+    const fill = await runTrade(
+      accountId,
+      marketId,
+      outcomeId,
+      sharesMicro,
+      maxCostMicro,
+      idempotencyKey,
+      database,
+      origin,
+    );
     // After the commit, never inside it. The log must not be able to touch a
     // row the transaction is holding. A fill moves the trader's balance and
     // every holder's exit value in this market: the cached field is stale.
@@ -425,6 +449,7 @@ async function runTrade(
   maxCostMicro: bigint,
   idempotencyKey: string | null,
   database: Db,
+  origin: OrderOrigin,
 ): Promise<Fill> {
   if (sharesMicro === 0n) {
     throw new EngineError('invalid_size', 'a trade of zero shares is not a trade');
@@ -526,6 +551,8 @@ async function runTrade(
         priceBefore: priced.priceBefore,
         priceAfter: priced.priceAfter,
         idempotencyKey,
+        via: origin.via,
+        isLlm: origin.isLlm,
       })
       .returning();
 

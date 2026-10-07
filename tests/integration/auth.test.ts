@@ -5,7 +5,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { account as authAccount, user } from '@/db/auth-schema';
-import { accounts, ledgerEntries } from '@/db/schema';
+import { accounts, ledgerEntries, orders } from '@/db/schema';
 import { ensureAccountForUser } from '@/server/accounts';
 import { getAuth, missingFromUser } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
@@ -105,6 +105,9 @@ describe('sign-up', () => {
     // Verified by construction, so it can trade straight away.
     const trade = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
     expect(trade.status).toBe(201);
+    // A session's order is the UI's, and nothing claimed a model placed it.
+    const [placed] = await db.select().from(orders).where(eq(orders.id, trade.body.orderId));
+    expect(placed).toMatchObject({ via: 'web', isLlm: false });
   });
 
   it('grants nothing, and creates no trader, until the email is confirmed', async () => {

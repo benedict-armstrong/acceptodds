@@ -464,6 +464,14 @@ export const orders = pgTable(
     priceAfter: doublePrecision('price_after').notNull(),
     idempotencyKey: text('idempotency_key'),
     /**
+     * How the order arrived (`engine.OrderOrigin`): `web` for a session (the
+     * UI), `api` for an API key, null for one placed in process. A record,
+     * never read by the engine.
+     */
+    via: text('via', { enum: ['web', 'api'] }),
+    /** The client said a language model placed it. Voluntary and unchecked. */
+    isLlm: boolean('is_llm').notNull().default(false),
+    /**
      * `clock_timestamp()`, not `now()`.
      *
      * `now()` is the transaction *start* time, and a trade that queued on the
@@ -780,6 +788,22 @@ export const affiliations = pgTable(
  * cannot be followed. A preference, not market state and not money: written
  * by `server/follows.ts` in its own statement, never by the engine.
  */
+/**
+ * One-time codes an AI agent trades in for an API key (`server/agent-codes.ts`,
+ * which alone writes it): one per account, replaced by every new one, deleted
+ * when used. Only the SHA-256 is stored.
+ */
+export const agentCodes = pgTable('agent_codes', {
+  accountId: uuid('account_id')
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: 'cascade' }),
+  codeHash: text('code_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+  /** Wrong codes tried against this one. */
+  attempts: integer('attempts').notNull().default(0),
+  createdAt: createdAt(),
+});
+
 export const listingFollows = pgTable(
   'listing_follows',
   {

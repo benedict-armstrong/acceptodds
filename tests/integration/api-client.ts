@@ -58,6 +58,9 @@ import * as affiliationsRoute from '@/app/api/v1/me/affiliations/route';
 import * as affiliationRoute from '@/app/api/v1/me/affiliations/[id]/route';
 import * as affiliationVerifyRoute from '@/app/api/v1/me/affiliations/[id]/verify/route';
 import * as myPasswordRoute from '@/app/api/v1/me/password/route';
+import * as agentCodeRoute from '@/app/api/v1/agent/code/route';
+import * as myAgentCodeRoute from '@/app/api/v1/me/agent-code/route';
+import * as agentTokenRoute from '@/app/api/v1/agent/token/route';
 import * as myPendingBetRoute from '@/app/api/v1/me/pending-bet/route';
 import * as onboardingRoute from '@/app/api/v1/onboarding/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
@@ -124,6 +127,9 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/affiliations/[id]', affiliationRoute],
   ['/me/affiliations/[id]/verify', affiliationVerifyRoute],
   ['/me/password', myPasswordRoute],
+  ['/agent/code', agentCodeRoute],
+  ['/me/agent-code', myAgentCodeRoute],
+  ['/agent/token', agentTokenRoute],
   ['/me/pending-bet', myPendingBetRoute],
   ['/onboarding', onboardingRoute],
 ];

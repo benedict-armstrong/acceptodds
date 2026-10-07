@@ -438,6 +438,23 @@ describe('orders', () => {
     expect(await reconcileBalances(db)).toEqual([]);
   });
 
+  it('records an API key’s orders as `api`, and `isLlm` only when the client says so', async () => {
+    const t = await trader('agent-owner');
+    const plain = await buy(t.token, fx.outcomeIds[0], 1_000_000n);
+    const q = await api('POST', `/markets/${fx.marketId}/quote`, {
+      body: { outcomeId: fx.outcomeIds[0], sharesMicro: '1000000' },
+    });
+    const byModel = await api('POST', `/markets/${fx.marketId}/orders`, {
+      token: t.token,
+      body: { outcomeId: fx.outcomeIds[0], sharesMicro: '1000000', maxCostMicro: q.body.costMicro, isLlm: true },
+    });
+    expect(byModel.status).toBe(201);
+    const origin = async (id: string) =>
+      (await db.select({ via: orders.via, isLlm: orders.isLlm }).from(orders).where(eq(orders.id, id)))[0];
+    expect(await origin(plain.body.orderId)).toEqual({ via: 'api', isLlm: false });
+    expect(await origin(byModel.body.orderId)).toEqual({ via: 'api', isLlm: true });
+  });
+
   it('maps engine refusals to stable codes', async () => {
     const t = await trader('poor', ['read', 'trade'], { grantMicro: 1_000_000n });
     const outcomeId = fx.outcomeIds[0];

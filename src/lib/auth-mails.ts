@@ -126,3 +126,38 @@ export function affiliationTakenMail(handle: string, siteUrl: string): RenderedM
     ],
   });
 }
+
+/** A code for the AI agent the person asked to trade for them (`server/agent-codes.ts`). */
+export function agentCodeMail(code: string, siteUrl: string): RenderedMail {
+  return mail(siteUrl, {
+    subject: `${code} is your ${SITE} agent code`,
+    title: 'Sign in your agent',
+    blocks: [
+      { kind: 'p', text: `Your AI agent asked to sign in to ${SITE} as you. If that was you, give it this code:` },
+      { kind: 'code', label: 'Agent code', code, plain: `If that was you, give it this code: ${code}.` },
+      {
+        kind: 'p',
+        text:
+          'It works once, for 30 minutes, and gets the agent an API key that can trade as you. ' +
+          'Revoke the key under API keys on your profile at any time. If you did not ask for this, ignore it; ' +
+          'nothing happens without the code.',
+      },
+    ],
+  });
+}
+
+/** An agent asked for a code for an address with no account: say how to make one. */
+export function agentNoAccountMail(siteUrl: string): RenderedMail {
+  return mail(siteUrl, {
+    subject: `Make an ${SITE} account for your agent`,
+    title: 'No account yet',
+    blocks: [
+      {
+        kind: 'p',
+        text: `An AI agent asked to sign in to ${SITE} with this address, but it has no account. Make one first:`,
+      },
+      { kind: 'link', label: 'Make an account', url: `${siteUrl}/welcome` },
+      { kind: 'p', text: 'Then ask your agent to try again. If you did not ask for this, ignore it.' },
+    ],
+  });
+}

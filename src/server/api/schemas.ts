@@ -513,6 +513,10 @@ export const OrderRequest = z
       description:
         'Slippage limit, same sign convention as `costMicro`. The order is re-priced under the market lock and refused with `slippage_exceeded` if the cost is above this. For a sell, pass minus the least proceeds you will accept.',
     }),
+    isLlm: z.boolean().optional().meta({
+      description:
+        'Say that a language model is placing this order (an AI agent trading for you). Voluntary and unchecked: it is only recorded, and changes nothing about the order.',
+    }),
   })
   .meta({ id: 'OrderRequest' });
 
@@ -541,6 +545,10 @@ export const ListingOrderRequest = z
     stakeMicro: MicroInput.meta({
       description:
         'What to spend, in micro-units: also the order’s bound. It buys as many shares as it pays for on the board when the order arrives, and never costs more.',
+    }),
+    isLlm: z.boolean().optional().meta({
+      description:
+        'Say that a language model is placing this order (an AI agent trading for you). Voluntary and unchecked: it is only recorded, and changes nothing about the order.',
     }),
   })
   .meta({ id: 'ListingOrderRequest' });
@@ -931,6 +939,32 @@ export const CreatedToken = z
     token: z.string().meta({ description: 'The secret. Shown once, never again.' }),
   })
   .meta({ id: 'CreatedToken' });
+
+export const AgentCodeRequest = z
+  .object({ email: z.email().max(320).meta({ description: 'The person’s login address.' }) })
+  .meta({ id: 'AgentCodeRequest' });
+
+export const AgentCodeSent = z
+  .object({ email: z.string().meta({ description: 'Where the code went, if the address has an account.' }) })
+  .meta({ id: 'AgentCodeSent' });
+
+export const AgentPromptCode = z
+  .object({
+    email: z.string().meta({ description: 'Your login address, which the agent sends with the code.' }),
+    code: z.string().meta({ description: 'Six digits. Works once, until `expiresAt`; asking again replaces it.' }),
+    expiresAt: Timestamp,
+  })
+  .meta({ id: 'AgentPromptCode' });
+
+export const RedeemAgentCodeRequest = z
+  .object({
+    email: z.email().max(320),
+    code: z
+      .string()
+      .regex(/^\s*\d{6}\s*$/)
+      .meta({ description: 'The 6-digit code from the mail.', example: '123456' }),
+  })
+  .meta({ id: 'RedeemAgentCodeRequest' });
 
 export const TokenInfo = z
   .object({ ...TokenFields, lastUsedAt: Timestamp.nullable(), enabled: z.boolean() })

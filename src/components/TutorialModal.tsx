@@ -3,12 +3,14 @@
 import { useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { z } from 'zod';
+import { OnboardAgent } from '@/components/OnboardAgent';
 import { MathText } from '@/components/MathText';
 import { Modal, ModalClose, ModalTitle, ModalTrigger, SheetContent } from '@/components/Modal';
 import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
 import { sharesForStake } from '@/components/quote';
 import { segment, slotOf } from '@/app/markets/[slug]/TradeBox';
 import { ui } from '@/components/ui';
+import { AGENT_START_PATH } from '@/lib/agent-prompt';
 import { payoutReturn, pct, rep, REP } from '@/lib/format';
 import { marketHeadline, TIER_STRONG_BG } from '@/lib/headline';
 import { LIKELIHOOD_CLASS, likelihood } from '@/lib/likelihood';
@@ -81,8 +83,9 @@ function exampleOf(listing?: Listing): Example | null {
 export type TutorialStep = { title: string; art: ReactNode; body: ReactNode; fine?: ReactNode };
 
 /**
- * The tutorial's three steps, after Polymarket's: pick a paper, place a
- * trade, cash out. The illustrations are drawn from one real open market;
+ * The tutorial's steps, after Polymarket's: pick a paper, place a trade,
+ * cash out; then an AI agent instead, whose button (`OnboardAgentButton`)
+ * the last step shows under its own. The illustrations are drawn from one real open market;
  * without one, the steps are text alone. Shown as a sheet by `TutorialModal`
  * and in line, one step a page, by `/welcome`.
  */
@@ -146,7 +149,36 @@ export function tutorialSteps({
         </>
       ),
     },
+    agentStep(signedIn),
   ];
+}
+
+/** The last step: an AI agent instead. Its button, which copies the prompt, sits under the step's own. */
+function agentStep(signedIn: boolean): TutorialStep {
+  return {
+    title: 'Or onboard your agent',
+    art: <AgentSketch />,
+    body: (
+      <>
+        Sort through the slop with your agent!{' '}
+        {signedIn
+          ? 'Paste a prompt into your AI agent, and it trades for you.'
+          : 'Paste a prompt into your AI agent: it signs in with a code we email you.'}
+      </>
+    ),
+  };
+}
+
+/** The tutorial's second button on its last step: copies the prompt for an AI agent. */
+export function OnboardAgentButton({ signedIn }: { signedIn: boolean }) {
+  return (
+    <OnboardAgent
+      signedIn={signedIn}
+      className={ui.btn({ ghost: true })}
+      label="Onboard my agent"
+      copiedLabel="Prompt copied"
+    />
+  );
 }
 
 /** A step's illustration, faded towards the top, as if it rose out of the page. */
@@ -280,6 +312,7 @@ export function TutorialModal({
               Make your first trade
             </Link>
           )}
+          {step === last && <OnboardAgentButton signedIn={signedIn} />}
         </div>
       </SheetContent>
     </Modal>
@@ -371,6 +404,35 @@ function TradeBoxSketch({ example }: { example: Example }) {
       </div>
       <div className={ui.btn({ fill: fill === null ? '' : TIER_STRONG_BG[fill] })}>
         Stake {rep(EXAMPLE_STAKE)} {REP} on {yes.label}
+      </div>
+    </div>
+  );
+}
+
+/** The prompt pasted into an agent in a terminal: its first lines, and the agent starting to sign in. */
+function AgentSketch() {
+  return (
+    <div className={`${SKETCH} -rotate-1 overflow-hidden rounded-md bg-ink font-mono text-[11px] leading-relaxed`}>
+      <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-1.5">
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="size-2 rounded-full bg-white/25" />
+        ))}
+        <span className="ml-2 text-white/40">~ agent</span>
+      </div>
+      <div className="px-3 pt-2 pb-3 text-white/80">
+        <p>
+          <span className="text-toss-up">&gt;</span> trade on acceptodds.com
+        </p>
+        <p className="pl-3">1. Read the instructions: {AGENT_START_PATH}</p>
+        <p className="pl-3">
+          2. My own papers are: <span className="inline-block h-3 w-1.5 translate-y-0.5 bg-white/80" />
+        </p>
+        <p className="mt-2 text-white/50">
+          <span className="text-accept-soft">●</span> Read {AGENT_START_PATH}
+        </p>
+        <p>
+          <span className="text-accept-soft">●</span> Which email should I sign in with?
+        </p>
       </div>
     </div>
   );

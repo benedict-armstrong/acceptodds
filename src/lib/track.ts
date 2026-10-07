@@ -37,10 +37,12 @@ export type EventName =
   | 'market_open_clicked'
   | 'market_opened'
   | 'market_open_refused'
-  // the [getting started] tutorial: opened, each step first reached (2 and 3), and its last button
+  // the [getting started] tutorial: opened, each step first reached (2 onwards), and its last button
   | 'tutorial_opened'
   | 'tutorial_step'
   | 'tutorial_finished'
+  // [onboard your agent]: the prompt copied
+  | 'agent_prompt_copied'
   // small signals of interest
   | 'follow_toggled'
   | 'share_copied'

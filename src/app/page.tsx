@@ -8,6 +8,7 @@ import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { PaperRow } from '@/components/PaperRow';
 import { TitleBlock } from '@/components/TitleBlock';
+import { OnboardAgent } from '@/components/OnboardAgent';
 import { TutorialModal } from '@/components/TutorialModal';
 import { Wordmark } from '@/components/Wordmark';
 import type { z } from 'zod';
@@ -249,13 +250,20 @@ export default async function Home({
         abstract={q ? null : abstract()}
         abstractFull
       >
-        {!traded && (
-          <TutorialModal
-            example={tutorialExample}
-            startingBalanceMicro={startingBalanceMicro().toString()}
-            signedIn={viewer !== null}
-          />
-        )}
+        <div className="flex flex-wrap items-baseline justify-center gap-x-6">
+          {!traded && (
+            <TutorialModal
+              example={tutorialExample}
+              startingBalanceMicro={startingBalanceMicro().toString()}
+              signedIn={viewer !== null}
+            />
+          )}
+          {viewer && (
+            <div className="max-w-sm">
+              <OnboardAgent signedIn className={`font-sans text-[13px] ${ui.linkBtn}`} />
+            </div>
+          )}
+        </div>
       </TitleBlock>
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">

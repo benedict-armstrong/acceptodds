@@ -798,7 +798,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['trading'],
       summary: 'Open a listing’s market at a model’s prices, without trading',
       description:
-        'A listing has no market until someone opens it, by this call or by a first order (`POST /listings/{id}/orders`). The market opens at JEV’s prices for the listing, else the venue’s base rate. Idempotent: on a listing with a market, that market and `created: false`. Each account may open 50 a day. Without a credential it opens too, for a visitor choosing a first bet before signing up, from one budget all visitors share; a credential that is sent needs the `trade` scope and a trading-eligible account.',
+        'A listing has no market until someone opens it, by this call or by a first order (`POST /listings/{id}/orders`). The market opens at JEV’s prices for the listing, else the venue’s base rate. Idempotent: on a listing with a market, that market and `created: false`. Each account may open 20 an hour, counting markets opened by a first order. Without a credential it opens too, for a visitor choosing a first bet before signing up, from one budget all visitors share; a credential that is sent needs the `trade` scope and a trading-eligible account.',
       request: { params: listingIdParam },
       ok: { status: 201, schema: S.OpenedMarket, description: 'The market (200 when it already existed).' },
       errors: {
@@ -806,7 +806,7 @@ export function buildRegistry(): OpenAPIRegistry {
         403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
         404: 'not_found',
         409: 'market_not_open: no market is made for this listing’s kind | market_closed',
-        429: 'rate_limited: too many markets opened today',
+        429: 'rate_limited: too many markets opened in the last hour',
       },
     }),
   );
@@ -834,6 +834,7 @@ export function buildRegistry(): OpenAPIRegistry {
         403: 'forbidden: the credential lacks the "trade" scope | not_verified: the account has no confirmed institutional email address.',
         404: 'not_found: no such listing or outcome.',
         409: 'insufficient_balance | market_not_open: no market is made for this listing’s kind | market_closed | idempotency_key_reused',
+        429: 'rate_limited: this order would open a market, and too many were opened in the last hour',
       },
     }),
   );
@@ -893,6 +894,49 @@ export function buildRegistry(): OpenAPIRegistry {
         'Scopes `read` and/or `trade`. The token is returned once and never again. `admin` tokens are issued by an operator only.',
       request: { body: { content: { 'application/json': { schema: S.CreateTokenRequest } } } },
       ok: { status: 201, schema: S.CreatedToken, description: 'The token, shown once.' },
+    }),
+  );
+
+  r.registerPath(
+    sessionOnly({
+      method: 'post',
+      path: '/me/agent-code',
+      tags: ['agents'],
+      summary: 'A one-time code for your own AI agent',
+      description:
+        'For a signed-in person handing their agent a prompt: a 6-digit code and your login address, which the agent redeems at `POST /agent/token` with no mail. Works once, for 15 minutes; asking again replaces it.',
+      ok: { status: 201, schema: S.AgentPromptCode, description: 'The code.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/agent/code',
+      tags: ['agents'],
+      summary: 'Mail a person a code for their AI agent',
+      description:
+        'For an AI agent signing in for a person: mails their login address a 6-digit code, which the person gives the agent for `POST /agent/token`. Works once, for 30 minutes; asking again replaces it. Answers the same whether or not the address has an account (one without is mailed how to make one). Five mails a day per address.',
+      request: { body: { content: { 'application/json': { schema: S.AgentCodeRequest } } } },
+      ok: { status: 200, schema: S.AgentCodeSent, description: 'The mail is on its way.' },
+      errors: {
+        422: 'email_domain_not_allowed: the domain is not on the institution allowlist, or the address has a +tag.',
+        429: 'rate_limited: too many codes mailed to this address. See Retry-After.',
+      },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'post',
+      path: '/agent/token',
+      tags: ['agents'],
+      summary: 'Trade a one-time code for an API key',
+      description:
+        'For an AI agent a person has asked to trade for them: their address and the 6-digit code mailed to it (`POST /agent/code`) make a `read` + `trade` key named `ai-agent`, returned once. The code is used up. Five wrong codes and it is gone.',
+      request: { body: { content: { 'application/json': { schema: S.RedeemAgentCodeRequest } } } },
+      ok: { status: 201, schema: S.CreatedToken, description: 'The key, shown once.' },
+      errors: { 422: 'invalid_code: no live code matches this address and code.' },
     }),
   );
 
@@ -1123,6 +1167,10 @@ export function openApiDocument() {
         description: 'Reading groups: shared reading lists and traders ranked among themselves, joined by invite code.',
       },
       { name: 'me', description: 'The authenticated account.' },
+      {
+        name: 'agents',
+        description: 'An AI agent signing in for a person, by a code mailed to them. See /agent/start.',
+      },
       { name: 'onboarding', description: 'Signing up: plainly, or by choosing a first bet.' },
       { name: 'admin', description: 'Requires the `admin` scope.' },
     ],

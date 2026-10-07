@@ -36,6 +36,7 @@ export async function buyOnListing(
     outcome: string;
     stakeMicro: bigint;
     idempotencyKey: string | null;
+    origin?: engine.OrderOrigin;
   },
   database: Database = getDb(),
 ): Promise<{ fill: engine.Fill; marketCreated: boolean }> {
@@ -61,6 +62,7 @@ export async function buyOnListing(
         balanceMicro: account.balanceMicro.toString(),
       });
     }
+    await spendOpenBudget(accountId);
     ({ market, created: marketCreated } = await ensureMainMarket(listing, accountId, database));
   }
 
@@ -98,6 +100,7 @@ export async function buyOnListing(
         stakeMicro,
         idempotencyKey,
         database,
+        input.origin,
       );
       return { fill, marketCreated };
     } catch (err) {
@@ -113,8 +116,8 @@ export async function buyOnListing(
  * page's "Open Market", or `/welcome` when a visitor picks a paper nobody has
  * opened; they are then asked for the first trade. `created` is false when
  * the listing already had one. Making markets spends the house's subsidy and
- * a model call, so each account may make at most {@link OPEN_BUDGET} a day,
- * and visitors with no account (`accountId` null) {@link ANONYMOUS_OPEN_BUDGET}
+ * a model call, so each account may make at most {@link OPEN_BUDGET} an
+ * hour (by either call: a first order opens one too), and visitors with no account (`accountId` null) {@link ANONYMOUS_OPEN_BUDGET}
  * between them; asking for one that exists costs nothing.
  */
 export async function openListingMarket(
@@ -128,18 +131,7 @@ export async function openListingMarket(
     const [account] = await database.select().from(accounts).where(eq(accounts.id, accountId));
     if (account) refuseBot(account);
   }
-  const budget = accountId
-    ? await consume(`market-open:${accountId}`, OPEN_BUDGET)
-    : await consume('market-open:anonymous', ANONYMOUS_OPEN_BUDGET);
-  if (!budget.allowed) {
-    throw new ApiError(
-      429,
-      'rate_limited',
-      'too many markets opened today; try again later',
-      { retryAfterSeconds: budget.retryAfterSeconds },
-      rateLimitHeaders(budget),
-    );
-  }
+  await spendOpenBudget(accountId);
   const opened = await ensureMainMarket(listing, accountId, database);
   // Whoever opens a paper's market follows it. Only the call that made it, so
   // a repeat open never undoes an unfollow; and after the market's commit, so a
@@ -163,8 +155,28 @@ function refuseBot(account: Account): void {
   }
 }
 
-/** Markets one account may open a day. */
-export const OPEN_BUDGET: RateLimitConfig = { burst: 50, perSecond: 50 / 86_400 };
+/** Markets one account may open: 20 an hour, refilling steadily. */
+export const OPEN_BUDGET: RateLimitConfig = { burst: 20, perSecond: 20 / 3_600 };
+
+/**
+ * One market opened, from the account's budget or, with no account, the
+ * visitors' shared one: spent before anything is made, by both ways of
+ * opening one (`openListingMarket`, `buyOnListing`). Past it, a 429.
+ */
+async function spendOpenBudget(accountId: string | null): Promise<void> {
+  const budget = accountId
+    ? await consume(`market-open:${accountId}`, OPEN_BUDGET)
+    : await consume('market-open:anonymous', ANONYMOUS_OPEN_BUDGET);
+  if (!budget.allowed) {
+    throw new ApiError(
+      429,
+      'rate_limited',
+      'too many markets opened lately; try again later',
+      { retryAfterSeconds: budget.retryAfterSeconds },
+      rateLimitHeaders(budget),
+    );
+  }
+}
 
 /**
  * Markets all visitors without an account may open a day, together: one

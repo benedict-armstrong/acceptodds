@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { OnboardAgent } from '@/components/OnboardAgent';
+import { AGENT_KEY_NAME } from '@/lib/agent-prompt';
 import { CopyField } from '@/components/CopyField';
 import { ui } from '@/components/ui';
 import { day } from '@/lib/format';
@@ -172,6 +174,13 @@ export function ApiKeys({ initial, n, canTrade }: { initial: ApiKeyRow[]; n: num
         </label>
       </form>
       {note && <div className={ui.note(note.ok)}>{note.text}</div>}
+      <div className="mt-4">
+        <p className="mb-1 text-[15px] text-subtle">
+          Or let an AI agent trade for you: this copies a prompt for it with a one-time code, which gets it a key named{' '}
+          {AGENT_KEY_NAME}.
+        </p>
+        <OnboardAgent signedIn />
+      </div>
     </div>
   );
 }

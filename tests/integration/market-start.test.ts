@@ -5,7 +5,7 @@ import { getDb } from '@/db';
 import { listingTexts, markets, usdCosts } from '@/db/schema';
 import { followedListingIds, followOpenedListings, unfollow } from '@/server/follows';
 import { setRelated, setText, upsertListing } from '@/server/listings';
-import { ANONYMOUS_OPEN_BUDGET } from '@/server/market-start';
+import { ANONYMOUS_OPEN_BUDGET, OPEN_BUDGET } from '@/server/market-start';
 import { consume } from '@/server/ratelimit';
 import { browseListings, marketKinds } from '@/server/views';
 import { api, trader } from './api-client';
@@ -333,6 +333,19 @@ describe('opening a market at JEV’s price, without a trade', () => {
     expect((await open(undefined, a.id)).status).toBe(200);
     expect((await open(undefined, b.id)).status).toBe(429);
     expect(await mainMarketOf(b.id)).toHaveLength(0);
+  });
+
+  it('counts markets a first order opens against the same hourly budget', async () => {
+    const [a, b, c] = await Promise.all([paper('a'), paper('b'), paper('c')]);
+    const t = await trader('opener');
+    expect((await order(t.token, a.id, 'Accept', '1000000')).status).toBe(201);
+    // The first open spent one; spend the rest.
+    for (let i = 1; i < OPEN_BUDGET.burst; i++) await consume(`market-open:${t.id}`, OPEN_BUDGET);
+    expect((await order(t.token, b.id, 'Accept', '1000000')).status).toBe(429);
+    expect((await open(t.token, c.id)).status).toBe(429);
+    expect(await mainMarketOf(b.id)).toHaveLength(0);
+    // Trading on a market that exists costs nothing.
+    expect((await order(t.token, a.id, 'Accept', '1000000')).status).toBe(201);
   });
 
   it('lists an opened but untraded paper with no price, after the traded ones', async () => {

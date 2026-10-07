@@ -1182,9 +1182,9 @@ unpaginated, and 5 s for that search.
   credential, for `/welcome`, below), both `server/market-start.ts`:
   - `POST /listings/{id}/market` (`openListingMarket`) opens it at JEV's
     price with no trade; idempotent (`created: false`, 200, when it
-    exists). Opening spends a subsidy and a model call, so at most 50 a day
-    per account (`market-open:<account>`); asking for an existing one is
-    free. This is the UI's: the paper page's `JevPrice` button, "Open
+    exists). Opening spends a subsidy and a model call, so at most 20 an
+    hour per account (`market-open:<account>`, `OPEN_BUDGET`), spent by
+    either call that opens one; asking for an existing one is free. This is the UI's: the paper page's `JevPrice` button, "Open
     Market", set over the odds
     figure drawn blurred from placeholders (an even bar, `??%`; never a
     price), inviting a look rather than saying nobody has traded; while
@@ -1267,6 +1267,35 @@ unpaginated, and 5 s for that search.
   `market-open:anonymous` (`ANONYMOUS_OPEN_BUDGET`, 200 a day), with
   `created_by` null; a credential that is sent still needs `trade` and
   trading eligibility.
+
+### Agents trading for people
+
+- **`[onboard your agent]`** (`components/OnboardAgent`: under the home
+  page's title, signed in only; "Onboard my agent", the tutorial's second
+  button on its last step, for anyone; `/profile`'s API keys) copies
+  `lib/agent-prompt.ts`'s prompt, which has the agent ask one thing at a
+  time. **Signed in, the prompt carries the login address and a one-time
+  code** (`POST /me/agent-code`, session-only, 15 minutes, a new one each
+  press), which the agent redeems at once, then asks for the person's own
+  papers and how to trade. Signed out, it asks for the email, and while
+  the mailed code (below) is on its way, for the papers and how to trade,
+  then for the code. An agent that already has a key skips the sign-in.
+- **An agent signs in by a code mailed to the person**
+  (`server/agent-codes.ts`): it asks for their address, `POST /agent/code`
+  mails a 6-digit code (or, with no account, how to make one; the same
+  answer either way; allowlisted domains only; 5 mails a day per address),
+  the person reads it out, and `POST /agent/token { email, code }` mints a
+  `read` + `trade` key named `ai-agent`. `agent_codes`, written only there:
+  one per account, replaced by each request, 30 minutes, used up on
+  success, gone after 5 wrong guesses, every failure the same
+  `422 invalid_code`.
+- **`/agent/start`** is the agent's instructions: plain Markdown like
+  `/llms.txt`, only what OpenAPI already says, exit quotes over marks
+  (§1.1). It is linked from `/llms.txt`.
+- **Every order records how it arrived** (`orders.via`: `web` for a
+  session, `api` for a key, null in process; `orders.is_llm`: the body's
+  optional `isLlm`, voluntary and unchecked). Set by the handlers through
+  `engine.OrderOrigin`, never read by the engine, not on the tape.
 
 ### Leaderboard, people search and search syntax (#10)
 

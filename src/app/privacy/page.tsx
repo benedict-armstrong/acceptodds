@@ -90,9 +90,10 @@ export default function PrivacyPage() {
       </h2>
       <div className={prose}>
         <p>
-          We send the mail the site needs (confirmation codes, sign-in links, password resets) and, unless you turn them
-          off on your profile, a morning digest of the papers you follow and a note when someone mentions you in a
-          comment. Mail is delivered by Resend, which handles your address for that purpose only.
+          We send the mail the site needs (confirmation codes, sign-in links, password resets, codes for an AI agent you
+          ask to sign in) and, unless you turn them off on your profile, a morning digest of the papers you follow and a
+          note when someone mentions you in a comment. Mail is delivered by Resend, which handles your address for that
+          purpose only.
         </p>
       </div>
 

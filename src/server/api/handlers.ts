@@ -34,6 +34,7 @@ import { mapCached } from '../map-cache';
 import { countTransition, countView } from '../view-counter';
 import { publicPosition, publicPositionsOf, publish, unpublish } from '../public-positions';
 import { listTokens, mintToken, revokeToken } from '../tokens';
+import { issueAgentCode, redeemAgentCode, requestAgentCode } from '../agent-codes';
 import { addAffiliation, listAffiliations, removeAffiliation, verifyAffiliation } from '../affiliations';
 import {
   clearPendingBet,
@@ -430,6 +431,11 @@ export const getCommentReplies = route(async (req, params) => {
 // authenticated
 // ---------------------------------------------------------------------------
 
+/** How an order arrived, for the record: the credential's kind, and the client's own word on a language model. */
+function orderOrigin(principal: Principal, isLlm: boolean | undefined): engine.OrderOrigin {
+  return { via: principal.method === 'session' ? 'web' : 'api', isLlm: isLlm ?? false };
+}
+
 export const postOrder = route(async (req, params) => {
   const principal = await requireAuth(req, 'trade');
   requireTradingEligibility(principal);
@@ -446,6 +452,8 @@ export const postOrder = route(async (req, params) => {
     body.sharesMicro,
     body.maxCostMicro,
     idempotencyKey,
+    undefined,
+    orderOrigin(principal, body.isLlm),
   );
 
   /**
@@ -512,6 +520,7 @@ export const postListingOrder = route(async (req, params) => {
     accountId: principal.account.id,
     listing,
     outcome: body.outcome,
+    origin: orderOrigin(principal, body.isLlm),
     stakeMicro: body.stakeMicro,
     idempotencyKey,
   });
@@ -770,6 +779,41 @@ export const postMyToken = route(async (req) => {
   const body = await parseBody(req, S.CreateTokenRequest);
   const { token, record } = await mintToken({ account: principal.account, name: body.name, scopes: body.scopes });
   events.log('token.minted', { accountId: principal.account.id });
+  return respond(
+    S.CreatedToken,
+    {
+      id: record.id,
+      name: record.name,
+      start: record.start,
+      scopes: record.scopes,
+      createdAt: toIso(record.createdAt),
+      token,
+    },
+    { status: 201, principal },
+  );
+});
+
+/** An agent asks for a code to be mailed to the person it trades for (`server/agent-codes.ts`). Anonymous. */
+export const postAgentCode = route(async (req) => {
+  const principal = await authenticate(req);
+  const body = await parseBody(req, S.AgentCodeRequest);
+  await requestAgentCode(body.email);
+  return respond(S.AgentCodeSent, { email: body.email }, { principal });
+});
+
+/** A signed-in person's code for the prompt they copy: no mail. Session-only, like minting a key. */
+export const postMyAgentCode = route(async (req) => {
+  const principal = await requireSession(req);
+  const { email, code, expiresAt } = await issueAgentCode(principal.account);
+  return respond(S.AgentPromptCode, { email, code, expiresAt: toIso(expiresAt) }, { status: 201, principal });
+});
+
+/** An agent trades the address and its mailed code for a `read` + `trade` key. No credential needed: the code is one. */
+export const postAgentToken = route(async (req) => {
+  const principal = await authenticate(req);
+  const body = await parseBody(req, S.RedeemAgentCodeRequest);
+  const { token, record, accountId } = await redeemAgentCode(body);
+  events.log('token.minted', { accountId });
   return respond(
     S.CreatedToken,
     {

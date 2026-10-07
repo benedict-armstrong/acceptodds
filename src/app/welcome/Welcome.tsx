@@ -9,7 +9,7 @@ import { MathText } from '@/components/MathText';
 import { OnboardingTrade } from '@/components/OnboardingTrade';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { PaperSearch, tradableListingMarket } from '@/components/PaperSearch';
-import { TutorialArt, TutorialText, tutorialSteps } from '@/components/TutorialModal';
+import { OnboardAgentButton, TutorialArt, TutorialText, tutorialSteps } from '@/components/TutorialModal';
 import { SignUpEmail } from '@/components/SignUpEmail';
 import { ui } from '@/components/ui';
 import { marketHref } from '@/lib/links';
@@ -23,7 +23,7 @@ type Listing = z.output<typeof S.Listing>;
 type Market = z.output<typeof S.Market>;
 
 /** The tutorial's steps, in order: the home page's [getting started], one a page. */
-const TOUR = ['pick', 'trade', 'cash-out'] as const;
+const TOUR = ['pick', 'trade', 'cash-out', 'agent'] as const;
 type TourStep = (typeof TOUR)[number];
 
 export type Step = 'intro' | TourStep | 'search' | 'bet' | 'email';
@@ -164,7 +164,8 @@ export function Welcome({
 
     case 'pick':
     case 'trade':
-    case 'cash-out': {
+    case 'cash-out':
+    case 'agent': {
       const at = TOUR.indexOf(step);
       const tour = tutorialSteps({ example: suggestions[0], startingBalanceMicro: viewer.cashMicro, signedIn: false });
       const last = at === TOUR.length - 1;
@@ -176,6 +177,7 @@ export function Welcome({
             <button className={ui.btn()} onClick={() => go(last ? 'search' : TOUR[at + 1])}>
               {last ? 'Make your first trade' : 'Next'}
             </button>
+            {last && <OnboardAgentButton signedIn={viewer.signedIn} />}
           </div>
         </>,
         false,
