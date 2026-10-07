@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { isUniqueViolation } from '@/db/errors';
-import { accounts, markets, outcomes, type Listing, type Market } from '@/db/schema';
+import { accounts, markets, outcomes, type Account, type Listing, type Market } from '@/db/schema';
 import { sharesForCost } from '@/lib/lmsr';
 import { startingBalanceMicro } from './accounts';
 import { ApiError } from './api/errors';
@@ -55,6 +55,7 @@ export async function buyOnListing(
     // to fail leaves no untraded market behind. `trade()` checks again under its lock.
     const [account] = await database.select().from(accounts).where(eq(accounts.id, accountId));
     if (!account) throw new EngineError('not_found', `no account ${accountId}`);
+    refuseBot(account);
     if (account.balanceMicro < stakeMicro) {
       throw new EngineError('insufficient_balance', 'not enough reputation for this order', {
         balanceMicro: account.balanceMicro.toString(),
@@ -123,6 +124,10 @@ export async function openListingMarket(
 ): Promise<{ market: Market; created: boolean }> {
   const existing = await mainMarket(listing.id, database);
   if (existing) return { market: existing, created: false };
+  if (accountId) {
+    const [account] = await database.select().from(accounts).where(eq(accounts.id, accountId));
+    if (account) refuseBot(account);
+  }
   const budget = accountId
     ? await consume(`market-open:${accountId}`, OPEN_BUDGET)
     : await consume('market-open:anonymous', ANONYMOUS_OPEN_BUDGET);
@@ -145,6 +150,17 @@ export async function openListingMarket(
     });
   }
   return opened;
+}
+
+/**
+ * Bots trade only on markets people opened: a market spends the house's
+ * subsidy and a model call, and which papers have one is the humans' choice.
+ * Checked before anything is spent; trading on an existing market is unaffected.
+ */
+function refuseBot(account: Account): void {
+  if (account.isBot) {
+    throw new ApiError(403, 'bots_cannot_open_markets', 'bots trade only on markets that are already open');
+  }
 }
 
 /** Markets one account may open a day. */

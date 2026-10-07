@@ -296,6 +296,28 @@ describe('opening a market at JEV’s price, without a trade', () => {
     expect(await mainMarketOf(p.id)).toHaveLength(0);
   });
 
+  it('never opens one for a bot, either way, but lets it trade on one a person opened', async () => {
+    const calls = stubJev({ probabilities: { Accept: 0.5, Reject: 0.5 } });
+    const p = await paper('p');
+    const bot = await trader('b', ['read', 'trade'], { isBot: true });
+
+    const opened = await open(bot.token, p.id);
+    expect(opened.status).toBe(403);
+    expect((opened.body as any).error.code).toBe('bots_cannot_open_markets');
+    const bought = await order(bot.token, p.id, 'Accept', '1000000');
+    expect(bought.status).toBe(403);
+    expect((bought.body as any).error.code).toBe('bots_cannot_open_markets');
+    expect(await mainMarketOf(p.id)).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+
+    const t = await trader('t');
+    expect((await open(t.token, p.id)).status).toBe(201);
+    expect((await open(bot.token, p.id)).status).toBe(200);
+    const filled = await order(bot.token, p.id, 'Accept', '1000000');
+    expect(filled.status).toBe(201);
+    expect((filled.body as any).marketCreated).toBe(false);
+  });
+
   it('opens it for a visitor with no credential, made by nobody, from the visitors’ shared budget', async () => {
     stubJev({ probabilities: { Accept: 0.3, Reject: 0.7 } });
     const [a, b] = await Promise.all([paper('a'), paper('b')]);
