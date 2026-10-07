@@ -49,6 +49,7 @@ export type EventKind =
   | 'comment.unbacked'
   | 'listing.list'
   | 'listing.read'
+  | 'listing.text_read'
   | 'listing.created'
   | 'listing.updated'
   | 'listing.followed'

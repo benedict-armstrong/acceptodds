@@ -354,7 +354,7 @@ describe('opening a market at JEV’s price, without a trade', () => {
 describe('JEV reads the full text when it is supplied', () => {
   const admin = () => trader('admin', ['admin']);
 
-  it('stores it from PUT /listings/{id}/text, never serves it, and sends it to JEV instead of the abstract', async () => {
+  it('stores it from PUT /listings/{id}/text, keeps it off the listing, and sends it to JEV instead of the abstract', async () => {
     const a = await admin();
     const p = await upsertListing({ slug: 'p', title: 'Paper p', summary: 'Only the abstract.', kind: 'ICLR 2027' });
     const put = (text: string | null) =>
@@ -386,6 +386,30 @@ describe('JEV reads the full text when it is supplied', () => {
 
     expect((await put(null)).status).toBe(200);
     expect(await db.select().from(listingTexts)).toHaveLength(0);
+  });
+
+  it('serves it to any signed-in reader, by id or slug, and to nobody anonymous', async () => {
+    const a = await admin();
+    const p = await upsertListing({ slug: 'p', title: 'Paper p', summary: 'An abstract.', kind: 'ICLR 2027' });
+    const reader = await trader('r', ['read']);
+    const bot = await trader('b', ['read', 'trade'], { isBot: true });
+    const get = (ref: string, token?: string) => api('GET', `/listings/${ref}/text`, { token });
+
+    // None supplied yet: a 200 saying so, not a 404, which means no listing.
+    expect((await get(p.listing.id, reader.token)).body).toEqual({ listingId: p.listing.id, text: null, chars: 0 });
+
+    await api('PUT', `/listings/${p.listing.id}/text`, {
+      token: a.token,
+      body: { text: '1 Introduction. The whole paper.' },
+    });
+    for (const res of [await get(p.listing.id, reader.token), await get('p', bot.token)]) {
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ listingId: p.listing.id, text: '1 Introduction. The whole paper.', chars: 32 });
+    }
+
+    expect((await get(p.listing.id)).status).toBe(401);
+    expect((await get(p.listing.id, 'pm_live_not-a-key')).status).toBe(401);
+    expect((await get('no-such-paper', reader.token)).status).toBe(404);
   });
 
   it('asks again with the abstract when JEV refuses the full text', async () => {

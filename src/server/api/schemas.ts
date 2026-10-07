@@ -1074,12 +1074,23 @@ export const SetTextRequest = z
   .object({
     text: z.string().max(FULL_TEXT_MAX).nullable().meta({
       description:
-        'The full text of the subject (for a paper, its extracted PDF). Read only to set a new market’s opening prices, never served. `null` or empty clears it.',
+        'The full text of the subject (for a paper, its extracted PDF). Read to set a new market’s opening prices, and served to signed-in clients by `GET /listings/{id}/text`. `null` or empty clears it.',
     }),
   })
   .meta({ id: 'SetTextRequest' });
 
 export const SetTextResult = z.object({ listingId: Id, chars: z.number().int().min(0) }).meta({ id: 'SetTextResult' });
+
+export const ListingText = z
+  .object({
+    listingId: Id,
+    text: z.string().nullable().meta({
+      description:
+        'The full text as supplied by the listing’s publisher (for a paper, its extracted PDF), or `null` when none has been supplied yet. Never fetched from elsewhere.',
+    }),
+    chars: z.number().int().min(0).meta({ description: 'Its length in characters; 0 when there is none.' }),
+  })
+  .meta({ id: 'ListingText' });
 
 export const SetRelatedRequest = z
   .object({

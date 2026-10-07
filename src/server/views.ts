@@ -8,6 +8,7 @@ import {
   listingReferences,
   listingRelated,
   listings,
+  listingTexts,
   mapPoints,
   mapTopics,
   markets,
@@ -546,6 +547,15 @@ export async function listingCitations(listing: Listing, database: Database = ge
 }
 
 /** A listing's related list as it is given out: `hidden` more were named but are held back. */
+/** A listing's full text as `../research` supplied it (`PUT /listings/{id}/text`), or null. */
+export async function listingText(listingId: string, database: Database = getDb()): Promise<string | null> {
+  const [row] = await database
+    .select({ body: listingTexts.body })
+    .from(listingTexts)
+    .where(eq(listingTexts.listingId, listingId));
+  return row?.body ?? null;
+}
+
 export interface RelatedList {
   related: CitedListing[];
   hidden: number;

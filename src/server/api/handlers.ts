@@ -50,6 +50,7 @@ import {
   listingCitations,
   listingMinimap,
   listingRelatedTo,
+  listingText,
   listingTransitionCounts,
   listMarkets as listMarketsView,
   listingView,
@@ -232,7 +233,20 @@ export const getListingRelated = route(async (req, params) => {
   return respond(S.ListingRelated, presentRelated(await listingRelatedTo(listing)), { principal });
 });
 
-/** Replace a listing's full text, which only JEV reads. Written by `listings.ts`; not market state. */
+/**
+ * A listing's full text, as supplied: never fetched here. Any authenticated
+ * principal with `read`, so anonymous traffic can't scrape it; `text` is null
+ * while none has been supplied.
+ */
+export const getListingText = route(async (req, params) => {
+  const principal = await requireAuth(req, 'read');
+  const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
+  const text = await listingText(listing.id);
+  events.log('listing.text_read', { accountId: principal.account.id });
+  return respond(S.ListingText, { listingId: listing.id, text, chars: text?.length ?? 0 }, { principal });
+});
+
+/** Replace a listing's full text, which JEV and signed-in clients read. Written by `listings.ts`; not market state. */
 export const putListingText = route(async (req, params) => {
   const principal = await requireAuth(req, 'admin');
   const listing = await resolveListing(parseParam(params.id, S.ListingRef, 'id'));
