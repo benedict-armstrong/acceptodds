@@ -1192,6 +1192,11 @@ unpaginated, and 5 s for that search.
   - `POST /listings/{id}/orders { outcome, stakeMicro }` (`buyOnListing`,
     `Idempotency-Key`) is a buy by stake on the main market, opening it
     first if there is none. For bots; the UI does not use it.
+- **Bots never open a market** (`refuseBot` in `market-start.ts`): either
+  call on a listing with no market is `403 bots_cannot_open_markets` for an
+  `is_bot` account, before any budget, subsidy or model call is spent. Which
+  papers have a market is the humans' choice; a bot trades on one once a
+  person has opened it, through either call.
 - **No price shows before the first trade**: a market nobody has traded
   (JEV's price only) has no bar or headline on the home list
   (`orderCount > 0`) or the map (`headline` null), and sorts with the

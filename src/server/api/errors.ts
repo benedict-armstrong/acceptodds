@@ -39,6 +39,7 @@ export const API_ERROR_CODES = [
   'password_already_set',
   'too_many_groups',
   'group_admin',
+  'bots_cannot_open_markets',
   'method_not_allowed',
   'internal_error',
 ] as const;
