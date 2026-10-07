@@ -53,6 +53,7 @@ describe('sign-in links', () => {
     expect(mail.html).not.toContain('/magic-link/verify');
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
     expect(link.pathname).toBe('/signin/link');
+    expect(link.searchParams.get('to')).toBe('magic-link');
     expect(link.searchParams.get('token')).toBeTruthy();
     expect(link.searchParams.get('callbackURL')).toBe(LANDING);
   });

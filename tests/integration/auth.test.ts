@@ -118,9 +118,15 @@ describe('sign-up', () => {
     const [house] = await db.select().from(accounts).where(eq(accounts.handle, 'house'));
     expect(BigInt(total)).toBe(house.balanceMicro + fx.subsidyMicro);
 
-    // Clicking the link now creates it, with exactly one grant.
+    // The mail links to the landing page, never the route a mail scanner's GET would confirm with.
     const mail = devOutbox().find((m) => m.to === 'later@example.org')!;
+    expect(mail.text).not.toContain('/api/auth/verify-email');
+    expect(mail.html).not.toContain('/api/auth/verify-email');
     const link = new URL(/https?:\/\/\S+/.exec(mail.text)![0]);
+    expect(link.pathname).toBe('/signin/link');
+    expect(link.searchParams.get('to')).toBe('confirm');
+
+    // Clicking it now creates the account, with exactly one grant.
     await authCall('GET', `${authPathOf(link)}${link.search}`);
     const [row] = await accountsFor('later@example.org');
     expect(row.account.balanceMicro).toBe(STARTING_MICRO);
@@ -179,7 +185,7 @@ describe('sign-up', () => {
     expect(right.status).toBe(403);
     const mail = devOutbox().find((m) => m.to === 'again@example.org')!;
     expect(codeFrom(mail.text)).toMatch(/^\d{6}$/);
-    expect(mail.text).toMatch(/https?:\/\/\S+verify-email/);
+    expect(mail.text).toMatch(/https?:\/\/\S+\/signin\/link\?\S*\bto=confirm\b/);
   });
 
   it('signing up again with an unconfirmed address resends the code and link, and creates nothing', async () => {

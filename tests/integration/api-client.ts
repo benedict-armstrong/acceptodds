@@ -10,7 +10,7 @@ import { accounts, type TokenScope } from '@/db/schema';
 import { createAccount } from '@/server/accounts';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { mintToken } from '@/server/tokens';
-import { SIGN_IN_LINK_PATH } from '@/lib/links';
+import { MAIL_LINK_TARGETS, SIGN_IN_LINK_PATH } from '@/lib/links';
 import * as authRoute from '@/app/api/auth/[...all]/route';
 import * as marketsRoute from '@/app/api/v1/markets/route';
 import * as marketRoute from '@/app/api/v1/markets/[id]/route';
@@ -195,14 +195,16 @@ export async function api<T = any>(
 }
 
 /**
- * The Better Auth path a mailed link opens, for `authCall`: a confirmation
- * link is Better Auth's own; a sign-in link lands on `/signin/link`, whose
- * button submits the same query to `/magic-link/verify`.
+ * The Better Auth path a mailed link opens, for `authCall`: every sign-in
+ * and confirmation link lands on `/signin/link`, whose button submits the
+ * same query to the route its `?to=` names; a reset link is Better Auth's.
  */
 export function authPathOf(link: URL): string {
-  if (link.pathname === SIGN_IN_LINK_PATH) return '/magic-link/verify';
-  if (!link.pathname.startsWith('/api/auth/')) throw new Error(`not an auth link: ${link}`);
-  return link.pathname.replace(/^\/api\/auth/, '');
+  // A password-reset link is Better Auth's own: its GET only checks the token.
+  if (link.pathname.startsWith('/api/auth/reset-password/')) return link.pathname.replace(/^\/api\/auth/, '');
+  if (link.pathname !== SIGN_IN_LINK_PATH) throw new Error(`not a mailed auth link: ${link}`);
+  const to = link.searchParams.get('to') === 'confirm' ? 'confirm' : 'magic-link';
+  return MAIL_LINK_TARGETS[to].action.replace(/^\/api\/auth/, '');
 }
 
 /** Better Auth's own endpoints, under /api/auth. */

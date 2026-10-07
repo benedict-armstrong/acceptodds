@@ -492,12 +492,15 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   are checked in `sendMagicLink`, before any mail, so an unlisted address
   is a 422 on the page, never a dead link; otherwise the answer is the same
   whether or not the address has an account. A link works once, 15
-  minutes. **The mail links to `/signin/link`, never to Better Auth's
-  `/magic-link/verify`** (`links.signInLinkUrl`): that GET spends the
-  token, and institutional mail scanners open every link before the person
-  does, so a direct link was "already used" when clicked. The page is a
-  button, a GET form to the verify route, which scanners don't submit.
-  Opened, it signs in — and for an address with no user, makes
+  minutes. **Every sign-in and confirmation mail links to `/signin/link`,
+  never to Better Auth's `/magic-link/verify` or `/verify-email`**
+  (`links.mailLinkUrl`, `?to=` naming which): the first spends its token
+  on a GET and the second confirms and signs in whoever opens it, and
+  institutional mail scanners open every link before the person does, so
+  a direct link was "already used" when clicked. The page is a button, a
+  GET form to that route, which scanners don't submit. A reset link stays
+  Better Auth's: its GET only checks the token, and `/set-password` spends
+  it by POST. Opened, it signs in — and for an address with no user, makes
   one, confirmed (the link proves the inbox), with no name and no password;
   the trader account follows lazily as for any session. Every link lands on
   `/verify-email` (`authHref(VERIFY_EMAIL, next)`, errors too), which asks

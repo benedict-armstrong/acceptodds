@@ -13,7 +13,7 @@ import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
 import { consume, type RateLimitConfig } from './ratelimit';
 import { confirmationMail, existingAccountMail, magicLinkMail, passwordMail } from '@/lib/auth-mails';
-import { signInLinkUrl } from '@/lib/links';
+import { mailLinkUrl } from '@/lib/links';
 import { sendMail } from './mail';
 
 /**
@@ -232,7 +232,8 @@ export function createAuth(database: Database) {
         if (!(await authMailBudget(user.email))) return;
         // Each mail rotates the code: only the newest one works.
         const code = await auth.api.createVerificationOTP({ body: { email: user.email, type: 'email-verification' } });
-        await sendMail({ to: user.email, ...confirmationMail(code, url) });
+        // Never Better Auth's URL itself: a mail scanner's GET would confirm and sign in (`mailLinkUrl`).
+        await sendMail({ to: user.email, ...confirmationMail(code, mailLinkUrl(url)) });
       },
       // Confirmation is the institutional verification: it creates the trader
       // account, grants the starting balance and sets `verified_at`, once.
@@ -308,8 +309,8 @@ export function createAuth(database: Database) {
         expiresIn: MAGIC_LINK_TTL_SECONDS,
         sendMagicLink: async ({ email, url: verifyUrl, metadata }) => {
           const address = email.trim().toLowerCase();
-          // Never the verify URL itself: a mail scanner's GET would spend the token (`signInLinkUrl`).
-          const url = signInLinkUrl(verifyUrl);
+          // Never the verify URL itself: a mail scanner's GET would spend the token (`mailLinkUrl`).
+          const url = mailLinkUrl(verifyUrl);
           if (!institutionForEmail(address)) {
             throw new APIError('UNPROCESSABLE_ENTITY', {
               code: EMAIL_DOMAIN_NOT_ALLOWED,
