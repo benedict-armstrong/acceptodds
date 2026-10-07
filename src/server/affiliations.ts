@@ -5,6 +5,7 @@ import { isUniqueViolation } from '@/db/errors';
 import { accounts, affiliations, type Account, type Affiliation } from '@/db/schema';
 import { ApiError } from './api/errors';
 import { institutionForEmail } from './institution-domains';
+import { affiliationCodeMail, affiliationTakenMail } from '@/lib/auth-mails';
 import { sendMail } from './mail';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 import { siteUrl } from './share';
@@ -179,22 +180,11 @@ export async function addAffiliation(
 
   // After the commit, so a failed send leaves a pending row that re-adding retries.
   if (takenElsewhere) {
-    await sendMail({
-      to: email,
-      subject: 'This address is already affiliated with an acceptodds account',
-      text:
-        `@${input.account.handle} asked to add this address as an affiliation, but it already belongs to an account, ` +
-        `so nothing was changed and no code was sent. An address can vouch for one account only.\n\n` +
-        `If not, ignore this.`,
-    });
+    await sendMail({ to: email, ...affiliationTakenMail(input.account.handle, siteUrl()) });
   } else {
     await sendMail({
       to: email,
-      subject: `${code} is your acceptodds affiliation code`,
-      text:
-        `@${input.account.handle} asked to add this address as an affiliation (${institution.name}). ` +
-        `If that was you, enter ${code} on your profile:\n\n${siteUrl()}/profile#affiliations\n\n` +
-        `It works for an hour. If not, ignore this; nothing changes without the code.`,
+      ...affiliationCodeMail(input.account.handle, institution.name, code, `${siteUrl()}/profile#affiliations`),
     });
   }
   return row;

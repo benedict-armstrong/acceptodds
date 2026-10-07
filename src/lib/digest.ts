@@ -1,3 +1,4 @@
+import { renderMail, type RenderedMail } from './mail-html';
 import { headlineOf, headlinePrice, type HeadlineOf } from './headline';
 
 /**
@@ -71,28 +72,46 @@ export interface DigestItem extends Move {
   binary: boolean;
 }
 
-/** The digest mail, plain text. Biggest moves first. */
-export function renderDigest(items: readonly DigestItem[], baseUrl: string): { subject: string; text: string } {
+/** The digest mail. Biggest moves first. */
+export function renderDigest(items: readonly DigestItem[], baseUrl: string): RenderedMail {
   const base = baseUrl.replace(/\/+$/, '');
   const sorted = [...items].sort((a, b) => Math.abs(movePp(b)) - Math.abs(movePp(a)));
   const n = sorted.length;
-  const subject = `acceptodds: ${n} followed paper${n === 1 ? '' : 's'} moved in the last 24 hours`;
-  const lines = sorted.map((i) => {
-    const what = i.binary ? '' : i.negated ? ` (not ${i.outcomeLabel})` : ` (${i.outcomeLabel})`;
-    return [
-      `${i.title}`,
-      `  ${i.question}${what}: ${pct(i.then)} → ${pct(i.now)} (${pp(i)})`,
-      `  ${base}/papers/${encodeURIComponent(i.slug)}`,
-    ].join('\n');
+  const what = (i: DigestItem) => (i.binary ? '' : i.negated ? ` (not ${i.outcomeLabel})` : ` (${i.outcomeLabel})`);
+  const href = (i: DigestItem) => `${base}/papers/${encodeURIComponent(i.slug)}`;
+  const plain = sorted
+    .map((i) =>
+      [`${i.title}`, `  ${i.question}${what(i)}: ${pct(i.then)} → ${pct(i.now)} (${pp(i)})`, `  ${href(i)}`].join('\n'),
+    )
+    .join('\n\n');
+  return renderMail({
+    siteUrl: base,
+    subject: `acceptodds: ${n} followed paper${n === 1 ? '' : 's'} moved in the last 24 hours`,
+    title: 'Morning digest',
+    byline: `${n} followed paper${n === 1 ? '' : 's'} moved in the last 24 hours`,
+    blocks: [
+      { kind: 'p', text: `Prices on papers you follow moved over the last 24 hours:` },
+      {
+        kind: 'table',
+        caption: 'Headline price a day ago and now, biggest move first.',
+        columns: [
+          { label: 'Paper' },
+          { label: 'Then', numeric: true },
+          { label: 'Now', numeric: true },
+          { label: 'Move', numeric: true },
+        ],
+        rows: sorted.map((i) => [
+          { text: i.title, href: href(i), sub: `${i.question}${what(i)}` },
+          { text: pct(i.then) },
+          { text: pct(i.now) },
+          { text: pp(i), tone: i.now > i.then ? 'up' : i.now < i.then ? 'down' : undefined },
+        ]),
+        plain,
+      },
+    ],
+    notes: [
+      `Prices are the market's implied probabilities, not a forecast of ours.`,
+      `You get this because you follow these papers. To stop these emails, or unfollow, go to ${base}/profile#email`,
+    ],
   });
-  const text = [
-    `Prices on papers you follow moved over the last 24 hours:`,
-    '',
-    lines.join('\n\n'),
-    '',
-    '—',
-    `Prices are the market's implied probabilities, not a forecast of ours.`,
-    `You get this because you follow these papers. To stop these emails, or unfollow, go to ${base}/profile`,
-  ].join('\n');
-  return { subject, text };
 }

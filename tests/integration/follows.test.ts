@@ -210,7 +210,7 @@ describe('sendDailyDigest', () => {
     expect(mail[0].text).toContain('A Paper That Moved');
     expect(mail[0].text).toMatch(/Will moved be accepted\?: 50% → 6\d% \(\+\d+ pp\)/);
     expect(mail[0].text).toContain(`${BASE}/papers/moved`);
-    expect(mail[0].text).toContain(`${BASE}/profile`);
+    expect(mail[0].text).toContain(`${BASE}/profile#email`);
     expect(mail[0].text).not.toContain('Barely');
     expect(mail[0].text).not.toContain('Last Week');
 

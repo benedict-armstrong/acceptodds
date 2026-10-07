@@ -73,7 +73,7 @@ describe('renderDigest', () => {
     expect(text).toContain('Q b?: 70% → 40% (−30 pp)');
     expect(text.indexOf('Title b')).toBeLessThan(text.indexOf('Title a'));
     expect(text).toContain('https://x.test/papers/a');
-    expect(text).toContain('https://x.test/profile');
+    expect(text).toContain('https://x.test/profile#email');
   });
 
   it('names the complemented outcome for a multi-outcome market', () => {

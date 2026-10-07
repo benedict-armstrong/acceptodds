@@ -520,11 +520,14 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   a pseudo-terminal (`script -qfc`) and answer "create", or squash (above).
 - **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
   server log, outside production; in production a missing key throws.
-- **Every mail is sent with an HTML part made from its text**
-  (`lib/mail-html.ts`, in `sendMail`): text kept as written, URLs as
-  anchors. Text-only, our long auth links were wrapped at a hyphen and cut
-  (`/verify-`, now redirected to `/verify-email`). Write mails as text;
-  never send one without the HTML part.
+- **Every mail is written once, as blocks, and rendered twice**
+  (`lib/mail-html.ts` `renderMail`): a plain part and an HTML part set
+  like a paper (running head, centred title, a code between booktabs
+  rules, booktabs tables with "Table N.", notes under a footnote rule),
+  inline styles only, colours copied from the tokens. Account mails are
+  `lib/auth-mails.ts`. Text-only, our long auth links were wrapped at a
+  hyphen and cut (`/verify-`, now redirected to `/verify-email`), so
+  `Mail.html` is required: never send one without it.
 
 ### UI (M6)
 
@@ -1033,7 +1036,7 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   per `DIGEST_TIMEZONE` day**: the `digest_sends` row is inserted _before_
   the mail, so re-runs and concurrent runs send once; a visible send failure
   deletes the row for a retry, a crash between insert and send loses that
-  day's mail rather than doubling it. The unsubscribe link is `/profile`, not
+  day's mail rather than doubling it. The unsubscribe link is `/profile#email`, not
   a signed token. `digest.sent` is logged after the send, no payload.
 
 ### The list at venue scale (#12)

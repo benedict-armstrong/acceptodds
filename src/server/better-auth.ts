@@ -12,6 +12,7 @@ import { CLIENT_IP_HEADER } from './api/http';
 import { ensureAccountForUser } from './accounts';
 import { institutionForEmail } from './institution-domains';
 import { consume, type RateLimitConfig } from './ratelimit';
+import { confirmationMail, existingAccountMail, magicLinkMail, passwordMail } from '@/lib/auth-mails';
 import { sendMail } from './mail';
 
 /**
@@ -213,14 +214,7 @@ export function createAuth(database: Database) {
         // have accounts (Better Auth answers the same for an unknown one).
         if (!(await authMailBudget(user.email))) return;
         const first = !(await hasPassword(user.id, database));
-        await sendMail({
-          to: user.email,
-          subject: first ? 'Choose your acceptodds password' : 'Reset your acceptodds password',
-          text: first
-            ? `You have an acceptodds account but no password yet. Open this link to choose one and sign in:\n\n${url}\n\n` +
-              `It works once, for an hour. If you did not ask for this, ignore it; nothing has changed.`
-            : `Someone asked to reset the password for this address. If it was you:\n\n${url}\n\nIf not, ignore this.`,
-        });
+        await sendMail({ to: user.email, ...passwordMail(first, url) });
       },
     },
     emailVerification: {
@@ -237,13 +231,7 @@ export function createAuth(database: Database) {
         if (!(await authMailBudget(user.email))) return;
         // Each mail rotates the code: only the newest one works.
         const code = await auth.api.createVerificationOTP({ body: { email: user.email, type: 'email-verification' } });
-        await sendMail({
-          to: user.email,
-          subject: `${code} is your acceptodds confirmation code`,
-          text:
-            `Your confirmation code is ${code}. Enter it on the page you signed up on, or open this link:\n\n${url}\n\n` +
-            `Both work for an hour. If you did not sign up, ignore this.`,
-        });
+        await sendMail({ to: user.email, ...confirmationMail(code, url) });
       },
       // Confirmation is the institutional verification: it creates the trader
       // account, grants the starting balance and sets `verified_at`, once.
@@ -339,24 +327,10 @@ export function createAuth(database: Database) {
             const code = await auth.api.createVerificationOTP({
               body: { email: address, type: 'email-verification' },
             });
-            await sendMail({
-              to: address,
-              subject: `${code} is your acceptodds sign-in code`,
-              text:
-                `This address already has an acceptodds account, so we did not make a new one. ` +
-                `Your sign-in code is ${code}. Enter it on the page you were on, or open this link to sign in:\n\n${url}\n\n` +
-                `Your bet is waiting there. The code works for an hour, the link once, for 15 minutes. ` +
-                `If you did not ask for this, ignore it; nothing has changed.`,
-            });
+            await sendMail({ to: address, ...existingAccountMail(code, url) });
             return;
           }
-          await sendMail({
-            to: address,
-            subject: 'Your acceptodds sign-in link',
-            text:
-              `Open this link to sign in to acceptodds. If you have no account yet, it makes one:\n\n${url}\n\n` +
-              `It works once, for 15 minutes. If you did not ask for it, ignore this; nothing has changed.`,
-          });
+          await sendMail({ to: address, ...magicLinkMail(url) });
         },
       }),
       emailOTP({
