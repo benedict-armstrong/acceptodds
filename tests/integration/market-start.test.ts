@@ -73,7 +73,7 @@ describe('a listing’s first trade makes its market', () => {
     const fill = res.body as any;
     expect(fill.marketCreated).toBe(true);
     expect(fill.firstTrade).toBe(true);
-    expect(fill.priceBefore).toBeCloseTo(0.32, 6);
+    expect(fill.priceBefore).toBeCloseTo(0.33, 6);
     expect(BigInt(fill.costMicro)).toBeLessThanOrEqual(10_000_000n);
     expect(BigInt(fill.costMicro)).toBeGreaterThan(9_999_000n);
 
@@ -112,7 +112,7 @@ describe('a listing’s first trade makes its market', () => {
     const t = await trader('t');
     const res = await order(t.token, p.id, 'Accept', '1000000');
     expect(res.status).toBe(201);
-    expect((res.body as any).priceBefore).toBeCloseTo(0.32, 6);
+    expect((res.body as any).priceBefore).toBeCloseTo(0.33, 6);
   });
 
   it('makes one market when first trades race', async () => {

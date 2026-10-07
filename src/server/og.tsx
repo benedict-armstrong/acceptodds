@@ -31,6 +31,13 @@ function serifFont(): Promise<Buffer> {
   return serif;
 }
 
+let hand: Promise<Buffer> | null = null;
+/** Caveat (OFL), for the home card's handwritten note and nothing else. */
+function handFont(): Promise<Buffer> {
+  hand ??= readFile(join(process.cwd(), 'assets/fonts/Caveat-Regular.ttf'));
+  return hand;
+}
+
 /** The question for a Latin-only font: `<title> @ <kind>?`, at most ~120 characters, `@ <kind>?` kept whole. */
 const OG_TITLE_MAX = 120;
 
@@ -132,6 +139,146 @@ function Labels({ row, above }: { row: Placed; above: boolean }) {
   );
 }
 
+/** The outcome bar with its prices and labels on either side. */
+function OutcomeBar({ legend }: { legend: ReturnType<typeof barLegend> }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <Labels row={legend.above} above />
+      <Ticks row={legend.above} />
+      <div style={{ display: 'flex', height: 30, borderRadius: 6, overflow: 'hidden' }}>
+        {legend.segments.map((it) => (
+          <div key={it.i} style={{ display: 'flex', width: `${it.price * 100}%`, background: it.color }} />
+        ))}
+      </div>
+      <Ticks row={legend.below} />
+      <Labels row={legend.below} above={false} />
+    </div>
+  );
+}
+
+/** A paper's name, hidden: word-shaped strokes under a haze, where the home card's question leaves it blank. */
+function HiddenTitle({ width, height }: { width: number; height: number }) {
+  const words = [58, 34, 78, 28, 52];
+  const gap = 12;
+  let x = 24;
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <defs>
+        <filter id="haze" x="-20%" y="-60%" width="140%" height="220%">
+          <feGaussianBlur stdDeviation="10" />
+        </filter>
+        <filter id="smudge" x="-10%" y="-50%" width="120%" height="200%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
+      </defs>
+      <g filter="url(#smudge)">
+        {words.map((w, k) => {
+          const r = (
+            <rect key={k} x={x} y={height / 2 - 9} width={w} height={20} rx={8} fill={INK} fillOpacity={0.45} />
+          );
+          x += w + gap;
+          return r;
+        })}
+      </g>
+      <g filter="url(#haze)">
+        <ellipse
+          cx={width * 0.27}
+          cy={height / 2 + 2}
+          rx={width * 0.19}
+          ry={height * 0.26}
+          fill="#dedad1"
+          fillOpacity={0.75}
+        />
+        <ellipse
+          cx={width * 0.55}
+          cy={height / 2 - 4}
+          rx={width * 0.22}
+          ry={height * 0.3}
+          fill="#dedad1"
+          fillOpacity={0.7}
+        />
+        <ellipse
+          cx={width * 0.74}
+          cy={height / 2 + 3}
+          rx={width * 0.19}
+          ry={height * 0.25}
+          fill="#dedad1"
+          fillOpacity={0.75}
+        />
+      </g>
+    </svg>
+  );
+}
+
+/** A handwritten "your paper?" with a pen-drawn arrow up to the hidden title, its tip at (`left` + 40, `top` + 8). */
+function YourPaper({ left, top }: { left: number; top: number }) {
+  return (
+    <div style={{ display: 'flex', position: 'absolute', left, top, alignItems: 'flex-start' }}>
+      <svg width={150} height={70} viewBox="0 0 150 70">
+        <path
+          d="M140,45 C95,58 50,48 40,8 M35.8,22.4 L40,8 L50.4,18.8"
+          fill="none"
+          stroke={ACCENT}
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <div
+        style={{
+          display: 'flex',
+          marginTop: 18,
+          fontFamily: 'Hand',
+          fontSize: 44,
+          color: ACCENT,
+          transform: 'rotate(-3deg)',
+        }}
+      >
+        your paper?
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The home page's link preview, and every page's without one of its own:
+ * what the site asks, and a paper's market with the paper hidden, at the
+ * prior every one of the venue's markets falls back to (its template's
+ * `fallbackPrices`) — a real price, not one made up for the picture. No
+ * template: no bar.
+ */
+export async function homeImage(
+  kind: string,
+  prior: readonly { label: string; price: number }[] | null,
+): Promise<ImageResponse> {
+  const legend = prior && prior.length >= 2 && prior.length <= MAX_BAR_OUTCOMES ? barLegend(prior) : null;
+  return card(
+    kind,
+    <div style={BODY}>
+      <div style={{ display: 'flex', marginTop: 44, fontSize: 72, lineHeight: 1.1 }}>
+        Which papers will get accepted?
+      </div>
+      <div style={{ display: 'flex', marginTop: 20, fontSize: 32, lineHeight: 1.3, color: MUTED }}>
+        A prediction market on peer review
+      </div>
+
+      <div style={{ display: 'flex', flex: 1 }} />
+
+      <div style={{ display: 'flex', position: 'relative', alignItems: 'center', fontSize: 40, marginBottom: 8 }}>
+        <YourPaper left={330} top={48} />
+        <div style={{ display: 'flex' }}>Will</div>
+        <div style={{ display: 'flex', margin: '-10px 0' }}>
+          <HiddenTitle width={360} height={80} />
+        </div>
+        <div style={{ display: 'flex' }}>be accepted</div>
+        <div style={{ display: 'flex', marginLeft: 10, color: ACCENT }}>{`@ ${kind}?`}</div>
+      </div>
+      {legend && <OutcomeBar legend={legend} />}
+    </div>,
+    true,
+  );
+}
+
 /** `holder`: a public position's line (#36), under the title. */
 export async function previewImage(subject: ShareSubject | null, holder?: string): Promise<ImageResponse> {
   const main = subject?.main ?? null;
@@ -193,19 +340,7 @@ export async function previewImage(subject: ShareSubject | null, holder?: string
 
       <div style={{ display: 'flex', flex: 1 }} />
 
-      {legend && (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <Labels row={legend.above} above />
-          <Ticks row={legend.above} />
-          <div style={{ display: 'flex', height: 30, borderRadius: 6, overflow: 'hidden' }}>
-            {legend.segments.map((it) => (
-              <div key={it.i} style={{ display: 'flex', width: `${it.price * 100}%`, background: it.color }} />
-            ))}
-          </div>
-          <Ticks row={legend.below} />
-          <Labels row={legend.below} above={false} />
-        </div>
-      )}
+      {legend && <OutcomeBar legend={legend} />}
 
       {endBar && (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -229,7 +364,7 @@ export async function previewImage(subject: ShareSubject | null, holder?: string
  */
 const BODY = { display: 'flex', flexDirection: 'column', flex: 1 } as const;
 
-async function card(corner: string, children: ReactNode): Promise<ImageResponse> {
+async function card(corner: string, children: ReactNode, handwriting = false): Promise<ImageResponse> {
   return new ImageResponse(
     <div
       style={{
@@ -255,7 +390,12 @@ async function card(corner: string, children: ReactNode): Promise<ImageResponse>
     </div>,
     {
       ...OG_SIZE,
-      fonts: [{ name: 'Serif', data: await serifFont(), style: 'normal', weight: 400 }],
+      fonts: [
+        { name: 'Serif', data: await serifFont(), style: 'normal', weight: 400 },
+        ...(handwriting
+          ? [{ name: 'Hand', data: await handFont(), style: 'normal' as const, weight: 400 as const }]
+          : []),
+      ],
       // Crawlers fetch previews hard, and chat apps cache the card anyway; five minutes is fresh enough.
       headers: { 'Cache-Control': 'public, max-age=300, s-maxage=300' },
     },

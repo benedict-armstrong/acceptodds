@@ -38,15 +38,15 @@ const ICLR_2027: MarketTemplate = {
   outcomes: ['Accept', 'Reject'],
   closesAt: new Date('2026-12-14T00:00:00Z'),
   expectedTraders: 6,
-  // The previous oral, spotlight and poster rates combined into a 32% acceptance rate.
-  fallbackPrices: [0.32, 0.68],
+  // The previous oral, spotlight and poster rates combined into about a 33% acceptance rate.
+  fallbackPrices: [0.33, 0.67],
   jev: {
     // The prior and the reviewing guidelines, so the answer starts from the base rate and moves only on the
     // paper's merits as reviewers judge them, not on whether it reads like a paper.
     instructions: [
       'This paper is under review at ICLR 2027. Predict its final decision.',
       '',
-      'Start from the base rate: about 32% of ICLR submissions are accepted (oral, spotlight and poster ' +
+      'Start from the base rate: about 33% of ICLR submissions are accepted (oral, spotlight and poster ' +
         'combined), so most papers are rejected, and a competent, well-written paper is not by itself ' +
         'above the base rate. Move away from it only as far as the paper gives you reason to.',
       '',

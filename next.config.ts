@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
   // The link-preview images read their font from disk (src/server/og.tsx);
   // standalone output only copies files it can trace, so name it.
   outputFileTracingIncludes: {
+    '/opengraph-image': ['./assets/fonts/*.ttf'],
     '/papers/[slug]/opengraph-image': ['./assets/fonts/*.ttf'],
     '/markets/[slug]/opengraph-image': ['./assets/fonts/*.ttf'],
   },
