@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
 import { Markdown } from '@/components/Markdown';
 import { Modal, ModalContent, ModalTrigger } from '@/components/Modal';
-import { OutcomeBar, OutcomeSwatch } from '@/components/OutcomeBar';
+import { OddsBar } from '@/components/OutcomeBar';
 import { PositionsTable } from '@/components/PositionsTable';
 import { PriceChart, type ChartPoint } from '@/components/PriceChart';
 import { ui } from '@/components/ui';
@@ -15,7 +15,7 @@ import { VenueStanding } from '@/components/VenueStanding';
 import { usePassed } from '@/components/usePassed';
 import { marketPollInterval, tapePollInterval } from '@/lib/market-poll';
 import { day, pct } from '@/lib/format';
-import { barOrder, headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
+import { headlineLabel, marketHeadline, MAX_BAR_OUTCOMES } from '@/lib/headline';
 import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { welcomeBetHref } from '@/lib/onboarding';
 import type { VenueField } from '@/server/venue-field';
@@ -177,15 +177,7 @@ export function MarketLive({
               </span>
             </div>
           )}
-          <OutcomeBar prices={market.outcomes.map((o) => o.price)} labels={labels} className="h-2.5 w-full" />
-          <div className="mt-1.5 flex flex-wrap justify-between gap-x-4 font-sans text-[13px] text-subtle">
-            {barOrder(n).map((i) => (
-              <span key={i} className="whitespace-nowrap">
-                <OutcomeSwatch ordinal={i} outcomes={n} />
-                {labels[i]} <b className="font-mono text-ink">{pct(market.outcomes[i].price)}</b>
-              </span>
-            ))}
-          </div>
+          <OddsBar prices={market.outcomes.map((o) => o.price)} labels={labels} />
         </div>
       ) : (
         <div className="my-7 flex flex-wrap justify-center gap-x-9 gap-y-2 text-[22px]">

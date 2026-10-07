@@ -11,9 +11,10 @@ import { FieldCurve } from '@/components/FieldCurve';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
-import { rep, signedRep } from '@/lib/format';
+import { REP, rep, signedRep } from '@/lib/format';
 import { leaderboardSegments, standingBand } from '@/lib/leaderboard';
 import { groupPath, institutionPath } from '@/lib/links';
+import { authHref } from '@/lib/return-to';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
 import { viewerFromHeaders } from '@/server/auth';
@@ -58,6 +59,11 @@ function one(v: string | string[] | undefined): string | undefined {
  * find box over the boards (`BoardPicker`): global, the viewer's
  * institutions and groups, and any institution by name. "+ New group" sits
  * under the search.
+ *
+ * Signed out, it is the top ten only (of the board or of a search), with no
+ * pager, no net worth column, and P/L as a blurred placeholder: the figures
+ * never reach the page. The API still serves them; this is only
+ * what the page shows.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -112,13 +118,16 @@ export default async function LeaderboardPage({
 
   // What is on screen: the compact view as segments of the board, or one page
   // of the board or of the search.
+  const signedIn = viewer !== null;
   const compact = q === null && requested === 0;
   const list = compact ? field : matches;
   const pages = Math.max(1, Math.ceil(list.length / PAGE));
   const page = compact ? 0 : Math.min(Math.max(1, requested), pages);
-  const segments: LeaderboardRow[][] = compact
-    ? leaderboardSegments(field.length, focus < 0 ? null : focus, TOP, RADIUS).map(([s, e]) => field.slice(s, e))
-    : [list.slice((page - 1) * PAGE, page * PAGE)];
+  const segments: LeaderboardRow[][] = !signedIn
+    ? [list.slice(0, TOP)]
+    : compact
+      ? leaderboardSegments(field.length, focus < 0 ? null : focus, TOP, RADIUS).map(([s, e]) => field.slice(s, e))
+      : [list.slice((page - 1) * PAGE, page * PAGE)];
   const onScreen = segments.reduce((n, s) => n + s.length, 0);
 
   const href = (patch: Record<string, string | null>) => {
@@ -327,16 +336,19 @@ export default async function LeaderboardPage({
             <caption className={ui.tableCaption}>
               <b>Table 1.</b> Traders{where}
               {basis === 'net_worth' ? ' ranked by net worth' : ' ranked by settled profit'}
-              {q ? `, matching “${q}”` : ''}. Column leaders are bold.
+              {q ? `, matching “${q}”` : ''}.
+              {signedIn ? ' Column leaders are bold.' : ` Only the top ${TOP} are shown.`}
             </caption>
             <thead>
               <tr>
                 <th className={ui.th()}>#</th>
                 <th className={ui.th()}>Trader</th>
                 <th className={`${ui.th()}`}>Institutions</th>
-                <th className={ui.th(true)}>
-                  Net worth<sup className={ui.mark}>a</sup>
-                </th>
+                {signedIn && (
+                  <th className={ui.th(true)}>
+                    Net worth<sup className={ui.mark}>a</sup>
+                  </th>
+                )}
                 <th className={ui.th(true)}>Unrealized P/L</th>
               </tr>
             </thead>
@@ -348,6 +360,7 @@ export default async function LeaderboardPage({
                   gapBefore={i > 0}
                   me={me}
                   best={best}
+                  money={signedIn}
                   focus={focus >= 0 ? field[focus].accountId : null}
                   institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
                 />
@@ -356,9 +369,17 @@ export default async function LeaderboardPage({
           </table>
         </div>
       )}
-      {onScreen > 0 && <TableNotes notes={[['a', 'Cash plus the proceeds from selling all holdings now.']]} />}
+      {onScreen > 0 && signedIn && (
+        <TableNotes notes={[['a', 'Cash plus the proceeds from selling all holdings now.']]} />
+      )}
+      {!signedIn && onScreen > 0 && (
+        <p className="mt-2 font-sans text-[13px] text-muted">
+          <Link href={authHref('/signin', href({}))}>Sign in</Link> to see the whole board, net worth and P/L, and where
+          you stand.
+        </p>
+      )}
 
-      {onScreen < list.length && (
+      {signedIn && onScreen < list.length && (
         <Pager
           page={page}
           pages={pages}
@@ -371,7 +392,7 @@ export default async function LeaderboardPage({
           groupId={group.id}
           initial={groupReading}
           canEdit={role !== null}
-          signedIn={viewer !== null}
+          signedIn={signedIn}
           tableNumber={onScreen > 0 ? 2 : 1}
         />
       )}
@@ -407,6 +428,7 @@ function Segment({
   gapBefore,
   me,
   best,
+  money,
   focus,
   institutionHref,
 }: {
@@ -414,6 +436,8 @@ function Segment({
   gapBefore: boolean;
   me: string | null;
   best: Best;
+  /** Whether net worth is shown and P/L is real, not a blurred placeholder: signed-in viewers only. */
+  money: boolean;
   focus: string | null;
   institutionHref: (name: string) => string;
 }) {
@@ -421,7 +445,7 @@ function Segment({
     <>
       {gapBefore && (
         <tr aria-hidden>
-          <td colSpan={5} className={`${ui.td} text-center text-muted`}>
+          <td colSpan={money ? 5 : 4} className={`${ui.td} text-center text-muted`}>
             …
           </td>
         </tr>
@@ -452,15 +476,32 @@ function Segment({
                 </span>
               ))}
             </td>
-            <td className={`${ui.td} ${ui.num} ${bold(r.netWorthMicro, best.netWorth)}`}>{rep(r.netWorthMicro)}</td>
-            <td
-              className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}
-            >
-              {signedRep(r.unrealizedPnlMicro)}
-            </td>
+            {money ? (
+              <>
+                <td className={`${ui.td} ${ui.num} ${bold(r.netWorthMicro, best.netWorth)}`}>{rep(r.netWorthMicro)}</td>
+                <td
+                  className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}
+                >
+                  {signedRep(r.unrealizedPnlMicro)}
+                </td>
+              </>
+            ) : (
+              <td className={`${ui.td} ${ui.num}`}>
+                <Blurred>{`+???.?? ${REP}`}</Blurred>
+              </td>
+            )}
           </tr>
         );
       })}
     </>
+  );
+}
+
+/** A figure held back from a signed-out viewer: placeholders only, never the number, blurred past reading. */
+function Blurred({ children }: { children: string }) {
+  return (
+    <span aria-label="Sign in to see" className="inline-block blur-[4px] select-none">
+      {children}
+    </span>
   );
 }

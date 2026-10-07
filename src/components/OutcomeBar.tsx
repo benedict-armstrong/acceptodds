@@ -1,3 +1,4 @@
+import { pct } from '@/lib/format';
 import { barOrder, MAX_BAR_OUTCOMES, paletteSlot, TIER_BG } from '@/lib/headline';
 
 /**
@@ -45,5 +46,26 @@ export function OutcomeSwatch({ ordinal, outcomes }: { ordinal: number; outcomes
       className={`mr-1 inline-block size-2.5 rounded-[2px] align-[-1px] ${TIER_BG[paletteSlot(ordinal, outcomes)]}`}
       aria-hidden
     />
+  );
+}
+
+/**
+ * The full-width bar with a legend under it, each outcome's swatch, label and
+ * price: a market page's odds figure, and the bet step of `/welcome`.
+ */
+export function OddsBar({ prices, labels }: { prices: readonly number[]; labels: readonly string[] }) {
+  const n = prices.length;
+  return (
+    <>
+      <OutcomeBar prices={prices} labels={labels} className="h-2.5 w-full" />
+      <div className="mt-1.5 flex flex-wrap justify-between gap-x-4 font-sans text-[13px] text-subtle">
+        {barOrder(n).map((i) => (
+          <span key={i} className="whitespace-nowrap">
+            <OutcomeSwatch ordinal={i} outcomes={n} />
+            {labels[i]} <b className="font-mono text-ink">{pct(prices[i])}</b>
+          </span>
+        ))}
+      </div>
+    </>
   );
 }

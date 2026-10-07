@@ -1255,6 +1255,10 @@ unpaginated, and 5 s for that search.
   line up and "Bottom N%" below it (`standingBand`, never 0%) — from the
   share of the _others_ scoring strictly lower, rounded down, so ties never
   flatter. The people page, its share text and OG image say the same, with no field size.
+  **Signed out, the page shows only the top 10** (of the board or of a
+  search), says so with a sign-in link and has no pager; it drops the
+  net worth column and P/L is a blurred placeholder (`Blurred`), never
+  the figure. UI only: the API and `/people/<handle>` still publish them.
 - **People search is `views.searchPeople`**: substring (ILIKE, LIKE
   characters escaped) or `pg_trgm` word similarity (`<%`), over
   `handle || ' ' || display_name` — written exactly that way, since the
