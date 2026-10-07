@@ -224,12 +224,27 @@ export function buildRegistry(): OpenAPIRegistry {
 
   r.registerPath(
     op({
+      method: 'get',
+      path: '/listings/{id}/text',
+      tags: ['listings'],
+      summary: 'A listing’s full text',
+      description:
+        'The full text as the listing’s publisher supplied it (for a paper, its extracted PDF); `text` is `null` while none has been supplied. Never fetched from elsewhere. Any signed-in session or token with `read`.',
+      scope: 'read',
+      request: { params: z.object({ id: S.ListingRef }) },
+      ok: { status: 200, schema: S.ListingText, description: 'The text, or null.' },
+      errors: { 404: 'not_found' },
+    }),
+  );
+
+  r.registerPath(
+    op({
       method: 'put',
       path: '/listings/{id}/text',
       tags: ['listings'],
       summary: 'Set a listing’s full text',
       description:
-        'Replaces it; `null` or empty clears it. Read only to set the opening prices when the listing’s market is opened, and never served. Its own call, so a client that writes listings never clears it.',
+        'Replaces it; `null` or empty clears it. Read to set the opening prices when the listing’s market is opened, and served by `GET /listings/{id}/text`. Its own call, so a client that writes listings never clears it.',
       scope: 'admin',
       request: {
         params: z.object({ id: S.ListingRef }),

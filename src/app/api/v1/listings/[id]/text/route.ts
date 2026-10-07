@@ -3,5 +3,6 @@ import { methodNotAllowed } from '@/server/api/http';
 
 export const dynamic = 'force-dynamic';
 
+export const GET = h.getListingText;
 export const PUT = h.putListingText;
-export const { GET, POST, PATCH, DELETE } = methodNotAllowed('PUT');
+export const { POST, PATCH, DELETE } = methodNotAllowed('GET', 'PUT');

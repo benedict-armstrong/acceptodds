@@ -1219,10 +1219,17 @@ unpaginated, and 5 s for that search.
 - **JEV reads the full text when `../research` supplied one**
   (`PUT /listings/{id}/text`, admin, its own call like related papers, so
   re-posting a listing keeps it; `listing_texts`, written by
-  `listings.setText`, never served), else the abstract, under the title,
+  `listings.setText`), else the abstract, under the title,
   area and keywords (`jev.paperText`). Cut at 120k characters
   (`JEV_MAX_CHARS`): measured, 120k (~24k tokens, ~$0.001) is answered and
   200k is refused with a 400, on which it asks again with the abstract.
+- **Signed-in readers may read that text too** (`GET /listings/{id}/text`,
+  `read` scope, any session or token, `views.listingText`), on the owner's
+  call, so bots can trade on the paper rather than the abstract. Exactly
+  what `../research` supplied, `text: null` while there is none: **the
+  platform never fetches a paper** (Scope boundary). Never anonymous, so
+  the edge cannot be scraped for it; never on the listing's own shape or
+  the page.
 - **By stake, because the first trader has seen no price.** Shares are
   sized on the board read after the market exists, and the stake is
   `maxCostMicro`, so it never costs more than was put up. A fill landing in
