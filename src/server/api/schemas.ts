@@ -1043,6 +1043,9 @@ export const ReferenceRequest = z
 /** A full text's longest, in characters: a long paper with appendices is about 300k. */
 const FULL_TEXT_MAX = 1_000_000;
 
+/** Where a full text came from: an opaque label from its supplier. */
+const TextSource = z.string().trim().min(1).max(100);
+
 export const UpsertListingRequest = z
   .object({
     slug: Slug,
@@ -1076,6 +1079,10 @@ export const SetTextRequest = z
       description:
         'The full text of the subject (for a paper, its extracted PDF). Read to set a new market’s opening prices, and served to signed-in clients by `GET /listings/{id}/text`. `null` or empty clears it.',
     }),
+    source: TextSource.nullish().meta({
+      description:
+        'Where the text came from, e.g. `openreview` or `arxiv`. Opaque. Replaced with the text; left out, there is none.',
+    }),
   })
   .meta({ id: 'SetTextRequest' });
 
@@ -1089,6 +1096,10 @@ export const ListingText = z
         'The full text as supplied by the listing’s publisher (for a paper, its extracted PDF), or `null` when none has been supplied yet. Never fetched from elsewhere.',
     }),
     chars: z.number().int().min(0).meta({ description: 'Its length in characters; 0 when there is none.' }),
+    source: TextSource.nullable().meta({
+      description:
+        'Where the supplier got it (e.g. `openreview`, `arxiv`), as it said; `null` when it did not, or there is no text.',
+    }),
   })
   .meta({ id: 'ListingText' });
 

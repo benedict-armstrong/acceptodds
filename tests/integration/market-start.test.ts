@@ -396,20 +396,49 @@ describe('JEV reads the full text when it is supplied', () => {
     const get = (ref: string, token?: string) => api('GET', `/listings/${ref}/text`, { token });
 
     // None supplied yet: a 200 saying so, not a 404, which means no listing.
-    expect((await get(p.listing.id, reader.token)).body).toEqual({ listingId: p.listing.id, text: null, chars: 0 });
+    expect((await get(p.listing.id, reader.token)).body).toEqual({
+      listingId: p.listing.id,
+      text: null,
+      chars: 0,
+      source: null,
+    });
 
     await api('PUT', `/listings/${p.listing.id}/text`, {
       token: a.token,
-      body: { text: '1 Introduction. The whole paper.' },
+      body: { text: '1 Introduction. The whole paper.', source: 'openreview' },
     });
     for (const res of [await get(p.listing.id, reader.token), await get('p', bot.token)]) {
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ listingId: p.listing.id, text: '1 Introduction. The whole paper.', chars: 32 });
+      expect(res.body).toEqual({
+        listingId: p.listing.id,
+        text: '1 Introduction. The whole paper.',
+        chars: 32,
+        source: 'openreview',
+      });
     }
 
     expect((await get(p.listing.id)).status).toBe(401);
     expect((await get(p.listing.id, 'pm_live_not-a-key')).status).toBe(401);
     expect((await get('no-such-paper', reader.token)).status).toBe(404);
+  });
+
+  it('keeps the source with the text, replaced whole and cleared with it', async () => {
+    const a = await admin();
+    const p = await upsertListing({ slug: 'p', title: 'Paper p', kind: 'ICLR 2027' });
+    const put = (body: object) => api('PUT', `/listings/${p.listing.id}/text`, { token: a.token, body });
+    const source = async () => (await db.select().from(listingTexts))[0]?.source;
+
+    expect((await put({ text: 'From the preprint.', source: 'arxiv' })).status).toBe(200);
+    expect(await source()).toBe('arxiv');
+    // Sent again without one, the text has none: the call replaces both.
+    await put({ text: 'From the submission.' });
+    expect(await source()).toBeNull();
+    await put({ text: 'From the submission.', source: 'openreview' });
+    expect(await source()).toBe('openreview');
+    expect((await put({ text: 'x', source: '' })).status).toBe(400);
+    expect((await put({ text: 'x', source: 'y'.repeat(101) })).status).toBe(400);
+    await put({ text: null, source: 'openreview' });
+    expect(await db.select().from(listingTexts)).toHaveLength(0);
   });
 
   it('asks again with the abstract when JEV refuses the full text', async () => {

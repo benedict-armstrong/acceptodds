@@ -99,13 +99,15 @@ export async function upsertListing(
 }
 
 /**
- * Replace a listing's full text (`listing_texts`), read only by `server/jev.ts`.
- * A call of its own, like the related list, so whatever extracts the text and
- * whatever writes the listing never clear each other's. Empty clears it.
+ * Replace a listing's full text (`listing_texts`) and its opaque `source`,
+ * whole: a text sent without a source has none. A call of its own, like the
+ * related list, so whatever extracts the text and whatever writes the listing
+ * never clear each other's. Empty clears it.
  */
 export async function setText(
   listing: Pick<Listing, 'id'>,
   text: string | null,
+  source: string | null = null,
   database: Database = getDb(),
 ): Promise<number> {
   if (!text) {
@@ -114,8 +116,8 @@ export async function setText(
   }
   await database
     .insert(listingTexts)
-    .values({ listingId: listing.id, body: text })
-    .onConflictDoUpdate({ target: listingTexts.listingId, set: { body: text } });
+    .values({ listingId: listing.id, body: text, source })
+    .onConflictDoUpdate({ target: listingTexts.listingId, set: { body: text, source } });
   return text.length;
 }
 

@@ -1230,6 +1230,10 @@ unpaginated, and 5 s for that search.
   platform never fetches a paper** (Scope boundary). Never anonymous, so
   the edge cannot be scraped for it; never on the listing's own shape or
   the page.
+- **A text carries its `source`** (`listing_texts.source`, e.g.
+  `openreview`, `arxiv`): opaque, supplied with the text on the same `PUT`
+  and replaced with it (left out, null), returned by the `GET`. Never
+  interpreted here; which source to trust is `../research`'s call.
 - **By stake, because the first trader has seen no price.** Shares are
   sized on the board read after the market exists, and the stake is
   `maxCostMicro`, so it never costs more than was put up. A fill landing in

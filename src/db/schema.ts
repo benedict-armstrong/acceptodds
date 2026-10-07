@@ -178,16 +178,18 @@ export interface ListingLink {
 }
 
 /**
- * A listing's full text, as `../research` extracted it, supplied whole with
- * the listing (`POST /listings`, `fullText`) and read only by `server/jev.ts`
- * to price a market's opening. A table of its own so that no read of
- * `listings` carries a whole paper. Never served.
+ * A listing's full text, as `../research` extracted it, supplied whole by
+ * its own call (`PUT /listings/{id}/text`), read by `server/jev.ts` to price
+ * a market's opening and served to signed-in readers. A table of its own so
+ * that no read of `listings` carries a whole paper. `source` is where the
+ * supplier got it (`openreview`, `arxiv`, …): opaque, null when not given.
  */
 export const listingTexts = pgTable('listing_texts', {
   listingId: uuid('listing_id')
     .primaryKey()
     .references(() => listings.id, { onDelete: 'cascade' }),
   body: text('body').notNull(),
+  source: text('source'),
 });
 
 /**

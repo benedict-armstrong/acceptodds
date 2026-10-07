@@ -1,0 +1,1 @@
+ALTER TABLE "listing_texts" ADD COLUMN "source" text;
