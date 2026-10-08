@@ -18,6 +18,7 @@
  * one. A known field with a bad value is dropped with an error the page shows.
  */
 
+import { venues } from '@/venues';
 import { prefixTsquery } from './search';
 
 export const TEXT_FIELDS = ['title', 'author', 'keyword', 'area', 'venue'] as const;
@@ -59,7 +60,14 @@ export const FIELD_HELP: { field: SearchField; aliases: string[]; example: strin
   { field: 'area', aliases: ['primaryArea'], example: 'area:optimization', means: 'primary area contains' },
   { field: 'venue', aliases: ['v', 'kind'], example: 'venue:iclr', means: 'venue contains' },
   { field: 'status', aliases: ['s'], example: 'status:settled', means: 'open, closed, settled or void' },
-  { field: 'accept', aliases: ['p', 'chance'], example: 'accept>=70', means: 'chance of acceptance, in %' },
+  {
+    field: 'accept',
+    aliases: ['p', 'chance'],
+    example: 'accept>=70',
+    means: `the chance shown for a paper (${venues()
+      .map((v) => v.headlineSort)
+      .join(', ')}), in %`,
+  },
   { field: 'volume', aliases: ['vol'], example: 'volume>100', means: '$rep traded' },
   { field: 'trades', aliases: ['fills'], example: 'trades>=5', means: 'number of fills' },
 ];

@@ -22,6 +22,7 @@ import { ui } from '@/components/ui';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
 import { rememberVenue } from '@/lib/venue';
+import { venue } from '@/venues';
 import { rememberPending } from '@/lib/pending-confirmation';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import type * as S from '@/server/api/schemas';
@@ -175,7 +176,7 @@ export function Welcome({
   switch (step) {
     case 'intro':
       return card(
-        'Bet on which papers get in.',
+        venue(kind)?.cardTitle ?? 'Bet on what becomes of papers.',
         <>
           <p className="mb-4 text-muted">
             Pick a {kind} paper, stake reputation on how it fares. For researchers with an institutional email.

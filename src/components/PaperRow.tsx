@@ -83,7 +83,7 @@ export function PaperRow({
       </span>
       <span
         className={`text-right font-mono text-sm ${look.text}`}
-        title={market ? `${market.question}: chance of acceptance` : 'Not traded yet'}
+        title={market ? `${market.question}?` : 'Not traded yet'}
       >
         {market && headline(market)}
       </span>

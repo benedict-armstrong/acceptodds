@@ -821,6 +821,11 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   them — the result line says where and links "search everything" — and
   sorts by `relevance` (listed only while searching) unless another sort is
   picked; every filter link keeps `q`, "clear" drops it.
+- **The logo returns to the last home search** (`components/HomeLink`):
+  the home page keeps its query string (venue, status, sort, `q`, pages)
+  in this tab's `sessionStorage` (`RememberHomeSearch`), and the logo on
+  any other page links back to it. On the home page itself the logo is
+  the plain `/`, which clears it.
 
 ### Public positions (#36)
 
@@ -1247,7 +1252,10 @@ unpaginated, and 5 s for that search.
 - **No price shows before the first trade**: a market nobody has traded
   (JEV's price only) has no bar or headline on the home list
   (`orderCount > 0`) or the map (`headline` null), and sorts with the
-  listings that have no market, after every traded row.
+  listings that have no market, after every traded row. **Except** a
+  venue that sets its own opening price (`jev: null`, OpenAI Math's
+  50/50): `venues.pricedBeforeTrade` (and `pricedBeforeTradeKinds` in the
+  SQL) shows it from the start and sorts it with the traded rows.
 - **The market is the kind's template** (`market-templates.ts`, from
   `venues/`: `ICLR 2027`, and `OpenAI Math`, "independently verified by
   the end of 2027", `Verified`/`Not verified`, open until 2028), slug

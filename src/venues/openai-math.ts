@@ -8,7 +8,7 @@ import type { Venue } from './types';
 export const OPENAI_MATH: Venue = {
   kind: 'OpenAI Math',
 
-  homeTitle: 'Which OpenAI Math results will be verified?',
+  homeTitle: 'Which OpenAI Math results will hold up?',
   cardTitle: 'Which results will be verified?',
   lede: 'A prediction market on AI-written mathematics',
   marketOn: 'whether its main result is independently verified by the end of 2027',

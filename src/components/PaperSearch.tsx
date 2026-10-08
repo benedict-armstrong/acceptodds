@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { PaperRow } from '@/components/PaperRow';
 import { ui } from '@/components/ui';
 import { PAPER_SEARCH_LIMIT } from '@/lib/onboarding';
+import { pricedBeforeTrade } from '@/venues';
 import type * as S from '@/server/api/schemas';
 
 type Listing = z.output<typeof S.Listing>;
@@ -90,9 +91,9 @@ export function PaperSearch({
       <div className={debounced ? 'mt-4' : 'mt-1'}>
         {shown.map((l) => {
           const traded = l.markets.some((m) => m.orderCount > 0);
-          // No price before the first trade: an untraded market's is only JEV's.
+          // No price before the first trade where an untraded market's is only JEV's (`pricedBeforeTrade`).
           const main = l.markets.at(0);
-          const market = main && main.orderCount > 0 ? main : null;
+          const market = main && (main.orderCount > 0 || pricedBeforeTrade(main.kind)) ? main : null;
           return (
             <PaperRow
               key={l.id}

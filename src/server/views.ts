@@ -33,6 +33,7 @@ import { ApiError } from './api/errors';
 import { standingsGeneration, standingsChangesSince } from './standings-cache';
 import { valuations } from './valuation';
 import { browseReads, BROWSE_READ_TTL_MS, marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
+import { pricedBeforeTradeKinds } from '@/venues';
 
 /**
  * Read models for the public API. **Reads only** — nothing here writes, and
@@ -655,7 +656,7 @@ function mapPointRows(database: Database) {
       cluster: mapPoints.cluster,
       headline: sql<
         number | null
-      >`case when ${markets.status} = 'void' or ${markets.orderCount} = 0 then null else round(${markets.headline}::numeric, 4)::float8 end`,
+      >`case when ${markets.status} = 'void' or (${markets.orderCount} = 0 and not ${kindIn(sql`${markets.kind}`, pricedBeforeTradeKinds())}) then null else round(${markets.headline}::numeric, 4)::float8 end`,
     })
     .from(mapPoints)
     .innerJoin(listings, eq(listings.slug, mapPoints.slug))
@@ -1570,6 +1571,16 @@ const ROW_KIND = sql`coalesce(m.kind, l.kind)`;
 const rowStatusIs = (status: string) =>
   status === 'open' ? sql`(m.status = 'open' or m.id is null)` : sql`m.status = ${status}`;
 const rowKindIs = (kind: string) => sql`(m.kind = ${kind} or (m.id is null and l.kind = ${kind}))`;
+/** `column` is one of `kinds`; false for none. */
+function kindIn(column: SQL, kinds: readonly string[]): SQL {
+  return kinds.length === 0
+    ? sql`false`
+    : sql`${column} in (${sql.join(
+        kinds.map((k) => sql`${k}`),
+        sql`, `,
+      )})`;
+}
+
 /** Volume and fills over the row's markets; 0 before any. */
 const ROW_VOLUME = sql`(coalesce(m.volume_micro, 0) + coalesce(sec.volume_micro, 0))`;
 const ROW_ORDERS = sql`(coalesce(m.order_count, 0) + coalesce(sec.order_count, 0))`;
@@ -1625,10 +1636,11 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
       ) hit on hit.k = coalesce(l.id, m.id)`
     : sql``;
 
-  // Traded rows first, whatever the sort: a listing with no market, or a
-  // market nobody has traded (opened at JEV's price), shows no price yet.
+  // Rows with a price first, whatever the sort: a listing with no market, or
+  // a market nobody has traded (opened at JEV's price), shows no price yet. A
+  // venue that sets its own opening price shows it from the start (`venues/`).
   const order = [
-    sql`(m.id is null or m.order_count = 0)`,
+    sql`(m.id is null or (m.order_count = 0 and not ${kindIn(sql`m.kind`, pricedBeforeTradeKinds())}))`,
     ...{
       closing: [sql`m.closes_at asc`],
       // Void has no headline, whatever the cache last held.

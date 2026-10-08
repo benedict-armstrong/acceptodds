@@ -33,5 +33,20 @@ export function shareSuffix(kind: string | null): string {
   return venue(kind)?.shareSuffix ?? (kind ? ` @ ${kind}?` : '?');
 }
 
+/**
+ * Whether a market of this kind shows its price before anyone trades it: only
+ * when the venue set that price itself (`jev: null`, e.g. 50/50). An opening
+ * price from JEV, or one a client chose for a kind with no venue, stays
+ * hidden until the first fill (the paper page's blurred figure).
+ */
+export function pricedBeforeTrade(kind: string | null | undefined): boolean {
+  return venue(kind)?.market.jev === null;
+}
+
+/** The kinds whose markets show a price before the first trade, for SQL (`pricedBeforeTrade`). */
+export function pricedBeforeTradeKinds(): string[] {
+  return VENUES.filter((v) => v.market.jev === null).map((v) => v.kind);
+}
+
 /** Palette slots (`lib/headline.ts` `TIER_*`, 0 = red) by colour. */
 export const COLOR_SLOT: Record<OutcomeColor, number> = { red: 0, amber: 1, green: 2, blue: 3 };

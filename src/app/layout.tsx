@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { Analytics } from '@/components/Analytics';
 import { AuthNavLink } from '@/components/AuthLinks';
 import { ConfirmBanner } from '@/components/ConfirmBanner';
+import { HomeLink } from '@/components/HomeLink';
 import { LogoMark } from '@/components/Logo';
 import { NavGroups } from '@/components/NavGroups';
 import { groupsOf } from '@/server/groups';
@@ -78,12 +79,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         {/* On a phone, keep the mini distribution beside a menu containing every navigation link. */}
         <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 px-6 pt-4 pb-2.5 narrow:px-4">
-          <Link href="/" aria-label="acceptodds" className="text-[22px]">
+          <HomeLink className="text-[22px]">
             <LogoMark />
             <span className={viewer ? 'narrow:hidden' : ''}>
               <Wordmark />
             </span>
-          </Link>
+          </HomeLink>
           <span className="flex-1" />
           <nav
             aria-label="Main navigation"

@@ -125,7 +125,8 @@ export default function PrivacyPage() {
             <b>Cookies and browser storage</b> are only functional: the sign-in session, whether you have seen the
             welcome page, which venue you last picked, which home-page sections you left open, and a random token that
             ties a bet chosen during sign-up to this browser. Your browser’s own storage remembers a pending
-            confirmation and the last paper you read. None of it tracks you elsewhere.
+            confirmation, the last paper you read and, for each tab, your last home-page search. None of it tracks you
+            elsewhere.
           </li>
         </ul>
         <p>
