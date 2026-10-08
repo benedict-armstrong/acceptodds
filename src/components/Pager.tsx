@@ -21,7 +21,7 @@ export function Pager({
   pages: number;
   href: (p: number) => string;
   /** Before the links, for a pager that is not obviously one. */
-  label?: string;
+  label?: ReactNode;
 }) {
   if (pages <= 1 && page !== 0) return null;
   const shown = [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, pages])]

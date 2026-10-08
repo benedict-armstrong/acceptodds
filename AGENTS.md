@@ -1324,16 +1324,18 @@ unpaginated, and 5 s for that search.
   on a click of the heading (`components/PnlToggle`). The API's `?q=` is still only a name. Institution is
   matched exactly against any of a trader's `institutions`, so a trader
   with two affiliations is ranked at both.
-- **The page is the whole board, 50 a page** (`?page=`, from the top);
-  `?around=<handle>` (where people results link, and "show me") opens on
-  that trader's page. The
+- **The page opens compact**: the top 10, a "…", the viewer (or
+  `?around=<handle>`, where people results link) with 2 either side, and a
+  pager into the whole board (`?page=`, 50 a page). `lib/leaderboard.ts`
+  merges windows that touch and never hides a single row behind "…". The
   viewer's row is highlighted, with "Top N% of traders" from the half-way
   line up and "Bottom N%" below it (`standingBand`, never 0%) — from the
   share of the _others_ scoring strictly lower, rounded down, so ties never
   flatter. The people page, its share text and OG image say the same, with no field size.
-  **Signed out, the page drops the net worth column** and P/L is a
-  blurred placeholder (`Blurred`), never the figure, a link to sign-in
-  with "Sign in to view" over it on hover. UI only: the API and `/people/<handle>` still publish them.
+  **Signed out, the page shows only the top 10** (of the board or of a
+  search), says so with a sign-in link and has no pager; it drops the
+  net worth column and P/L is a blurred placeholder (`Blurred`), never
+  the figure, a link to sign-in with "Sign in to view" over it on hover. UI only: the API and `/people/<handle>` still publish them.
 - **People search is `views.searchPeople`**: substring (ILIKE, LIKE
   characters escaped) or `pg_trgm` word similarity (`<%`), over
   `handle || ' ' || display_name` — written exactly that way, since the
