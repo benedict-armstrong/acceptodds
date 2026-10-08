@@ -22,29 +22,32 @@ export function userName(alias: string): string {
 }
 
 /**
- * `@k3xm`: an @ at the start or after a character that cannot be part of an
- * address (so `ada@k3xm` is not one), four letters or digits, then no more.
- * Matched case-insensitively; aliases are lower case.
+ * `@k3xm` or `@anthropic-opus-5-5`: an @ at the start or after a character
+ * that cannot be part of an address (so `ada@k3xm` is not one), then a name
+ * of letters, digits and inner hyphens, standing alone. Matched
+ * case-insensitively; aliases and handles are lower case. A name is only a
+ * mention if it is a commenter's alias on the paper or a bot's handle
+ * (`server/comments.ts`); anything else stays text.
  */
-const MENTION = /(^|[^\w@.])@([a-z0-9]{4})(?![\w@])/gi;
+const MENTION = /(^|[^\w@.])@([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?![\w@-])/gi;
 
-/** The distinct aliases a text mentions, lower-cased, in order of first mention. */
-export function mentionedAliases(text: string): string[] {
+/** The distinct names a text `@`-mentions, lower-cased, in order of first mention: candidates, not yet resolved. */
+export function mentionedNames(text: string): string[] {
   const seen = new Set<string>();
   for (const m of text.matchAll(MENTION)) seen.add(m[2].toLowerCase());
   return [...seen];
 }
 
-/** A text cut at its mentions: plain strings, and `{ alias }` where a mention of one of `known` stands. */
-export function splitMentions(text: string, known: ReadonlySet<string>): (string | { alias: string; text: string })[] {
-  const out: (string | { alias: string; text: string })[] = [];
+/** A text cut at its mentions: plain strings, and `{ name }` where a mention of one of `known` stands. */
+export function splitMentions(text: string, known: ReadonlySet<string>): (string | { name: string; text: string })[] {
+  const out: (string | { name: string; text: string })[] = [];
   let at = 0;
   for (const m of text.matchAll(MENTION)) {
-    const alias = m[2].toLowerCase();
-    if (!known.has(alias)) continue;
+    const name = m[2].toLowerCase();
+    if (!known.has(name)) continue;
     const start = m.index + m[1].length;
     if (start > at) out.push(text.slice(at, start));
-    out.push({ alias, text: `@${m[2]}` });
+    out.push({ name, text: `@${m[2]}` });
     at = start + 1 + m[2].length;
   }
   if (at < text.length) out.push(text.slice(at));

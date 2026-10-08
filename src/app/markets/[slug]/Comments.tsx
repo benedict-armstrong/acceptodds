@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import useSWRInfinite from 'swr/infinite';
 import type { z } from 'zod';
@@ -41,7 +42,8 @@ async function errorText(res: Response, fallback: string): Promise<string> {
  * shows its author's alias on this paper ("User k3xm", "(you)" on the
  * viewer's own), their current stake here and a bot badge, nothing else. The
  * alias is the same on all of one author's comments on the paper, so
- * `@k3xm` mentions them. Only accounts that can trade may post, so every
+ * `@k3xm` mentions them. A bot is named instead, linked to its page, and
+ * mentioned by its handle. Only accounts that can trade may post, so every
  * voice has something on the line.
  *
  * Traders can put shares they hold behind other people's comments. The
@@ -123,8 +125,8 @@ export function Comments({
     .filter((a) => a.freeMicro > 0n);
   const canBack = viewer.canTrade && tradable;
   const you = first?.viewer?.alias ?? null;
-  // Every alias on the page: what a mention typed in the editor can be previewed against.
-  const aliases = new Set([...known.values()].map((c) => c.author.alias));
+  // Every name on the page, an alias or a bot's handle: what a mention typed in the editor can be previewed against.
+  const aliases = new Set([...known.values()].map((c) => c.author.bot?.handle ?? c.author.alias));
 
   const changed = () => {
     void mutate();
@@ -290,7 +292,7 @@ function Thread({ c, tree }: { c: Comment; tree: Tree }) {
               <CommentForm
                 marketId={tree.marketId}
                 parentId={c.id}
-                placeholder={`Reply to ${userName(c.author.alias)}`}
+                placeholder={`Reply to ${c.author.bot?.displayName ?? userName(c.author.alias)}`}
                 you={tree.you}
                 aliases={tree.aliases}
                 autoFocus
@@ -428,11 +430,20 @@ function CommentItem({
     <div className="py-2.5">
       {/* Headed as OpenReview heads a comment: who, what they hold, when. */}
       <div className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted">
-        <span className={ui.runIn}>
-          {userName(c.author.alias)}
-          {c.author.isYou && ' (you)'}
-        </span>
-        {c.author.isBot && <span className={ui.badge}>bot</span>}
+        {c.author.bot ? (
+          <>
+            <span className={ui.runIn}>
+              <Link href={`/people/${encodeURIComponent(c.author.bot.handle)}`}>{c.author.bot.displayName}</Link>
+              {c.author.isYou && ' (you)'}
+            </span>
+            <span className={ui.badge}>bot</span>
+          </>
+        ) : (
+          <span className={ui.runIn}>
+            {userName(c.author.alias)}
+            {c.author.isYou && ' (you)'}
+          </span>
+        )}
         <span>
           {c.author.stake.length === 0 ? (
             'no position'

@@ -23,7 +23,7 @@ type Listing = z.output<typeof S.Listing>;
 
 const STEP_TITLE = 'font-serif text-2xl font-normal';
 
-/** Hanson (2007), the market maker's source; `/how-it-works` cites it too. */
+/** Hanson (2007), the market maker's source; `/about` cites it too. */
 const LMSR_PAPER = 'https://mason.gmu.edu/~rhanson/mktscore.pdf';
 
 /** The stake the illustrations price. Only the stake is an example: what it pays is the market's own quote. */
@@ -112,7 +112,7 @@ export function tutorialSteps({
       fine: (
         <>
           Odds are set by Hanson’s logarithmic market scoring rule: see{' '}
-          <Link href="/how-it-works#maker" className="underline">
+          <Link href="/about#maker" className="underline">
             How it works
           </Link>
           , or{' '}

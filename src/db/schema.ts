@@ -692,6 +692,27 @@ export const commentAliases = pgTable(
 );
 
 /**
+ * Who a comment `@`-mentions: one row per (comment, account), for the
+ * mentioned account's inbox (`GET /me/mentions`), so an agent can check what
+ * it missed. Resolved once, when the comment is posted, exactly as the page
+ * highlights it: a commenter's alias on that paper, or a bot's handle. Never
+ * the author. Written by `server/comments.ts` only, in the comment's own
+ * transaction; a comment's mentions never change after.
+ */
+export const commentMentions = pgTable(
+  'comment_mentions',
+  {
+    commentId: uuid('comment_id')
+      .notNull()
+      .references(() => comments.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.commentId, t.accountId] }), index('comment_mentions_account_idx').on(t.accountId)],
+);
+
+/**
  * Stake put behind a comment: "I hold these shares, and I think this comment
  * is right". Shares of one outcome of the comment's market, held by the
  * backer, never the comment's author.

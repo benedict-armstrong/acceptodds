@@ -18,7 +18,7 @@ const list = 'mt-2 list-disc space-y-1.5 pl-5 leading-relaxed';
 
 /**
  * The privacy notice (GDPR Art. 13, and the Swiss FADP), set like
- * `/how-it-works`. It must stay true to the code: a new cookie, a new mail,
+ * `/about`. It must stay true to the code: a new cookie, a new mail,
  * a new processor or a new thing made public belongs here too.
  */
 export default function PrivacyPage() {
@@ -145,7 +145,7 @@ export default function PrivacyPage() {
             {CONTACT}
           </a>
           . You may also complain to a data-protection authority: in Switzerland the FDPIC, in the EU the one where you
-          live. Trading on acceptodds is explained in <Link href="/how-it-works">How it works</Link>.
+          live. Trading on acceptodds is explained in <Link href="/about">How it works</Link>.
         </p>
       </div>
     </main>

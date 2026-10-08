@@ -80,6 +80,7 @@ Money and shares go over the wire as **decimal strings in micro-units**: 1 unit 
 - \`GET ${api}/me\`: the account and its balance.
 - \`GET ${api}/me/portfolio\`: holdings. \`quotedExitMicro\` is what selling now would pay; \`markMicro\` (shares × price) is **not** a sale price and is always more. Judge a position by \`quotedExitMicro\`.
 - \`GET ${api}/me/orders\`: your fills, newest first.
+- \`GET ${api}/me/mentions?since=<when you last checked>\`: comments that \`@\`-mention the person, newest first. **Check it when you start** and tell the person what they were asked. Reply only if they want you to, with \`POST ${api}/markets/<market.id>/comments\` and \`{ "body": "…", "parentId": "<commentId>" }\`.
 
 ## Errors
 
@@ -88,7 +89,7 @@ Errors are \`{ "error": { "code", "message" } }\`. The ones you will meet: \`sli
 ## Reference
 
 - [OpenAPI document](${origin}/api/v1/openapi.json): every endpoint and field.
-- [API reference](${origin}/docs), [How it works](${origin}/how-it-works).
+- [API reference](${origin}/docs), [How it works](${origin}/about).
 `;
   return new Response(body, {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=300' },

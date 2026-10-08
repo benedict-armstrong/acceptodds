@@ -13,7 +13,7 @@ import * as engine from '../engine';
 import { buyOnListing, openListingMarket } from '../market-start';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
-import { getComment, listComments, listReplies, postComment } from '../comments';
+import { getComment, listComments, listMentions, listReplies, postComment } from '../comments';
 import { mailMentions } from '../mentions';
 import { follow, followedListings, setDigestOptIn, setMentionMailOptIn, unfollow } from '../follows';
 import {
@@ -100,6 +100,7 @@ import {
   presentToken,
 } from './present';
 import * as S from './schemas';
+import { marketHref } from '@/lib/links';
 
 /**
  * `/api/v1`, one handler per operation. The files under `app/api/v1/` only
@@ -621,6 +622,38 @@ export const getMyFollows = route(async (req) => {
   const follows = await followedListings(principal.account.id);
   events.log('follows.read', { accountId: principal.account.id });
   return respond(S.FollowList, { follows: follows.map(presentFollowed) }, { principal });
+});
+
+/**
+ * The comments that `@`-mention the caller: by alias on a paper they comment
+ * on, or a bot by handle anywhere. `read` scope, any principal. Agents call
+ * it when they start, with `since` the time they last checked.
+ */
+export const getMyMentions = route(async (req) => {
+  const principal = await requireAuth(req, 'read');
+  const q = parseQuery(req, S.MentionListQuery);
+  const page = await listMentions(principal.account.id, q);
+  events.log('mentions.read', { accountId: principal.account.id });
+  return respond(
+    S.MentionList,
+    {
+      mentions: page.mentions.map((m) => ({
+        commentId: m.commentId,
+        parentId: m.parentId,
+        body: m.body,
+        createdAt: m.createdAt.toISOString(),
+        market: {
+          id: m.market.id,
+          slug: m.market.slug,
+          title: m.market.title,
+          url: marketHref({ marketSlug: m.market.slug, listingSlug: m.market.listingSlug }),
+        },
+        author: m.author,
+      })),
+      nextCursor: page.nextCursor,
+    },
+    { principal },
+  );
 });
 
 /**

@@ -27,7 +27,7 @@ const buy = (token: string, outcomeId: string, sharesMicro: string, marketId = f
   api('POST', `/markets/${marketId}/orders`, { token, body: { outcomeId, sharesMicro, maxCostMicro: '1000000000' } });
 
 describe('comments', () => {
-  it('are anonymous: a stake and a bot flag, never a handle or an account id', async () => {
+  it('are anonymous: a stake and an alias, never a handle or an account id', async () => {
     const t = await trader('secret-handle');
     await buy(t.token, fx.outcomeIds[0], '40000000');
     const posted = await api('POST', `/markets/${fx.marketId}/comments`, {
@@ -37,14 +37,14 @@ describe('comments', () => {
     expect(posted.status).toBe(201);
     expect(posted.body).toMatchObject({
       body: 'I think so.',
-      author: { isBot: false, isYou: true, stake: [{ outcomeLabel: 'YES', sharesMicro: '40000000' }] },
+      author: { bot: null, isYou: true, stake: [{ outcomeLabel: 'YES', sharesMicro: '40000000' }] },
     });
 
     const list = await api('GET', `/markets/${fx.marketId}/comments`);
     expect(list.status).toBe(200);
     expect(list.body.comments[0].author).toEqual({
       alias: posted.body.author.alias,
-      isBot: false,
+      bot: null,
       isYou: false,
       stake: [{ outcomeId: fx.outcomeIds[0], outcomeLabel: 'YES', sharesMicro: '40000000' }],
     });
@@ -63,10 +63,16 @@ describe('comments', () => {
     ]);
   });
 
-  it('flag bots', async () => {
+  it('name bots, and only bots', async () => {
     const bot = await trader('robo', ['read', 'trade'], { isBot: true });
+    const person = await trader('human');
+    await api('POST', `/markets/${fx.marketId}/comments`, { token: person.token, body: { body: 'hello' } });
     await api('POST', `/markets/${fx.marketId}/comments`, { token: bot.token, body: { body: 'beep' } });
-    expect((await api('GET', `/markets/${fx.marketId}/comments`)).body.comments[0].author.isBot).toBe(true);
+    const [byBot, byPerson] = (await api('GET', `/markets/${fx.marketId}/comments`)).body.comments;
+    expect(byBot.author.bot).toEqual({ handle: 'robo', displayName: 'robo' });
+    expect(byBot.author.alias).toMatch(/^[a-z0-9]{4}$/);
+    expect(byPerson.author.bot).toBeNull();
+    expect(JSON.stringify(byPerson)).not.toContain('human');
   });
 
   it('need the trade scope and a trading-eligible account, and a sane body', async () => {
@@ -175,6 +181,71 @@ describe('aliases', () => {
     const list = await api('GET', `/markets/${fx.marketId}/comments`);
     expect(list.body.comments[0].mentions).toEqual([alias]);
     expect(list.body.comments[1].mentions).toEqual([]);
+  });
+
+  it("resolve a bot's @handle anywhere, never a person's", async () => {
+    await trader('opus-bot', ['read', 'trade'], { isBot: true });
+    const a = await trader('alice');
+    const reply = await post(a.token, 'can @Opus-Bot beat this? not @alice, not @nobody-here');
+    expect(reply.body.mentions).toEqual(['opus-bot']);
+  });
+});
+
+describe('the mentions inbox', () => {
+  const post = (token: string, body: string) =>
+    api('POST', `/markets/${fx.marketId}/comments`, { token, body: { body } });
+
+  it("lists a bot's handle mentions and a person's alias mentions, never the author's own", async () => {
+    const bot = await trader('opus-bot', ['read', 'trade'], { isBot: true });
+    const a = await trader('alice');
+    const b = await trader('bob');
+    const first = await post(a.token, 'first; and @alice is not me here');
+    const alias = first.body.author.alias;
+    const toBot = await post(b.token, `@opus-bot and @${alias}, thoughts?`);
+    await post(a.token, `@${alias} talking to myself`);
+
+    const botInbox = await api('GET', '/me/mentions', { token: bot.token });
+    expect(botInbox.status).toBe(200);
+    expect(botInbox.body).toEqual({
+      mentions: [
+        {
+          commentId: toBot.body.id,
+          parentId: null,
+          body: `@opus-bot and @${alias}, thoughts?`,
+          createdAt: toBot.body.createdAt,
+          market: {
+            id: fx.marketId,
+            slug: expect.any(String),
+            title: expect.any(String),
+            url: expect.stringMatching(/^\/(papers|markets)\//),
+          },
+          author: { alias: toBot.body.author.alias, bot: null },
+        },
+      ],
+      nextCursor: null,
+    });
+    const aliceInbox = await api('GET', '/me/mentions', { token: a.token });
+    expect(aliceInbox.body.mentions.map((m: { commentId: string }) => m.commentId)).toEqual([toBot.body.id]);
+    expect((await api('GET', '/me/mentions', { token: b.token })).body.mentions).toEqual([]);
+  });
+
+  it('pages newest first, and filters by since', async () => {
+    const bot = await trader('opus-bot', ['read', 'trade'], { isBot: true });
+    const a = await trader('alice');
+    const one = await post(a.token, '@opus-bot one');
+    const two = await post(a.token, '@opus-bot two');
+    const page = await api('GET', '/me/mentions?limit=1', { token: bot.token });
+    expect(page.body.mentions.map((m: { commentId: string }) => m.commentId)).toEqual([two.body.id]);
+    const next = await api('GET', `/me/mentions?limit=1&cursor=${page.body.nextCursor}`, { token: bot.token });
+    expect(next.body.mentions.map((m: { commentId: string }) => m.commentId)).toEqual([one.body.id]);
+    // `createdAt` is to the millisecond and the column to the microsecond: just after `one`.
+    const after = new Date(Date.parse(one.body.createdAt) + 1).toISOString();
+    const since = await api('GET', `/me/mentions?since=${encodeURIComponent(after)}`, { token: bot.token });
+    expect(since.body.mentions.map((m: { commentId: string }) => m.commentId)).toEqual([two.body.id]);
+  });
+
+  it('needs a credential', async () => {
+    expect((await api('GET', '/me/mentions')).status).toBe(401);
   });
 });
 

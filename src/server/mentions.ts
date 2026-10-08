@@ -1,8 +1,8 @@
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { user } from '@/db/auth-schema';
-import { accounts, commentAliases, comments, listings, markets } from '@/db/schema';
-import { mentionedAliases } from '@/lib/aliases';
+import { accounts, commentAliases, commentMentions, comments, listings, markets } from '@/db/schema';
+import { userName } from '@/lib/aliases';
 import { marketHref } from '@/lib/links';
 import { renderMentionMail } from '@/lib/mention-mail';
 import { aliasScope } from './comments';
@@ -12,8 +12,8 @@ import { consume, type RateLimitConfig } from './ratelimit';
 import { siteName, siteUrl } from './share';
 
 /**
- * Mail the reviewers a comment `@`-mentions (`lib/aliases.ts`): one mail per
- * mentioned alias on the comment's paper, to that account's login address.
+ * Mail the reviewers a comment `@`-mentions: one mail per account in its
+ * `comment_mentions` rows (`server/comments.ts`), to the login address.
  *
  * Not to the author mentioning themself, a bot (its address is never
  * mailed), an account that turned `mention_mail_opt_in` off, or one whose
@@ -22,8 +22,8 @@ import { siteName, siteUrl } from './share';
  * still shows on the page and nothing is sent. Without it anyone could fill
  * an inbox by posting `@k3xm` over and over.
  *
- * The mail names the mentioner by alias only, exactly as the page does, so it
- * tells the recipient nothing the discussion doesn't.
+ * The mail names the mentioner as the page does — by alias, or a bot by
+ * name — so it tells the recipient nothing the discussion doesn't.
  *
  * Called after the comment is committed and never awaited by the request:
  * like `events.log`, a mail failure must never fail the post. Reads, and
@@ -36,6 +36,8 @@ export async function mailMentions(commentId: string, database: Database = getDb
     .select({
       body: comments.body,
       accountId: comments.accountId,
+      authorIsBot: accounts.isBot,
+      authorName: accounts.displayName,
       marketId: markets.id,
       marketSlug: markets.slug,
       question: markets.question,
@@ -44,12 +46,11 @@ export async function mailMentions(commentId: string, database: Database = getDb
       title: listings.title,
     })
     .from(comments)
+    .innerJoin(accounts, eq(accounts.id, comments.accountId))
     .innerJoin(markets, eq(markets.id, comments.marketId))
     .leftJoin(listings, eq(listings.id, markets.listingId))
     .where(eq(comments.id, commentId));
   if (!c) return 0;
-  const mentioned = mentionedAliases(c.body);
-  if (mentioned.length === 0) return 0;
 
   const scope = aliasScope({ id: c.marketId, listingId: c.listingId });
   const [author] = await database
@@ -58,16 +59,16 @@ export async function mailMentions(commentId: string, database: Database = getDb
     .where(and(scope, eq(commentAliases.accountId, c.accountId)));
   if (!author) return 0;
 
+  // A person is only ever mentioned by alias, so every recipient has one on this paper.
   const recipients = await database
     .select({ accountId: accounts.id, alias: commentAliases.alias, email: user.email })
-    .from(commentAliases)
-    .innerJoin(accounts, eq(accounts.id, commentAliases.accountId))
+    .from(commentMentions)
+    .innerJoin(accounts, eq(accounts.id, commentMentions.accountId))
+    .innerJoin(commentAliases, and(scope, eq(commentAliases.accountId, commentMentions.accountId)))
     .innerJoin(user, eq(user.id, accounts.userId))
     .where(
       and(
-        scope,
-        inArray(commentAliases.alias, mentioned),
-        ne(commentAliases.accountId, c.accountId),
+        eq(commentMentions.commentId, commentId),
         eq(accounts.mentionMailOptIn, true),
         eq(accounts.isBot, false),
         eq(accounts.isHouse, false),
@@ -81,8 +82,8 @@ export async function mailMentions(commentId: string, database: Database = getDb
     if (!(await consume(`mention-mail:${r.accountId}`, MENTION_MAIL_BUDGET)).allowed) continue;
     const mail = renderMentionMail({
       siteName: siteName(),
-      from: author.alias,
-      to: r.alias,
+      from: c.authorIsBot ? c.authorName : userName(author.alias),
+      to: userName(r.alias),
       title: c.title ?? c.question,
       body: c.body,
       url: `${base}${marketHref({ marketSlug: c.marketSlug, listingSlug: c.listingSlug })}`,

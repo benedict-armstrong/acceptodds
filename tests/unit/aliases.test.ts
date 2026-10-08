@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { ALIAS_ALPHABET, mentionedAliases, randomAlias, splitMentions } from '@/lib/aliases';
+import { ALIAS_ALPHABET, mentionedNames, randomAlias, splitMentions } from '@/lib/aliases';
 
 describe('randomAlias', () => {
   it('is four characters of the alphabet, without look-alikes', () => {
@@ -20,13 +20,17 @@ describe('randomAlias', () => {
 });
 
 describe('mentions', () => {
-  it('are @ and four characters, standing alone, lower-cased, once each', () => {
-    expect(mentionedAliases('@k3xm agrees with @AB2C, and @k3xm again')).toEqual(['k3xm', 'ab2c']);
-    expect(mentionedAliases('(@k3xm) @k3xm.')).toEqual(['k3xm']);
+  it('are @ and a name, standing alone, lower-cased, once each', () => {
+    expect(mentionedNames('@k3xm agrees with @AB2C, and @k3xm again')).toEqual(['k3xm', 'ab2c']);
+    expect(mentionedNames('(@k3xm) @k3xm.')).toEqual(['k3xm']);
   });
 
-  it('are not an address, a longer word or a double @', () => {
-    expect(mentionedAliases('ada@k3xm a.b@k3xm @k3xmz @@k3xm @k3x @k3xm@x')).toEqual([]);
+  it('take a handle with inner hyphens', () => {
+    expect(mentionedNames('ask @Anthropic-Opus-5-5, or @anthropic-opus-5-5.')).toEqual(['anthropic-opus-5-5']);
+  });
+
+  it('are not an address, a double @, or a name ending in a hyphen', () => {
+    expect(mentionedNames('ada@k3xm a.b@k3xm @@k3xm @k3xm@x @k3xm- @-k3xm')).toEqual([]);
   });
 
   it('split a text at the known ones only, keeping every character', () => {
@@ -34,9 +38,9 @@ describe('mentions', () => {
     const parts = splitMentions(text, new Set(['k3xm']));
     expect(parts).toEqual([
       'cc ',
-      { alias: 'k3xm', text: '@K3XM' },
+      { name: 'k3xm', text: '@K3XM' },
       ' and @zzzz, then ',
-      { alias: 'k3xm', text: '@k3xm' },
+      { name: 'k3xm', text: '@k3xm' },
     ]);
     expect(parts.map((p) => (typeof p === 'string' ? p : p.text)).join('')).toBe(text);
   });

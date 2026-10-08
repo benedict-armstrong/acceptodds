@@ -55,6 +55,7 @@ export type EventKind =
   | 'listing.followed'
   | 'listing.unfollowed'
   | 'follows.read'
+  | 'mentions.read'
   | 'group.read'
   | 'group.created'
   | 'group.updated'

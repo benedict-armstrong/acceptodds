@@ -10,7 +10,7 @@ const COLLAPSED_LINES = 3;
 
 /**
  * Every title block's abstract (papers, traders, boards, the home page,
- * `/how-it-works`): headed, inset from the text width and justified, as a
+ * `/about`): headed, inset from the text width and justified, as a
  * paper's is; one shorter than a line is centred. One longer than three
  * lines at the current width starts collapsed to them until clicked; a
  * shorter one has no toggle.

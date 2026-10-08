@@ -3,8 +3,8 @@ import { MENTION_QUOTE_CHARS, renderMentionMail } from '@/lib/mention-mail';
 
 const base = {
   siteName: 'acceptodds',
-  from: 'k3xm',
-  to: 'ab2c',
+  from: 'User k3xm',
+  to: 'User ab2c',
   title: 'Attention Is All You Need',
   body: 'line one\nline two',
   url: 'https://acceptodds.com/papers/attention',

@@ -1,16 +1,18 @@
-import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import {
   accounts,
   commentAliases,
   commentBackings,
+  commentMentions,
   comments,
+  listings,
   markets,
   outcomes,
   positions,
   type Market,
 } from '@/db/schema';
-import { mentionedAliases, randomAlias } from '@/lib/aliases';
+import { mentionedNames, randomAlias } from '@/lib/aliases';
 import { prices } from '@/lib/lmsr';
 import { coarseStakeMicro } from '@/lib/stake';
 import { costToMicro, microToFloat } from '@/lib/money';
@@ -22,6 +24,18 @@ import { encodeCursor } from './views';
  * **current stake in that market**, whether they are a bot, and their
  * **alias on this paper**, and nothing else about them — no handle, no
  * account id, no institution.
+ *
+ * **Bots are named** (`author.bot`: display name and handle), the one
+ * exception, on the owner's call: which model argued what is the point of
+ * reading a bot, and a bot is the operator's account, never a person's (an
+ * agent trading for someone uses that person's account). It does tie the
+ * bot's stake, and so its position in the market, to its name; for a bot
+ * that is accepted. A bot is `@`-mentioned by its handle, on any paper,
+ * whether or not it has commented there; a person only by alias.
+ *
+ * **Mentions are kept** (`comment_mentions`), resolved once when the comment
+ * is posted, so the mentioned account can read them back
+ * (`listMentions`, `GET /me/mentions`): an agent checks what it missed.
  *
  * The alias is OpenReview's "User k3xm": random, made the first time an
  * account comments on a paper (`comment_aliases`), the same on every comment
@@ -94,7 +108,8 @@ export interface CommentView {
   author: {
     /** The author's pseudonym on this paper. */
     alias: string;
-    isBot: boolean;
+    /** Who the author is when it is a bot (named, the exception above); null for a person. */
+    bot: { handle: string; displayName: string } | null;
     /** True when the viewer wrote it. Lets a client say "you" without revealing anyone else. */
     isYou: boolean;
     stake: { outcomeId: string; outcomeLabel: string; sharesMicro: bigint }[];
@@ -132,11 +147,39 @@ export async function postComment(
     if (!parent) throw new ApiError(404, 'not_found', `no comment ${parentId} on this market`);
   }
   await ensureAlias(market, input.accountId, database);
-  const [row] = await database
-    .insert(comments)
-    .values({ marketId: input.marketId, accountId: input.accountId, parentId, body })
-    .returning({ id: comments.id, createdAt: comments.createdAt });
-  return row;
+  const mentioned = await resolveMentions(market, mentionedNames(body), database);
+  return database.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(comments)
+      .values({ marketId: input.marketId, accountId: input.accountId, parentId, body })
+      .returning({ id: comments.id, createdAt: comments.createdAt });
+    const recipients = [...new Set(mentioned.values())].filter((id) => id !== input.accountId);
+    if (recipients.length > 0) {
+      await tx.insert(commentMentions).values(recipients.map((accountId) => ({ commentId: row.id, accountId })));
+    }
+    return row;
+  });
+}
+
+/**
+ * Which accounts `names` (from `mentionedNames`) mention on this market's
+ * paper: a commenter's alias there, else a bot's handle. A person's handle
+ * is never a mention. Name → account id; names that are neither are absent.
+ */
+async function resolveMentions(market: Scoped, names: string[], database: Database): Promise<Map<string, string>> {
+  if (names.length === 0) return new Map();
+  const [aliases, bots] = await Promise.all([
+    database
+      .select({ name: commentAliases.alias, accountId: commentAliases.accountId })
+      .from(commentAliases)
+      .where(and(aliasScope(market), inArray(commentAliases.alias, names))),
+    database
+      .select({ name: accounts.handle, accountId: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.isBot, true), eq(accounts.isHouse, false), inArray(accounts.handle, names))),
+  ]);
+  // An alias wins over a bot's handle spelled the same: it is what the page shows on this paper.
+  return new Map([...bots, ...aliases].map((r) => [r.name, r.accountId]));
 }
 
 type Scoped = Pick<Market, 'id' | 'listingId'>;
@@ -193,6 +236,8 @@ const commentColumns = {
   ts: sql<string>`to_char(${comments.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
   accountId: comments.accountId,
   isBot: accounts.isBot,
+  handle: accounts.handle,
+  displayName: accounts.displayName,
   parentId: comments.parentId,
   // Uses comments_parent_created_idx. `r` is the reply; the outer row is `comments`.
   replyCount: sql<number>`(select count(*)::int from comments r where r.parent_id = ${comments.id})`,
@@ -205,6 +250,8 @@ type CommentRow = {
   ts: string;
   accountId: string;
   isBot: boolean;
+  handle: string;
+  displayName: string;
   parentId: string | null;
   replyCount: number;
 };
@@ -403,9 +450,9 @@ async function decorate(
   if (rows.length === 0) return [];
   const authorIds = [...new Set(rows.map((r) => r.accountId))];
   const commentIds = rows.map((r) => r.id);
-  const mentioned = [...new Set(rows.flatMap((r) => mentionedAliases(r.body)))];
+  const mentioned = [...new Set(rows.flatMap((r) => mentionedNames(r.body)))];
 
-  const [board, stakes, backed, aliases] = await Promise.all([
+  const [board, stakes, backed, aliases, resolved] = await Promise.all([
     database.select().from(outcomes).where(eq(outcomes.marketId, market.id)).orderBy(asc(outcomes.ordinal)),
     database
       .select({
@@ -434,19 +481,12 @@ async function decorate(
     database
       .select({ accountId: commentAliases.accountId, alias: commentAliases.alias })
       .from(commentAliases)
-      .where(
-        and(
-          aliasScope(market),
-          or(
-            inArray(commentAliases.accountId, authorIds),
-            mentioned.length > 0 ? inArray(commentAliases.alias, mentioned) : undefined,
-          ),
-        ),
-      ),
+      .where(and(aliasScope(market), inArray(commentAliases.accountId, authorIds))),
+    resolveMentions(market, mentioned, database),
   ]);
 
   const aliasOf = new Map(aliases.map((a) => [a.accountId, a.alias]));
-  const known = new Set(aliases.map((a) => a.alias));
+  const known = new Set(resolved.keys());
   const value = backingValuer(market, board);
 
   return rows.map((r) => {
@@ -463,10 +503,11 @@ async function decorate(
       body: r.body,
       createdAt: r.createdAt,
       replyCount: r.replyCount,
-      mentions: mentionedAliases(r.body).filter((a) => known.has(a)),
+      mentions: mentionedNames(r.body).filter((n) => known.has(n)),
       author: {
         alias: authorAlias(aliasOf, r.accountId),
-        isBot: r.isBot,
+        // A person's handle and name never leave this module; a bot's are its byline.
+        bot: r.isBot ? { handle: r.handle, displayName: r.displayName } : null,
         isYou: viewerAccountId === r.accountId,
         stake: stakes
           .filter((s) => s.accountId === r.accountId)
@@ -558,5 +599,79 @@ export async function viewerStake(
       heldMicro: r.heldMicro,
       allocatedMicro: BigInt(r.allocated),
     })),
+  };
+}
+
+/** A comment that mentions the caller, for their inbox (`GET /me/mentions`). */
+export interface MentionView {
+  commentId: string;
+  parentId: string | null;
+  body: string;
+  createdAt: Date;
+  market: { id: string; slug: string; listingSlug: string | null; title: string };
+  /** As the discussion shows the author: an alias on that paper, a bot's name. */
+  author: { alias: string; bot: { handle: string; displayName: string } | null };
+}
+
+/**
+ * The comments that `@`-mention an account, newest first, keyset-paginated,
+ * optionally only those after `since`. Read from `comment_mentions`, so a
+ * mention is exactly what the page highlighted when the comment was posted.
+ */
+export async function listMentions(
+  accountId: string,
+  q: { cursor?: string; since?: string; limit: number },
+  database: Database = getDb(),
+): Promise<{ mentions: MentionView[]; nextCursor: string | null }> {
+  const before = decodeCursor(q.cursor);
+  const rows = await database
+    .select({
+      ...commentColumns,
+      market: { id: markets.id, slug: markets.slug, question: markets.question, listingId: markets.listingId },
+      listingSlug: listings.slug,
+      listingTitle: listings.title,
+      alias: commentAliases.alias,
+    })
+    .from(commentMentions)
+    .innerJoin(comments, eq(comments.id, commentMentions.commentId))
+    .innerJoin(accounts, eq(accounts.id, comments.accountId))
+    .innerJoin(markets, eq(markets.id, comments.marketId))
+    .leftJoin(listings, eq(listings.id, markets.listingId))
+    .innerJoin(
+      commentAliases,
+      and(
+        eq(commentAliases.accountId, comments.accountId),
+        sql`(case when ${markets.listingId} is null then ${commentAliases.marketId} = ${markets.id}
+                  else ${commentAliases.listingId} = ${markets.listingId} end)`,
+      ),
+    )
+    .where(
+      and(
+        eq(commentMentions.accountId, accountId),
+        q.since ? sql`${comments.createdAt} > ${q.since}::timestamptz` : undefined,
+        before
+          ? sql`(${comments.createdAt}, ${comments.id}) < (${before.t}::timestamptz, ${before.id}::uuid)`
+          : undefined,
+      ),
+    )
+    .orderBy(desc(comments.createdAt), desc(comments.id))
+    .limit(q.limit + 1);
+  const page = rows.slice(0, q.limit);
+  const last = page[page.length - 1];
+  return {
+    mentions: page.map((r) => ({
+      commentId: r.id,
+      parentId: r.parentId,
+      body: r.body,
+      createdAt: r.createdAt,
+      market: {
+        id: r.market.id,
+        slug: r.market.slug,
+        listingSlug: r.listingSlug,
+        title: r.listingTitle ?? r.market.question,
+      },
+      author: { alias: r.alias, bot: r.isBot ? { handle: r.handle, displayName: r.displayName } : null },
+    })),
+    nextCursor: rows.length > q.limit && last ? encodeCursor({ t: last.ts, id: last.id }) : null,
   };
 }

@@ -268,7 +268,7 @@ export function MarketLive({
             </div>
           )}
           <div className="mt-1.5 flex justify-between gap-3 text-xs text-faint">
-            <Link href="/how-it-works" className="hover:underline">
+            <Link href="/about" className="hover:underline">
               How do these markets work?
             </Link>
             {market.contract && (

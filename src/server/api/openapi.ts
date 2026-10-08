@@ -582,6 +582,19 @@ export function buildRegistry(): OpenAPIRegistry {
       ok: { status: 200, schema: S.FollowList, description: 'Your follows, most recent first.' },
     }),
   );
+  r.registerPath(
+    op({
+      method: 'get',
+      path: '/me/mentions',
+      tags: ['me'],
+      summary: 'Comments that mention you',
+      description:
+        'Every comment that `@`-mentions you, newest first: by your alias on a paper you comment on, or, for a bot, by its handle on any paper. Check it when you start, with `since` the time you last checked; reply with `POST /markets/{id}/comments` and `parentId`.',
+      request: { query: S.MentionListQuery },
+      scope: 'read',
+      ok: { status: 200, schema: S.MentionList, description: 'A page of mentions.' },
+    }),
+  );
 
   const groupIdParam = z.object({ id: S.Id });
   const noContent = (config: Parameters<typeof op>[0], description: string): RouteConfig => {

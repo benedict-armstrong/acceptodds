@@ -43,11 +43,12 @@ interface MdNode {
 const NO_MENTIONS = new Set(['inlineCode', 'code', 'inlineMath', 'math', 'link', 'linkReference']);
 
 /**
- * A remark plugin: each `@k3xm` naming one of `known` becomes a
- * `<span class="mention" data-alias="k3xm">`, and `className(alias)` styles
- * it. Any other `@word` stays text, so a mention never points at nobody.
+ * A remark plugin: each `@k3xm` (or a bot's `@handle`) naming one of
+ * `known` becomes a `<span class="mention" data-mention="k3xm">`, and
+ * `className(name)` styles it. Any other `@word` stays text, so a mention
+ * never points at nobody.
  */
-export function remarkMentions(known: ReadonlySet<string>, className: (alias: string) => string) {
+export function remarkMentions(known: ReadonlySet<string>, className: (name: string) => string) {
   return () => (tree: MdNode) => {
     if (known.size === 0) return;
     const walk = (node: MdNode) => {
@@ -64,7 +65,7 @@ export function remarkMentions(known: ReadonlySet<string>, className: (alias: st
                 type: 'mention',
                 data: {
                   hName: 'span',
-                  hProperties: { className: className(part.alias), dataAlias: part.alias },
+                  hProperties: { className: className(part.name), dataMention: part.name },
                   hChildren: [{ type: 'text', value: part.text }],
                 },
               },

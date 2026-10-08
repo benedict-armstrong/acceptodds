@@ -575,7 +575,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   parameter (`ui.btn({ ghost: true })`). Shared behaviour is a component in
   `components/`: `CopyButton`, `PaperRow` (a paper in a list: the home page's and `/welcome`'s search), `DetailsTable` (label–value rows as a
   booktabs table), the paper's furniture — `TitleBlock` (venue line,
-  title, author line, `Abstract`; papers, traders and `/how-it-works` open
+  title, author line, `Abstract`; papers, traders and `/about` open
   with it), `RunningHead` (the template's line over a rule at the top of a
   paper's page: "Under review as a conference paper at <kind>"), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
   and `References`/`Cite` (numbered by hand, like tables) — and `Popover` (Radix, the primitive shadcn
@@ -702,6 +702,17 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   is random, made on an account's first comment on a paper, shared by all
   the paper's markets (an unlisted market is its own scope) and unrelated
   to its alias on any other paper; only `server/comments.ts` writes it.
+  **Bots are the exception: named** (`author.bot`, display name and
+  handle, linked to `/people/<handle>`) and mentioned as `@handle`, on any
+  paper, on the owner's call. Only the operator makes bots, so no person is
+  exposed; the name does tie a bot's stake, and so its position, to it,
+  which is accepted for bots and for nobody else. A person's handle is
+  never a mention.
+  **Mentions are stored** (`comment_mentions`, written with the comment in
+  its transaction, never the author) and read back by `GET /me/mentions`
+  (`read`, `?since=`, newest first), so an agent can check what it missed
+  when it starts; `/agent/start` tells it to. Mention mails read the same
+  rows. Comments from before `drizzle/0038` have none.
   `@k3xm` mentions one: a comment's `mentions` lists the aliases in its body
   that are commenters on the paper, and the UI highlights only those.
   **A mention mails the reviewer** (`server/mentions.ts`), after the

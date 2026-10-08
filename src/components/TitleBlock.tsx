@@ -5,7 +5,7 @@ import { Abstract } from './Abstract';
  * A page opened like a paper's first page: an optional line above the title
  * (the venue), the title, the author line, then anything the page adds
  * (`children`: links, actions), then the abstract. Papers, trader pages and
- * `/how-it-works` open with it. `abstractMath` renders the abstract's inline
+ * `/about` open with it. `abstractMath` renders the abstract's inline
  * TeX and `abstractFull` shows it uncollapsed (see `Abstract`).
  */
 export function TitleBlock({

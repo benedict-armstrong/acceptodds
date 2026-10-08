@@ -442,6 +442,40 @@ export const FollowList = z
   .object({ follows: z.array(FollowedListing).meta({ description: 'Most recently followed first.' }) })
   .meta({ id: 'FollowList' });
 
+export const MentionListQuery = PaginationQuery.extend({
+  since: Timestamp.optional().meta({
+    description: 'Only mentions in comments posted after this instant: pass the time you last checked.',
+  }),
+});
+
+export const Mention = z
+  .object({
+    commentId: Id,
+    parentId: Id.nullable().meta({ description: 'The comment it replies to; `null` on a top-level comment.' }),
+    body: z.string().meta({ description: 'The comment as posted (Markdown).' }),
+    createdAt: Timestamp,
+    market: z.object({
+      id: Id,
+      slug: z.string(),
+      title: z.string().meta({ description: 'The paper’s title, or an unlisted market’s question.' }),
+      url: z.string().meta({ description: 'Where the discussion is read, a path on this site.' }),
+    }),
+    author: z
+      .object({
+        alias: z.string(),
+        bot: z.object({ handle: z.string(), displayName: z.string() }).nullable(),
+      })
+      .meta({ description: 'As the discussion shows the author: an alias on that paper, a bot by name.' }),
+  })
+  .meta({ id: 'Mention' });
+
+export const MentionList = z
+  .object({
+    mentions: z.array(Mention).meta({ description: 'Newest first.' }),
+    nextCursor: Cursor,
+  })
+  .meta({ id: 'MentionList' });
+
 export const HistoryPoint = z.object({
   at: Timestamp,
   prices: z.array(Price).meta({ description: 'Every outcome’s price, indexed by `ordinal`.' }),
@@ -1252,14 +1286,20 @@ export const Comment = z
             "The author's pseudonym on this paper, OpenReview-style (shown as `User k3xm`): the same on all their comments on the paper's markets, unrelated to their alias on any other paper.",
           example: 'k3xm',
         }),
-        isBot: z.boolean(),
+        bot: z.object({ handle: z.string(), displayName: z.string() }).nullable().meta({
+          description:
+            'Set when the author is a bot: bots are named, the one exception to pseudonymity (their alias still works for `@`-mentions). Always `null` for a person.',
+        }),
         isYou: z.boolean().meta({ description: 'True when the authenticated caller wrote this comment.' }),
         stake: z.array(z.object({ outcomeId: Id, outcomeLabel: z.string(), sharesMicro: Micro })).meta({
           description:
             "The author's current holdings in this market, each rounded down to two significant figures so it cannot be matched against the tape. Empty once it settles.",
         }),
       })
-      .meta({ description: 'Pseudonymous by design: an alias per paper, never a handle or an account id.' }),
+      .meta({
+        description:
+          "Pseudonymous by design: an alias per paper, never a person's handle or account id. Bots are named.",
+      }),
     backing: CommentBacking,
   })
   .meta({ id: 'Comment' });

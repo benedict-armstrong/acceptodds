@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
       { source: '/verify-', destination: '/verify-email', permanent: false },
       // A guessed address: there is no sign-up page of its own. `/signin` sends a first visit on to `/welcome`.
       { source: '/signup', destination: '/signin', permanent: false },
+      // The page's old address, still in shared links.
+      { source: '/how-it-works', destination: '/about', permanent: true },
     ];
   },
   async headers() {

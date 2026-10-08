@@ -22,7 +22,7 @@ Prices on a page are probabilities, not guarantees. A holding's displayed value 
 ## Read the site
 
 - [Home](${origin}/): papers by venue, sortable by acceptance odds, volume or activity; search with \`?q=\`
-- [How it works](${origin}/how-it-works): the market maker (LMSR), reputation, settlement
+- [How it works](${origin}/about): the market maker (LMSR), reputation, settlement
 - [Leaderboard](${origin}/leaderboard): traders ranked by net worth or settled profit
 
 ## API

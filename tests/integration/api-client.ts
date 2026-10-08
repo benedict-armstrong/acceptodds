@@ -38,6 +38,7 @@ import * as mapRelatedRoute from '@/app/api/v1/map/related/route';
 import * as mapTitlesRoute from '@/app/api/v1/map/titles/route';
 import * as transitionsRoute from '@/app/api/v1/transitions/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
+import * as myMentionsRoute from '@/app/api/v1/me/mentions/route';
 import * as groupsRoute from '@/app/api/v1/groups/route';
 import * as groupJoinRoute from '@/app/api/v1/groups/join/route';
 import * as groupRoute from '@/app/api/v1/groups/[id]/route';
@@ -120,6 +121,7 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/me/portfolio', portfolioRoute],
   ['/me/orders', myOrdersRoute],
   ['/me/follows', myFollowsRoute],
+  ['/me/mentions', myMentionsRoute],
   ['/me/groups', myGroupsRoute],
   ['/me/tokens', tokensRoute],
   ['/me/tokens/[id]', tokenRoute],

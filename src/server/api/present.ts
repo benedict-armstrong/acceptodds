@@ -262,7 +262,7 @@ export function presentComment(c: CommentView): z.input<typeof S.Comment> {
     mentions: c.mentions,
     author: {
       alias: c.author.alias,
-      isBot: c.author.isBot,
+      bot: c.author.bot,
       isYou: c.author.isYou,
       stake: c.author.stake.map((s) => ({ ...s, sharesMicro: s.sharesMicro.toString() })),
     },
