@@ -13,7 +13,7 @@ import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { REP, rep } from '@/lib/format';
-import { leaderboardSegments, standingBand } from '@/lib/leaderboard';
+import { standingBand } from '@/lib/leaderboard';
 import { groupPath, institutionPath } from '@/lib/links';
 import { authHref } from '@/lib/return-to';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
@@ -33,11 +33,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-/** Traders per page when paging through the whole board or a search. */
+/** Traders per page, on the board or a search. */
 const PAGE = 50;
-/** The compact view: the top of the board, and this many either side of the viewer. */
-const TOP = 10;
-const RADIUS = 2;
 
 function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -50,9 +47,9 @@ function one(v: string | string[] | undefined): string | undefined {
  * "Settled profit" counts settled markets only. The UI opens on net worth;
  * the API's default basis stays `settled_pnl`.
  *
- * Opens compact: the top ten, then the viewer (or `?around=<handle>`, where a
- * people search leads) with two either side, then a pager into the whole
- * board (`?page=`). `?institution=` ranks one institution among itself,
+ * Shows the board a page at a time (`?page=`), from the top;
+ * `?around=<handle>` (where a people search leads, and "show me") opens on
+ * that trader's page, highlighted. `?institution=` ranks one institution among itself,
  * `?group=` one group (#25); either opens like a paper, its members as the
  * author line, with its own Figure 1. `?q=` finds traders by name and
  * `institution:` and `is:bot` (`lib/trader-query.ts`; `is:bot` keeps the
@@ -62,9 +59,8 @@ function one(v: string | string[] | undefined): string | undefined {
  * institutions and groups, and any institution by name. "+ New group" sits
  * under the search.
  *
- * Signed out, it is the top ten only (of the board or of a search), with no
- * pager, no net worth column, and P/L as a blurred placeholder: the figures
- * never reach the page. The API still serves them; this is only
+ * Signed out, there is no net worth column, and P/L is a blurred
+ * placeholder: the figures never reach the page. The API still serves them; this is only
  * what the page shows.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -127,19 +123,18 @@ export default async function LeaderboardPage({
   const focus = around === null ? mine : field.findIndex((r) => r.handle === around);
   const standing = (i: number) => standingOf(field, field[i].accountId, basis)?.percentAhead ?? null;
 
-  // What is on screen: the compact view as segments of the board, or one page
-  // of the board or of the search.
+  // What is on screen: one page of the board or of the search, by default
+  // the `?around=` trader's, else the first.
   const signedIn = viewer !== null;
-  const compact = q === null && requested === 0;
-  const list = compact ? field : matches;
-  const pages = Math.max(1, Math.ceil(list.length / PAGE));
-  const page = compact ? 0 : Math.min(Math.max(1, requested), pages);
-  const segments: LeaderboardRow[][] = !signedIn
-    ? [list.slice(0, TOP)]
-    : compact
-      ? leaderboardSegments(field.length, focus < 0 ? null : focus, TOP, RADIUS).map(([s, e]) => field.slice(s, e))
-      : [list.slice((page - 1) * PAGE, page * PAGE)];
-  const onScreen = segments.reduce((n, s) => n + s.length, 0);
+  const pages = Math.max(1, Math.ceil(matches.length / PAGE));
+  const focusAt = focus < 0 ? -1 : matches.indexOf(field[focus]);
+  const page =
+    requested === 0 && around !== null && focusAt >= 0
+      ? Math.floor(focusAt / PAGE) + 1
+      : Math.min(Math.max(1, requested), pages);
+  const rows = matches.slice((page - 1) * PAGE, page * PAGE);
+  const onScreen = rows.length;
+  const mineShown = mine >= 0 && rows.includes(field[mine]);
 
   const href = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams();
@@ -261,10 +256,10 @@ export default async function LeaderboardPage({
         <div className="flex min-w-0 flex-col gap-0.5 text-muted">
           {mine >= 0 ? (
             <span>
-              {mine !== focus && (
+              {(mine !== focus || !mineShown) && (
                 <>
                   {' '}
-                  <Link href={`${href({ around: null, q: null, page: null })}#focus`}>show me</Link>
+                  <Link href={`${href({ around: field[mine].handle, q: null, page: null })}#focus`}>show me</Link>
                 </>
               )}
             </span>
@@ -351,8 +346,7 @@ export default async function LeaderboardPage({
               <caption className={ui.tableCaption}>
                 <b>Table 1.</b> Traders{where}
                 {basis === 'net_worth' ? ' ranked by net worth' : ' ranked by settled profit'}
-                {q ? `, matching “${q}”` : ''}.
-                {signedIn ? ' Column leaders are bold.' : ` Only the top ${TOP} are shown.`}
+                {q ? `, matching “${q}”` : ''}.{signedIn && ' Column leaders are bold.'}
               </caption>
               <thead>
                 <tr>
@@ -377,19 +371,15 @@ export default async function LeaderboardPage({
                 </tr>
               </thead>
               <tbody>
-                {segments.map((segment, i) => (
-                  <Segment
-                    key={segment[0]?.accountId ?? i}
-                    rows={segment}
-                    gapBefore={i > 0}
-                    me={me}
-                    best={best}
-                    money={signedIn}
-                    focus={focus >= 0 ? field[focus].accountId : null}
-                    institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
-                    signInHref={authHref('/signin', href({}))}
-                  />
-                ))}
+                <Rows
+                  rows={rows}
+                  me={me}
+                  best={best}
+                  money={signedIn}
+                  focus={focus >= 0 ? field[focus].accountId : null}
+                  institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
+                  signInHref={authHref('/signin', href({}))}
+                />
               </tbody>
             </table>
           </div>
@@ -405,19 +395,11 @@ export default async function LeaderboardPage({
       )}
       {!signedIn && onScreen > 0 && (
         <p className="mt-2 font-sans text-[13px] text-muted">
-          <Link href={authHref('/signin', href({}))}>Sign in</Link> to see the whole board, net worth and P/L, and where
-          you stand.
+          <Link href={authHref('/signin', href({}))}>Sign in</Link> to see net worth and P/L, and where you stand.
         </p>
       )}
 
-      {signedIn && onScreen < list.length && (
-        <Pager
-          page={page}
-          pages={pages}
-          label={compact ? 'all traders:' : undefined}
-          href={(p) => href({ page: String(p) })}
-        />
-      )}
+      {pages > 1 && <Pager page={page} pages={pages} href={(p) => href({ page: String(p) })} />}
       {group && groupReading && (
         <ReadingListTable
           groupId={group.id}
@@ -464,10 +446,9 @@ function bold(v: bigint, best: bigint | null): string {
   return v === best ? 'font-bold' : '';
 }
 
-/** Consecutive rows of the board, after a "…" row when they do not follow the rows above. */
-function Segment({
+/** A page of the board. */
+function Rows({
   rows,
-  gapBefore,
   me,
   best,
   money,
@@ -476,7 +457,6 @@ function Segment({
   signInHref,
 }: {
   rows: LeaderboardRow[];
-  gapBefore: boolean;
   me: string | null;
   best: Best;
   /** Whether net worth is shown and P/L is real, not a blurred placeholder: signed-in viewers only. */
@@ -488,13 +468,6 @@ function Segment({
 }) {
   return (
     <>
-      {gapBefore && (
-        <tr aria-hidden>
-          <td colSpan={money ? 5 : 4} className={`${ui.td} text-center text-muted`}>
-            …
-          </td>
-        </tr>
-      )}
       {rows.map((r) => {
         const highlight = r.accountId === me || r.accountId === focus;
         return (

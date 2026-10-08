@@ -2,9 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { EqRef, Equation } from '@/components/Equation';
 import { MathText } from '@/components/MathText';
+import { Authors } from '@/components/Authors';
 import { Cite, References } from '@/components/References';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
+import { REPO_URL } from '@/lib/links';
+import { Wordmark } from '@/components/Wordmark';
 import { rep, REP } from '@/lib/format';
 import { startingBalanceMicro } from '@/server/accounts';
 
@@ -17,6 +20,10 @@ export const metadata: Metadata = {
     'What acceptodds is and how its markets price papers: the LMSR market maker, reputation, selling, and settlement.',
   alternates: { canonical: '/about' },
 };
+
+/** Wasserman's essay against peer review: linked under the title and cited as [1]. */
+const WASSERMAN =
+  'https://www.stat.cmu.edu/~brian/zach-00/765-2019/764-2016/week05/refereeing/Larry-Abolish-the-Peer-Review.pdf';
 
 const prose = 'mt-2 space-y-3 leading-relaxed';
 
@@ -34,23 +41,37 @@ const prose = 'mt-2 space-y-3 leading-relaxed';
 export default function AboutPage() {
   const start = `${rep(startingBalanceMicro(), 0)} ${REP}`;
   return (
-    <main className={`${ui.page} max-w-[640px]`}>
+    <main className={`${ui.page} max-w-160`}>
       <TitleBlock
-        title="About acceptodds.com"
-        byline="Benedict Armstrong"
-        abstract={`acceptodds is a prediction market on papers under review. Every paper has a market on its decision, Accept or Reject, and its price is what the people trading it think the odds are, before the reviewers have spoken. You buy shares in the outcome you believe in; each share of the outcome that happens pays 1 ${REP} and a share of the other pays nothing. Prices are set by an automated market maker, so there is always someone to trade with, and you can sell what you hold until trading closes. Trading is in reputation, which cannot be bought: everyone starts with ${start}.`}
+        title={
+          <>
+            About <Wordmark />
+            .com
+          </>
+        }
+        byline={<Authors authors={[{ name: 'Benedict Armstrong', affiliations: ['ETH Zürich'] }]} />}
+        abstract={
+          <>
+            <Wordmark /> {` `} is a prediction market on papers under review. Every paper has a market on its decision
+            (e.g. Accept or Reject), and its price is what the people trading it think the odds are. Users buy shares in
+            the outcome they believe in. Shares can be bought and sold at any time and when a market is settled users
+            who are holding the winning outcome are paid out 1 {`${REP}`} for each of their shares. Prices are set by an
+            automated logarithmic market maker so there is always enough liquidity in the market. Trading is in
+            reputation, which cannot be bought: everyone starts with {`${start}`}. It is a game made for fun, and has no
+            connection to ICLR, OpenReview or any other organization and the code is available at:{' '}
+            <a href={REPO_URL} className={ui.hyperref}>
+              {REPO_URL.replace(/^https:\/\//, '')}
+            </a>
+            . The outcome of this experiment is yet to be determined by everyone here
+          </>
+        }
         abstractFull
       >
-        <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 font-sans text-[13px]">
-          <a
-            href="https://www.stat.cmu.edu/~brian/zach-00/765-2019/764-2016/week05/refereeing/Larry-Abolish-the-Peer-Review.pdf"
-            className="text-accent"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
+        {/* <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 font-sans text-[13px]">
+          <a href={WASSERMAN} className="text-accent" rel="noopener noreferrer" target="_blank">
             [Wasserman Paper]
           </a>
-        </div>
+        </div> */}
       </TitleBlock>
 
       <h2 id="why" className={ui.groupHeading}>
@@ -197,7 +218,13 @@ export default function AboutPage() {
 
       <References
         items={[
-          <>L. Wasserman. A world without referees. Essay, Carnegie Mellon University, 2012.</>,
+          <>
+            L. Wasserman.{' '}
+            <a href={WASSERMAN} rel="noopener noreferrer" target="_blank">
+              A world without referees
+            </a>
+            . Essay, Carnegie Mellon University, 2012.
+          </>,
           <>
             R. Hanson. Combinatorial information market design. <i>Information Systems Frontiers</i>, 5(1):107–119,
             2003.

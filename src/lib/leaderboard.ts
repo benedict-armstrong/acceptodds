@@ -3,28 +3,6 @@
  */
 
 /**
- * Which rows of a ranked list of `total` the compact view shows, as
- * half-open `[start, end)` index ranges in order: the top `top`, and `radius`
- * either side of `focus` (the viewer, or whoever was asked for). Ranges that
- * touch or overlap are merged, and so are ranges one row apart — a "…" that
- * hides a single row hides nothing.
- */
-export function leaderboardSegments(total: number, focus: number | null, top = 10, radius = 2): [number, number][] {
-  const ranges: [number, number][] = [[0, Math.min(top, total)]];
-  if (focus !== null && focus >= 0 && focus < total) {
-    ranges.push([Math.max(0, focus - radius), Math.min(total, focus + radius + 1)]);
-  }
-  const out: [number, number][] = [];
-  for (const [start, end] of ranges) {
-    if (end <= start) continue;
-    const last = out[out.length - 1];
-    if (last && start <= last[1] + 1) last[1] = Math.max(last[1], end);
-    else out.push([start, end]);
-  }
-  return out;
-}
-
-/**
  * Where a net worth of `mine` falls in `sortedWorths` (ascending): rank as
  * the leaderboard ranks (one more than how many are strictly higher, so ties
  * share it) and the share of the others strictly below. For placing a
