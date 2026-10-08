@@ -73,7 +73,7 @@ describe('a listing’s first trade makes its market', () => {
     const fill = res.body as any;
     expect(fill.marketCreated).toBe(true);
     expect(fill.firstTrade).toBe(true);
-    expect(fill.priceBefore).toBeCloseTo(0.33, 6);
+    expect(fill.priceBefore).toBeCloseTo(0.32, 6);
     expect(BigInt(fill.costMicro)).toBeLessThanOrEqual(10_000_000n);
     expect(BigInt(fill.costMicro)).toBeGreaterThan(9_999_000n);
 
@@ -91,14 +91,14 @@ describe('a listing’s first trade makes its market', () => {
     expect(await mainMarketOf(p.id)).toHaveLength(1);
   });
 
-  it('opens at JEV’s prices, floored, and books what it cost in real money', async () => {
+  it('opens at JEV’s prices, calibrated and floored, and books what it cost in real money', async () => {
     const calls = stubJev({ probabilities: { Accept: 0.9, Reject: 0.1 }, cost: 0.0000288 });
     const p = await paper('p');
     const t = await trader('t');
     const res = await order(t.token, p.id, 'Reject', '1000000');
     expect(res.status).toBe(201);
-    // (1 − 2·0.05)·0.1 + 0.05
-    expect((res.body as any).priceBefore).toBeCloseTo(0.14, 6);
+    // Reject ∝ 0.1·0.68/0.23 against Accept ∝ 0.9·0.32/0.77, then (1 − 2·0.05)·p + 0.05
+    expect((res.body as any).priceBefore).toBeCloseTo(0.4473, 4);
     expect(calls).toHaveLength(1);
     expect(calls[0].state.paper).toContain('Paper p');
     expect(Object.keys(calls[0].questions.decision.criteria)).toEqual(['Accept', 'Reject']);
@@ -112,7 +112,7 @@ describe('a listing’s first trade makes its market', () => {
     const t = await trader('t');
     const res = await order(t.token, p.id, 'Accept', '1000000');
     expect(res.status).toBe(201);
-    expect((res.body as any).priceBefore).toBeCloseTo(0.33, 6);
+    expect((res.body as any).priceBefore).toBeCloseTo(0.32, 6);
   });
 
   it('makes one market when first trades race', async () => {
@@ -228,7 +228,8 @@ describe('opening a market at JEV’s price, without a trade', () => {
     api('POST', `/listings/${listingId}/market`, { token });
 
   it('opens it at JEV’s price for a trading-eligible account, once', async () => {
-    stubJev({ probabilities: { Accept: 0.5, Reject: 0.5 }, cost: 0.00003 });
+    // JEV's typical answer, so the prior, floored: (1 − 2·0.05)·0.32 + 0.05
+    stubJev({ probabilities: { Accept: 0.77, Reject: 0.23 }, cost: 0.00003 });
     const p = await paper('p');
     const t = await trader('t');
 
@@ -236,7 +237,7 @@ describe('opening a market at JEV’s price, without a trade', () => {
     expect(first.status).toBe(201);
     const body = first.body as any;
     expect(body.created).toBe(true);
-    expect(body.market.outcomes.map((o: any) => o.price)).toEqual([0.5, 0.5]);
+    expect(body.market.outcomes[0].price).toBeCloseTo(0.338, 4);
     expect(body.market.orderCount).toBe(0);
     const [m] = await mainMarketOf(p.id);
     expect(m.createdBy).toBe(t.id);
@@ -324,7 +325,8 @@ describe('opening a market at JEV’s price, without a trade', () => {
 
     const first = await open(undefined, a.id);
     expect(first.status).toBe(201);
-    expect((first.body as any).market.outcomes[0].price).toBeCloseTo(0.32);
+    // 30% is well below JEV's typical 77%, so the paper opens well below the prior.
+    expect((first.body as any).market.outcomes[0].price).toBeCloseTo(0.1);
     const [m] = await mainMarketOf(a.id);
     expect(m.createdBy).toBeNull();
 
@@ -475,6 +477,6 @@ describe('JEV reads the full text when it is supplied', () => {
     expect(res.status).toBe(201);
     expect(calls).toHaveLength(2);
     expect(calls[1].state.paper).toContain('Abstract: The abstract.');
-    expect((res.body as any).market.outcomes[0].price).toBeCloseTo(0.86, 6);
+    expect((res.body as any).market.outcomes[0].price).toBeCloseTo(0.5527, 3);
   });
 });

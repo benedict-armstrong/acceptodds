@@ -283,14 +283,9 @@ export default async function Home({
             />
           )}
           {viewer && (
-            <>
-              <div className="max-w-sm">
-                <OnboardAgent signedIn className={`font-sans text-[13px] ${ui.linkBtn}`} />
-              </div>
-              <Link href="/about" className={`font-sans text-[13px] ${ui.linkBtn}`}>
-                [about]
-              </Link>
-            </>
+            <div className="max-w-sm">
+              <OnboardAgent signedIn className={`font-sans text-[13px] ${ui.linkBtn}`} />
+            </div>
           )}
         </div>
       </TitleBlock>

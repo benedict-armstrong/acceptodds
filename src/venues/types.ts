@@ -74,9 +74,12 @@ export interface Venue {
     /**
      * What JEV is asked about the listing, with one criterion per outcome in
      * outcome order; `null`: no model call, the market opens at the outcomes'
-     * `openingPrice`.
+     * `openingPrice`. `typical` is JEV's own average answer over the venue's
+     * listings, one price per outcome summing to 1, measured, never the
+     * prior: its answer is read relative to it (`jev.calibrated`), so a
+     * typical listing opens at the `openingPrice`s.
      */
-    jev: { instructions: string; criteria: string[] } | null;
+    jev: { instructions: string; criteria: string[]; typical: number[] } | null;
     /**
      * `true`: a listing's market opens when `../research` posts the listing
      * (`POST /listings`), opened by nobody. `false`: it opens on demand, when
