@@ -32,7 +32,7 @@ import { cosineDistance } from '@/lib/vectors';
 import { ApiError } from './api/errors';
 import { standingsGeneration, standingsChangesSince } from './standings-cache';
 import { valuations } from './valuation';
-import { marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
+import { browseReads, BROWSE_READ_TTL_MS, marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
 
 /**
  * Read models for the public API. **Reads only** — nothing here writes, and
@@ -217,7 +217,7 @@ function searchPredicate(node: SearchNode, skip: SearchNode | null): SQL | null 
       return sql`${column} ${node.op === '=' ? sql`ilike` : sql`not ilike`} ${containsPattern(node.value)}`;
     }
     case 'status':
-      return sql`${ROW_STATUS} ${sql.raw(COMPARE_SQL[node.op])} ${node.value}`;
+      return node.op === '=' ? rowStatusIs(node.value) : sql`not ${rowStatusIs(node.value)}`;
     case 'compare': {
       const [column, value] = {
         // Void has no headline, whatever the cache last held: it compares as unknown.
@@ -1480,6 +1480,14 @@ export async function browseListings(
   },
   database: Database = getDb(),
 ): Promise<BrowsePage> {
+  // A page that depends on no viewer is the same for everyone: shared (`browseReads`).
+  const personal = q.followedBy || q.heldBy || q.exceptFollowedBy || q.exceptHeldBy;
+  if (personal || database !== getDb()) return readBrowsePage(q, database);
+  const key = JSON.stringify([q.kind ?? null, q.status ?? null, q.sort, q.q ?? null, q.offset, q.limit, !!q.traded]);
+  return browseReads.get(`page:${key}`, BROWSE_READ_TTL_MS, () => readBrowsePage(q, database));
+}
+
+async function readBrowsePage(q: Parameters<typeof browseListings>[0], database: Database): Promise<BrowsePage> {
   const limit = q.limit ?? 50;
   const offset = q.offset ?? 0;
   const { from, order } = browseQuery(q);
@@ -1542,19 +1550,29 @@ type BrowseFilter = Omit<Parameters<typeof browseListings>[0], 'offset' | 'limit
  * The home list's rows, one each: every listing (`l`) with its main market
  * (`m`, null before its first trade), and every visible market with no
  * listing (`m`, `l` null). Columns of either may be null; the expressions
- * below are what reads them.
+ * below are what reads them. Every query over it must also filter on
+ * `ROW_VISIBLE`.
+ *
+ * One full join, not a union joined back to both tables: that read every
+ * listing twice and, its row count misestimated, by 42k index lookups (#12).
  */
-const ROWS = sql`
-  (select ls.id as listing_id, mm.id as market_id
-     from listings ls left join markets mm on mm.listing_id = ls.id and mm.is_main
-   union all
-   select null, ms.id from markets ms where ms.is_main and ms.listing_id is null) k
-  left join listings l on l.id = k.listing_id
-  left join markets m on m.id = k.market_id`;
+const ROWS = sql`listings l full join markets m on m.listing_id = l.id and m.is_main`;
+/** Drops the full join's unmatched markets that are not main (drafts, a listing's secondary ones). */
+const ROW_VISIBLE = sql`(m.id is null or m.is_main)`;
 /** A row's venue: its market's `kind`, else its listing's. */
 const ROW_KIND = sql`coalesce(m.kind, l.kind)`;
-/** A row's status: its market's; a listing without one yet is `open`, since a trade would make it. */
-const ROW_STATUS = sql`coalesce(m.status, 'open')`;
+/**
+ * A row's status is its market's; a listing without one yet is `open`, since
+ * a trade would make it. `rowStatusIs` and `rowKindIs` (`ROW_KIND = kind`)
+ * are spelled so the planner can estimate them: over the full join it
+ * guessed ~0.5% of rows for either as a `coalesce`, so a search joined its
+ * 3k hits to 42k rows by a nested loop and hit the statement timeout (#12).
+ * `markets.kind` and `status` are not null, so `m.id is null` is exactly
+ * "no market".
+ */
+const rowStatusIs = (status: string) =>
+  status === 'open' ? sql`(m.status = 'open' or m.id is null)` : sql`m.status = ${status}`;
+const rowKindIs = (kind: string) => sql`(m.kind = ${kind} or (m.id is null and l.kind = ${kind}))`;
 /** Volume and fills over the row's markets; 0 before any. */
 const ROW_VOLUME = sql`(coalesce(m.volume_micro, 0) + coalesce(sec.volume_micro, 0))`;
 const ROW_ORDERS = sql`(coalesce(m.order_count, 0) + coalesce(sec.order_count, 0))`;
@@ -1573,18 +1591,20 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
   const predicate = node === null ? null : searchPredicate(node, required);
   const status = q.status ?? 'open';
 
-  // A row's key: its listing, or the standalone market itself.
+  // A row's key: its listing, or the standalone market itself. Each set is
+  // read once, uncorrelated (`= any(array(…))`), never by an `exists` per
+  // row: that ran the subquery once for every listing, 4.5 s at 42k (#12).
   const followed = (account: string) =>
-    sql`exists (select 1 from listing_follows lf where lf.account_id = ${account} and lf.listing_id = l.id)`;
-  const held = (account: string) => sql`exists (
-    select 1 from positions p
+    sql`coalesce(l.id = any(array(select lf.listing_id from listing_follows lf where lf.account_id = ${account})), false)`;
+  const held = (account: string) => sql`coalesce(l.id, m.id) = any(array(
+    select coalesce(pm.listing_id, pm.id) from positions p
       join outcomes po on po.id = p.outcome_id
       join markets pm on pm.id = po.market_id
-     where p.account_id = ${account} and p.shares_micro > 0
-       and coalesce(pm.listing_id, pm.id) = coalesce(l.id, m.id))`;
+     where p.account_id = ${account} and p.shares_micro > 0))`;
   const where = [
-    status === 'all' ? undefined : sql`${ROW_STATUS} = ${status}`,
-    q.kind ? sql`${ROW_KIND} = ${q.kind}` : undefined,
+    ROW_VISIBLE,
+    status === 'all' ? undefined : rowStatusIs(status),
+    q.kind ? rowKindIs(q.kind) : undefined,
     q.traded ? sql`m.id is not null` : undefined,
     q.followedBy ? followed(q.followedBy) : undefined,
     q.heldBy ? held(q.heldBy) : undefined,
@@ -1667,15 +1687,18 @@ export async function mapSearch(
 
 /** Every `kind` with at least one row, most rows first. A listing counts once, traded or not. */
 export const marketKinds = cache(async (database: Database = getDb()): Promise<{ kind: string; count: number }[]> => {
-  const result = await database.execute<{ kind: string; count: number }>(sql`
-    select ${ROW_KIND} as kind, count(*)::int as count
-      from ${ROWS}
-     where ${ROW_KIND} is not null
-     group by 1
-     -- Byte order, so ties sort the same whatever locale the database was created with.
-     order by 2 desc, ${ROW_KIND} COLLATE "C"
-  `);
-  return result.rows;
+  const compute = async () => {
+    const result = await database.execute<{ kind: string; count: number }>(sql`
+      select ${ROW_KIND} as kind, count(*)::int as count
+        from ${ROWS}
+       where ${ROW_VISIBLE} and ${ROW_KIND} is not null
+       group by 1
+       -- Byte order, so ties sort the same whatever locale the database was created with.
+       order by 2 desc, ${ROW_KIND} COLLATE "C"
+    `);
+    return result.rows;
+  };
+  return database === getDb() ? browseReads.get('kinds', BROWSE_READ_TTL_MS, compute) : compute();
 });
 
 /**

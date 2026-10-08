@@ -2,6 +2,7 @@ import { eq, getTableColumns, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { listingReferences, listingRelated, listings, listingTexts, type Listing, type ListingLink } from '@/db/schema';
 import { invalidateMap } from './map-cache';
+import { invalidateBrowseReads } from './market-cache';
 
 /**
  * Writing listings. A listing is an **opaque subject** that markets can be
@@ -95,6 +96,7 @@ export async function upsertListing(
   });
   // A slug on the map is shown once it is listed, under the listing's title.
   invalidateMap();
+  invalidateBrowseReads();
   return result;
 }
 

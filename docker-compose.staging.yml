@@ -1,0 +1,107 @@
+# Staging: https://staging.acceptodds.com
+#
+# A second copy of production on the same host, for trying a build against a
+# copy of production's data. Same shared Traefik as docker-compose.prod.yml
+# (the *.acceptodds.com Origin CA certificate and DNS record cover it), its
+# own project, images, database and router, so nothing here touches prod.
+#
+# .env.staging is .env.production with: APP_URL and BETTER_AUTH_URL on the
+# staging host; its own POSTGRES_PASSWORD and DATABASE_URL (host
+# acceptodds-staging-db); and no RESEND_API_KEY, UMAMI_*, SENTRY_* or
+# NANOGPT_API_KEY. The data is a copy of production's, real addresses
+# included: without a Resend key the app refuses to send any mail.
+# No cron runs against it.
+#
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging build
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d postgres
+#   # copy production's data (read-only on prod):
+#   docker exec acceptodds-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+#     | docker exec -i acceptodds-staging-postgres-1 sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --clean --if-exists'
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d app
+#
+# Migrations, as on prod, are a separate step (tools image of this build).
+
+name: acceptodds-staging
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases: [acceptodds-staging-db]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 30s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      target: app
+    image: acceptodds-staging-app
+    restart: unless-stopped
+    logging: *logging
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - web
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.acceptodds-staging.rule=Host(`staging.acceptodds.com`)
+      - traefik.http.routers.acceptodds-staging.entrypoints=websecure
+      - traefik.http.routers.acceptodds-staging.tls=true
+      - traefik.http.routers.acceptodds-staging.middlewares=acceptodds-staging-headers
+      - traefik.http.services.acceptodds-staging.loadbalancer.server.port=3000
+      - traefik.http.middlewares.acceptodds-staging-headers.headers.contenttypenosniff=true
+      - traefik.http.middlewares.acceptodds-staging-headers.headers.framedeny=true
+      - traefik.http.middlewares.acceptodds-staging-headers.headers.referrerpolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.acceptodds-staging-headers.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow
+
+  tools:
+    build:
+      context: .
+      target: tools
+    image: acceptodds-staging-tools
+    profiles: [tools]
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+
+networks:
+  web:
+    external: true
