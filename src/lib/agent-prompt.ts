@@ -15,7 +15,7 @@ export const AGENT_KEY_NAME = 'ai-agent';
  * for the code. An agent that already has a key skips the sign-in.
  */
 export function agentPrompt(origin: string, signIn?: { email: string; code: string }): string {
-  const intro = `Please trade for me on ${origin}, a prediction market on which research papers get accepted. It is play money (reputation), not real money.
+  const intro = `Please trade for me on ${origin}, a prediction market on research papers. It is play money (reputation), not real money.
 
 First read the instructions for agents: ${origin}${AGENT_START_PATH}
 

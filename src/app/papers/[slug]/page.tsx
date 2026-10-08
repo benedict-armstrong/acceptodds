@@ -27,6 +27,7 @@ import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
 import { openMarketTemplate } from '@/server/market-templates';
+import { runningHead, venue } from '@/venues';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
 import {
   listingCitations,
@@ -54,9 +55,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const subject = await shareSubject(decodeURIComponent((await params).slug));
   if (!subject) return {};
   const question = shareTitleLine(subject.title, subject.kind, 120);
-  const description = subject.kind
-    ? `Where do traders think this paper lands at ${subject.kind}? See the odds, and trade on them.`
-    : 'See the odds, and trade on them.';
+  const chanceOf = venue(subject.kind)?.chanceOf;
+  const description = chanceOf
+    ? `How likely is it that ${chanceOf}? See the odds, and trade on them.`
+    : subject.kind
+      ? `Where do traders think this paper lands at ${subject.kind}? See the odds, and trade on them.`
+      : 'See the odds, and trade on them.';
   return {
     title: `${subject.title.replace(/\$/g, '')} | ${siteName()}`,
     description,
@@ -148,7 +152,7 @@ export default async function PaperPage({
         // `<` escaped so a title can never close the tag.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(paperJsonLd(listing)).replace(/</g, '\\u003c') }}
       />
-      {listing.kind && <RunningHead>Under review as a conference paper at {listing.kind}</RunningHead>}
+      {listing.kind && <RunningHead>{runningHead(listing.kind)}</RunningHead>}
       <TitleBlock
         title={<MathText text={listing.title} />}
         byline={listing.authors.length > 0 ? listing.authors.join(', ') : null}
@@ -207,6 +211,7 @@ export default async function PaperPage({
             <JevPrice
               listingId={listing.id}
               slug={listing.slug}
+              kind={listing.kind}
               outcomes={opening.outcomes}
               asked={(Array.isArray(sp[JEV_PRICE_PARAM]) ? sp[JEV_PRICE_PARAM][0] : sp[JEV_PRICE_PARAM]) === 'jev'}
               viewer={{

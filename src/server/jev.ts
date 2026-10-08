@@ -17,7 +17,7 @@ import type { MarketTemplate } from './market-templates';
  */
 export async function jevPrices(
   listing: Pick<Listing, 'id' | 'title' | 'summary' | 'keywords' | 'primaryArea'>,
-  template: MarketTemplate,
+  template: MarketTemplate & { jev: NonNullable<MarketTemplate['jev']> },
   database: Database = getDb(),
 ): Promise<number[] | null> {
   const key = process.env.NANOGPT_API_KEY;

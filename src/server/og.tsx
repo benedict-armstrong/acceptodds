@@ -8,6 +8,7 @@ import { standingBand } from '@/lib/leaderboard';
 import { microToFloat } from '@/lib/money';
 import type { FieldSnapshot } from './field-snapshot';
 import type { ShareSubject } from './share';
+import type { Venue } from '@/venues';
 
 /**
  * The link-preview images. A paper's or market's (issue #11 §1): the question
@@ -242,25 +243,19 @@ function YourPaper({ left, top }: { left: number; top: number }) {
 
 /**
  * The home page's link preview, and every page's without one of its own:
- * what the site asks, and a paper's market with the paper hidden, at the
- * prior every one of the venue's markets falls back to (its template's
- * `fallbackPrices`) — a real price, not one made up for the picture. No
- * template: no bar.
+ * what the site asks of the venue (`venues/`), and a paper's market with the
+ * paper hidden, at the prior every one of the venue's markets falls back to
+ * (its outcomes' `openingPrice`) — a real price, not one made up for the
+ * picture.
  */
-export async function homeImage(
-  kind: string,
-  prior: readonly { label: string; price: number }[] | null,
-): Promise<ImageResponse> {
-  const legend = prior && prior.length >= 2 && prior.length <= MAX_BAR_OUTCOMES ? barLegend(prior) : null;
+export async function homeImage(v: Venue): Promise<ImageResponse> {
+  const prior = v.market.outcomes.map((o) => ({ label: o.label, price: o.openingPrice }));
+  const legend = prior.length >= 2 && prior.length <= MAX_BAR_OUTCOMES ? barLegend(prior) : null;
   return card(
-    kind,
+    v.kind,
     <div style={BODY}>
-      <div style={{ display: 'flex', marginTop: 44, fontSize: 72, lineHeight: 1.1 }}>
-        Which papers will get accepted?
-      </div>
-      <div style={{ display: 'flex', marginTop: 20, fontSize: 32, lineHeight: 1.3, color: MUTED }}>
-        A prediction market on peer review
-      </div>
+      <div style={{ display: 'flex', marginTop: 44, fontSize: 72, lineHeight: 1.1 }}>{v.cardTitle}</div>
+      <div style={{ display: 'flex', marginTop: 20, fontSize: 32, lineHeight: 1.3, color: MUTED }}>{v.lede}</div>
 
       <div style={{ display: 'flex', flex: 1 }} />
 
@@ -270,8 +265,8 @@ export async function homeImage(
         <div style={{ display: 'flex', margin: '-10px 0' }}>
           <HiddenTitle width={360} height={80} />
         </div>
-        <div style={{ display: 'flex' }}>be accepted</div>
-        <div style={{ display: 'flex', marginLeft: 10, color: ACCENT }}>{`@ ${kind}?`}</div>
+        <div style={{ display: 'flex' }}>{v.cardQuestion.predicate}</div>
+        <div style={{ display: 'flex', marginLeft: 10, color: ACCENT }}>{v.cardQuestion.suffix}</div>
       </div>
       {legend && <OutcomeBar legend={legend} />}
     </div>,

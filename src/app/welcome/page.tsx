@@ -1,9 +1,10 @@
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { z } from 'zod';
 import { marketHref } from '@/lib/links';
 import { PAPER_SEARCH_LIMIT, parseChosenBet } from '@/lib/onboarding';
 import { safeReturnTo } from '@/lib/return-to';
-import { defaultMarketKind } from '@/lib/venue';
+import { defaultMarketKind, VENUE_COOKIE } from '@/lib/venue';
+import { venues } from '@/venues';
 import { startingBalanceMicro } from '@/server/accounts';
 import { openMarketTemplate } from '@/server/market-templates';
 import { presentListing, presentMarket } from '@/server/api/present';
@@ -31,6 +32,7 @@ export default async function WelcomePage({
     outcome?: string;
     stake?: string;
     seen?: string;
+    kind?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -38,7 +40,16 @@ export default async function WelcomePage({
 
   // A visitor who chose a bet on a market's page starts after it.
   const chosen = viewer ? null : await chosenBet(params);
-  const kind = defaultMarketKind();
+  // The venues a paper may still be picked from (their template is open), and the one searched: `?kind=`, else
+  // the one this browser picked last (`VENUE_COOKIE`), else the default.
+  const choosable = venues()
+    .map((v) => v.kind)
+    .filter((k) => openMarketTemplate(k) !== null);
+  const remembered = (await cookies()).get(VENUE_COOKIE)?.value;
+  const kind =
+    [params.kind, remembered && decodeURIComponent(remembered)].find(
+      (k): k is string => !!k && choosable.includes(k),
+    ) ?? defaultMarketKind();
   const { rows } = await browseListings({
     kind,
     status: 'open',
@@ -53,6 +64,7 @@ export default async function WelcomePage({
   return (
     <Welcome
       kind={kind}
+      venues={choosable}
       next={safeReturnTo(params.next)}
       suggestions={suggestions}
       sparks={sparks}

@@ -9,7 +9,7 @@ import * as engine from './engine';
 import { EngineError } from './errors';
 import * as follows from './follows';
 import { jevPrices } from './jev';
-import { marketTemplate } from './market-templates';
+import { marketTemplate, openMarketTemplate } from './market-templates';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 
 /**
@@ -198,6 +198,21 @@ async function mainMarket(listingId: string, database: Database): Promise<Market
   return m ?? null;
 }
 
+/**
+ * A listing's main market when its venue opens one with every listing
+ * (`opensWithListing`), made now if it has none, by nobody (`created_by`
+ * null), so nobody follows it either. Called by `POST /listings` after the
+ * listing's own commit; re-posting finds the market made the first time.
+ * `null` for a venue that opens on demand, or once its template has closed.
+ */
+export async function openWithListing(
+  listing: Listing,
+  database: Database = getDb(),
+): Promise<{ market: Market; created: boolean } | null> {
+  if (!openMarketTemplate(listing.kind)?.opensWithListing) return null;
+  return ensureMainMarket(listing, null, database);
+}
+
 function outcomesOf(marketId: string, database: Database) {
   return database.select().from(outcomes).where(eq(outcomes.marketId, marketId)).orderBy(asc(outcomes.ordinal));
 }
@@ -238,7 +253,10 @@ async function createFromTemplate(
   if (template.closesAt.getTime() <= Date.now()) {
     throw new EngineError('market_closed', `markets for ${listing.kind} closed at ${template.closesAt.toISOString()}`);
   }
-  const openingPrices = (await jevPrices(listing, template, database)) ?? template.fallbackPrices;
+  // A venue that asks JEV nothing opens at its own prices, with no model call.
+  const openingPrices =
+    (template.jev ? await jevPrices(listing, { ...template, jev: template.jev }, database) : null) ??
+    template.fallbackPrices;
   try {
     const { marketId } = await engine.createMarket(
       {

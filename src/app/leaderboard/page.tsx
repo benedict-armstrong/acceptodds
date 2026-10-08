@@ -18,6 +18,7 @@ import { groupPath, institutionPath } from '@/lib/links';
 import { authHref } from '@/lib/return-to';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
+import { startingBalanceMicro } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { fieldSnapshot, shapeOf } from '@/server/field-snapshot';
@@ -399,7 +400,13 @@ export default async function LeaderboardPage({
         <TableNotes
           notes={[
             ['a', 'Cash plus the proceeds from selling all holdings now.'],
-            ['b', <>Click the heading to toggle between % and absolute.</>],
+            [
+              'b',
+              <>
+                Gain on open holdings, as a percentage of the {rep(startingBalanceMicro())} {REP} starting balance.
+                Click the heading to toggle between % and absolute.
+              </>,
+            ],
           ]}
         />
       )}
@@ -437,32 +444,20 @@ export default async function LeaderboardPage({
   );
 }
 
-type Best = { netWorth: bigint | null; unrealized: bigint | null; unrealizedPct: string | null };
+type Best = { netWorth: bigint | null; unrealized: bigint | null };
 
 /**
  * Each column's highest figure on the board, or null when nobody is above
- * zero: a column of zeros has no best, and a loss is never set as one.
+ * zero: a column of zeros has no best, and a loss is never set as one. The
+ * P/L percentage shares its base (the starting balance) across rows, so its
+ * best is the absolute best.
  */
 function bestOf(field: readonly LeaderboardRow[]): Best {
   const max = (pick: (r: LeaderboardRow) => bigint) => {
     const m = field.reduce<bigint | null>((acc, r) => (acc === null || pick(r) > acc ? pick(r) : acc), null);
     return m !== null && m > 0n ? m : null;
   };
-  // The best gain as a share of its base, compared as fractions in integers: a/b > c/d ⇔ a·d > c·b (bases > 0).
-  const pct = field.reduce<LeaderboardRow | null>(
-    (acc, r) =>
-      r.openCostMicro > 0n &&
-      r.unrealizedPnlMicro > 0n &&
-      (acc === null || r.unrealizedPnlMicro * acc.openCostMicro > acc.unrealizedPnlMicro * r.openCostMicro)
-        ? r
-        : acc,
-    null,
-  );
-  return {
-    netWorth: max((r) => r.netWorthMicro),
-    unrealized: max((r) => r.unrealizedPnlMicro),
-    unrealizedPct: pct?.accountId ?? null,
-  };
+  return { netWorth: max((r) => r.netWorthMicro), unrealized: max((r) => r.unrealizedPnlMicro) };
 }
 
 /** Bold when `v` is its column's best. */
@@ -533,10 +528,10 @@ function Segment({
                 <td className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)}`}>
                   <Pnl
                     micro={r.unrealizedPnlMicro}
-                    base={r.openCostMicro}
+                    base={startingBalanceMicro()}
                     best={{
                       absolute: r.unrealizedPnlMicro === best.unrealized,
-                      percent: r.accountId === best.unrealizedPct,
+                      percent: r.unrealizedPnlMicro === best.unrealized,
                     }}
                   />
                 </td>

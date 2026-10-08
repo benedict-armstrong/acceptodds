@@ -9,11 +9,19 @@ import { MathText } from '@/components/MathText';
 import { OnboardingTrade } from '@/components/OnboardingTrade';
 import { OnboardingCard } from '@/components/OnboardingCard';
 import { PaperSearch, tradableListingMarket } from '@/components/PaperSearch';
-import { OnboardAgentButton, TutorialArt, TutorialText, tutorialSteps } from '@/components/TutorialModal';
+import {
+  agentPromptStep,
+  AgentPromptButton,
+  OnboardAgentButton,
+  TutorialArt,
+  TutorialText,
+  tutorialSteps,
+} from '@/components/TutorialModal';
 import { SignUpEmail } from '@/components/SignUpEmail';
 import { ui } from '@/components/ui';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
+import { rememberVenue } from '@/lib/venue';
 import { rememberPending } from '@/lib/pending-confirmation';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import type * as S from '@/server/api/schemas';
@@ -26,13 +34,14 @@ type Market = z.output<typeof S.Market>;
 const TOUR = ['pick', 'trade', 'cash-out', 'agent'] as const;
 type TourStep = (typeof TOUR)[number];
 
-export type Step = 'intro' | TourStep | 'search' | 'bet' | 'email';
+/** `agent-prompt` is the agent screen past the tour's last step, reached only by "Onboard my agent". */
+export type Step = 'intro' | TourStep | 'agent-prompt' | 'search' | 'bet' | 'email';
 
 /**
  * A visitor's steps: the intro, the tutorial, then the bet. A signed-in
  * viewer's skip both and end with the bet, placed, at the paper.
  */
-const ANON: Step[] = ['intro', ...TOUR, 'search', 'bet', 'email'];
+const ANON: Step[] = ['intro', ...TOUR, 'agent-prompt', 'search', 'bet', 'email'];
 const SIGNED_IN: Step[] = ['search', 'bet'];
 /** A visitor who chose the paper and the bet on the market's own page. */
 const CHOSEN: Step[] = ['email'];
@@ -82,6 +91,7 @@ const NEEDS: Partial<Record<Step, 'pick' | 'choice'>> = {
  */
 export function Welcome({
   kind,
+  venues,
   next,
   suggestions,
   sparks,
@@ -90,6 +100,8 @@ export function Welcome({
   viewer,
 }: {
   kind: string;
+  /** The venues a paper may be picked from, offered under the search when there are several. */
+  venues: string[];
   /** Where the intro's sign-in link returns to. */
   next: string;
   suggestions: Listing[];
@@ -116,10 +128,25 @@ export function Welcome({
   // The step is the URL's, so back and forward move through the steps.
   // Next.js keeps `useSearchParams` in step with `pushState` and history
   // traversal alike; a `popstate` listener of our own lost to its router.
-  const step = reachable(useSearchParams().get('step') as Step | null);
+  const params = useSearchParams();
+  const step = reachable(params.get('step') as Step | null);
+
+  /** `/welcome` at step `s`, keeping a venue chosen in the URL. */
+  function href(s: Step, venue = params.get('kind')): string {
+    const q = new URLSearchParams();
+    if (s !== steps[0]) q.set('step', s);
+    if (venue) q.set('kind', venue);
+    return q.size ? `/welcome?${q}` : '/welcome';
+  }
 
   function go(s: Step) {
-    window.history.pushState(null, '', s === steps[0] ? '/welcome' : `/welcome?step=${s}`);
+    window.history.pushState(null, '', href(s));
+  }
+
+  /** Search another venue: remembered for next time, and read again on the server for its papers. */
+  function chooseVenue(venue: string) {
+    rememberVenue(venue);
+    router.replace(href('search', venue));
   }
 
   // Seen: sign-in and sign-up stop sending this browser here.
@@ -151,7 +178,7 @@ export function Welcome({
         'Bet on which papers get in.',
         <>
           <p className="mb-4 text-muted">
-            Pick a {kind} paper, stake reputation on its decision. For researchers with an institutional email.
+            Pick a {kind} paper, stake reputation on how it fares. For researchers with an institutional email.
           </p>
           <button className={ui.btn()} onClick={() => go(TOUR[0])}>
             Get started
@@ -177,11 +204,26 @@ export function Welcome({
             <button className={ui.btn()} onClick={() => go(last ? 'search' : TOUR[at + 1])}>
               {last ? 'Make your first trade' : 'Next'}
             </button>
-            {last && <OnboardAgentButton signedIn={viewer.signedIn} />}
+            {last && <OnboardAgentButton onClick={() => go('agent-prompt')} />}
           </div>
         </>,
         false,
         tour[at].art && <TutorialArt>{tour[at].art}</TutorialArt>,
+      );
+    }
+
+    case 'agent-prompt': {
+      const screen = agentPromptStep(viewer.signedIn);
+      return card(
+        screen.title,
+        <>
+          <TutorialText step={screen} />
+          <div className="mt-6">
+            <AgentPromptButton signedIn={viewer.signedIn} />
+          </div>
+        </>,
+        false,
+        <TutorialArt>{screen.art}</TutorialArt>,
       );
     }
 
@@ -195,6 +237,24 @@ export function Welcome({
             suggestions={suggestions}
             sparks={sparks}
             canOpen={canOpen}
+            below={
+              venues.length > 1 && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-sans text-[13px] text-muted">
+                  Venue:
+                  {venues.map((v) =>
+                    v === kind ? (
+                      <span key={v} className={ui.on}>
+                        {v}
+                      </span>
+                    ) : (
+                      <button key={v} type="button" className={ui.linkBtn} onClick={() => chooseVenue(v)}>
+                        {v}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )
+            }
             onPick={(l) => {
               const market = tradableListingMarket(l);
               setPick(

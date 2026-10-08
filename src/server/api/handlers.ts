@@ -10,7 +10,7 @@ import {
 } from '../auth';
 import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts';
 import * as engine from '../engine';
-import { buyOnListing, openListingMarket } from '../market-start';
+import { buyOnListing, openListingMarket, openWithListing } from '../market-start';
 import * as events from '../events';
 import { backComment, withdrawBacking } from '../backings';
 import { getComment, listComments, listMentions, listReplies, postComment } from '../comments';
@@ -1006,6 +1006,8 @@ export const postMarket = route(async (req) => {
 /**
  * Create or replace a listing by slug. Not market state: written by
  * `listings.ts` in its own transaction. 201 when created, 200 when replaced.
+ * Then, for a venue that opens markets with its listings, the listing's
+ * market through the engine (`market-start.openWithListing`).
  */
 export const postListing = route(async (req) => {
   const principal = await requireAuth(req, 'admin');
@@ -1030,6 +1032,8 @@ export const postListing = route(async (req) => {
       citedSlug: r.slug ?? null,
     })),
   });
+  // A venue that opens a market with every listing (`opensWithListing`) gets it now, so nobody has to open it.
+  await openWithListing(listing);
   events.log(created ? 'listing.created' : 'listing.updated', { accountId: principal.account.id });
   return respond(
     S.UpsertedListing,

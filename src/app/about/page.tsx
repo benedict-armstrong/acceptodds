@@ -10,6 +10,7 @@ import { REPO_URL } from '@/lib/links';
 import { Wordmark } from '@/components/Wordmark';
 import { rep, REP } from '@/lib/format';
 import { startingBalanceMicro } from '@/server/accounts';
+import { venues } from '@/venues';
 
 // The starting balance is read from the environment at request time.
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,8 @@ export default function AboutPage() {
             who are holding the winning outcome are paid out 1 {`${REP}`} for each of their shares. Prices are set by an
             automated logarithmic market maker so there is always enough liquidity in the market. Trading is in
             reputation, which cannot be bought: everyone starts with {`${start}`}. It is a game made for fun, and has no
-            connection to ICLR, OpenReview or any other organization and the code is available at:{' '}
+            connection to {[...new Set(venues().flatMap((v) => v.unaffiliated))].join(', ')} or any other organization
+            and the code is available at:{' '}
             <a href={REPO_URL} className={ui.hyperref}>
               {REPO_URL.replace(/^https:\/\//, '')}
             </a>
@@ -94,19 +96,34 @@ export default function AboutPage() {
         What you trade
       </h2>
       <div className={prose}>
+        <p>Each paper has one market, which asks its venue’s question:</p>
+        <ul className="list-disc space-y-1 pl-6">
+          {venues().map((v) => (
+            <li key={v.kind}>
+              <b>{v.kind}</b>: {v.market.question}? Outcomes{' '}
+              {v.market.outcomes.map((o, i) => (
+                <span key={o.label}>
+                  {i > 0 && ' and '}
+                  <i>{o.label}</i>
+                </span>
+              ))}
+              .
+            </li>
+          ))}
+        </ul>
+        <p>Each market’s contract, on its page, says exactly how it resolves, edge cases included.</p>
         <p>
-          Each paper has a market on its decision, with two outcomes: <i>Accept</i>, if the paper is accepted in any
-          form (oral, spotlight or poster), and <i>Reject</i>. A withdrawn or desk-rejected paper counts as{' '}
-          <i>Reject</i>. Each market’s contract, on its page, says exactly how it resolves.
-        </p>
-        <p>
-          You buy <b>shares</b> in an outcome. When the decision is published, every share of the outcome that happened
-          pays <span className="font-mono">1 {REP}</span>; every other share pays nothing.
+          You buy <b>shares</b> in an outcome. When the market settles, every share of the outcome that happened pays{' '}
+          <span className="font-mono">1 {REP}</span>; every other share pays nothing.
         </p>
         <p>
           So an outcome’s price is the market’s probability for it: a share at 30% costs about{' '}
           <span className="font-mono">0.30 {REP}</span> and pays <span className="font-mono">1 {REP}</span> if it wins.
-          The two prices always add up to 100%, and the “accept” figure shown for a paper is the price of <i>Accept</i>.
+          The two prices always add up to 100%, and the figure shown for a paper (
+          {venues()
+            .map((v) => `“${v.headlineLabel}”`)
+            .join(', ')}
+          ) is the price of its first outcome.
         </p>
       </div>
 

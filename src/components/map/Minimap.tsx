@@ -182,7 +182,7 @@ function MinimapFigure({ minimap, figure }: { minimap: MinimapView; figure: numb
             style={{ left: hover.x + 14, top: hover.y + 10 }}
           >
             {hover.index === self ? <i>This paper</i> : hovered.title}
-            {hovered.headline !== null && <span className="block opacity-70">{pct(hovered.headline)} accept</span>}
+            {hovered.headline !== null && <span className="block opacity-70">{pct(hovered.headline)} chance</span>}
           </div>
         )}
         <div className="pointer-events-none absolute right-2 bottom-2 left-2 z-10 flex items-end justify-between gap-2 font-sans text-xs">

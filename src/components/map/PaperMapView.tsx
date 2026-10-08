@@ -64,7 +64,7 @@ const COLOURS: [ColourBy, string][] = [
   ['region', 'region'],
   ['cluster', 'cluster'],
   ['area', 'primary area'],
-  ['odds', 'acceptance'],
+  ['odds', 'odds'],
 ];
 const LABELS: [LabelMode, string][] = [
   ['auto', 'by zoom'],
@@ -578,7 +578,8 @@ function Pointable<K extends string>({
 }
 
 function headlineText(h: number | null): string | null {
-  return h === null ? null : `${pct(h)} accept`;
+  // The map mixes venues and its points carry no kind, so the headline is not named by venue (`venues/`).
+  return h === null ? null : `${pct(h)} chance`;
 }
 
 function Odds({ headline }: { headline: number | null }) {
@@ -620,9 +621,9 @@ function Legend({ colourBy, areas }: { colourBy: ColourBy; areas: string[] }) {
   const items: [string, Rgb][] =
     colourBy === 'odds'
       ? [
-          ['likely accepted (65% or more)', LIKELIHOOD_RGB.accept],
+          ['likely (65% or more)', LIKELIHOOD_RGB.accept],
           ['toss-up', LIKELIHOOD_RGB['toss-up']],
-          ['likely rejected (35% or less)', LIKELIHOOD_RGB.reject],
+          ['unlikely (35% or less)', LIKELIHOOD_RGB.reject],
           ['no price', MAP_NONE],
         ]
       : colourBy === 'area'

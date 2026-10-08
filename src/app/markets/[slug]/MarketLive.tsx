@@ -26,6 +26,7 @@ import { TAPE_LIMIT } from './tape';
 import { TapeTable } from './TapeTable';
 import { FirstTrade } from './FirstTrade';
 import { TradeBox } from './TradeBox';
+import { venue } from '@/venues';
 
 type Market = z.output<typeof S.Market>;
 type Tape = z.output<typeof S.Tape>;
@@ -134,8 +135,9 @@ export function MarketLive({
   const barred = n >= 2 && n <= MAX_BAR_OUTCOMES && (market.status === 'open' || market.status === 'closed');
   const headline = marketHeadline(market);
   // On a paper's page the question and the headline read as one sentence,
-  // with the venue (`kind`) named once, in it.
-  const sentence = embedded && barred && headline !== null;
+  // in the venue's words (`venues/`); a kind with no venue keeps its question.
+  const chanceOf = embedded ? venue(market.kind)?.chanceOf : undefined;
+  const sentence = chanceOf !== undefined && barred && headline !== null;
 
   // A fill can trim the viewer's comment backings (a sell), so comments refresh too.
   const [commentsVersion, setCommentsVersion] = useState(0);
@@ -153,7 +155,7 @@ export function MarketLive({
       </div>
       {sentence ? (
         <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
-          est. <b className={lead}>{pct(headline)}</b> chance this paper gets accepted at {market.kind}.
+          est. <b className={lead}>{pct(headline)}</b> chance {chanceOf}.
         </h2>
       ) : embedded ? (
         <h2 className="mt-1 mb-1 text-center text-[22px] leading-tight font-normal narrow:text-xl">
@@ -173,7 +175,7 @@ export function MarketLive({
           {!sentence && (
             <div className="mb-2 text-center text-[22px]">
               <span className={lead}>
-                <b>{pct(headline)}</b> {headlineLabel(labels, embedded)}
+                <b>{pct(headline)}</b> {headlineLabel(labels, embedded ? market.kind : null)}
               </span>
             </div>
           )}

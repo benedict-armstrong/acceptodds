@@ -1120,8 +1120,6 @@ export interface LeaderboardRow {
   /** Liquidation value: cash + Σ quoted exit (`valuation.ts`), never a mark. */
   netWorthMicro: bigint;
   unrealizedPnlMicro: bigint;
-  /** `Valuation.openCostMicro`: the base of unrealized P&L as a percentage. */
-  openCostMicro: bigint;
   rank: number;
 }
 
@@ -1361,7 +1359,6 @@ async function computeField(basis: LeaderboardBasis, database: Database): Promis
       settledMarkets: v.settledMarkets,
       netWorthMicro: v.netWorthMicro,
       unrealizedPnlMicro: v.unrealizedPnlMicro,
-      openCostMicro: v.openCostMicro,
     }));
   return ranked(rows, basis);
 }

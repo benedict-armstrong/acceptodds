@@ -114,12 +114,12 @@ export function Entry({
           </a>
         </>
       )}
-      {cited?.main && <Odds main={cited.main} />}
+      {cited?.main && <Odds main={cited.main} kind={cited.listing.kind} />}
     </>
   );
 }
 
-function Odds({ main }: { main: NonNullable<CitedListing['main']> }) {
+function Odds({ main, kind }: { main: NonNullable<CitedListing['main']>; kind: string | null }) {
   const m = { ...main.market, outcomes: main.outcomes };
   const look = likelihoodClass(marketLikelihood(m));
   let text: string;
@@ -132,7 +132,7 @@ function Odds({ main }: { main: NonNullable<CitedListing['main']> }) {
         ? '—'
         : `${pct(h)} ${headlineLabel(
             main.outcomes.map((o) => o.label),
-            true,
+            kind,
           )}`;
   }
   return (

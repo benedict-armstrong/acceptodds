@@ -96,6 +96,25 @@ describe('POST /listings', () => {
     });
   });
 
+  it('opens an OpenAI Math listing’s market with it, at 50/50, by nobody, once', async () => {
+    const body = { ...LISTING, slug: 'oai-result', kind: 'OpenAI Math' };
+    const created = await api('POST', '/listings', { token: admin.token, body });
+    expect(created.status).toBe(201);
+    const [opened] = created.body.listing.markets;
+    expect(opened).toMatchObject({ slug: 'oai-result-decision', kind: 'OpenAI Math', status: 'open', orderCount: 0 });
+    expect(opened.outcomes.map((o: any) => [o.label, o.price])).toEqual([
+      ['Verified', expect.closeTo(0.5, 9)],
+      ['Not verified', expect.closeTo(0.5, 9)],
+    ]);
+    const [row] = await db.select().from(markets).where(eq(markets.id, opened.id));
+    expect(row.createdBy).toBeNull();
+
+    // Posted again: the same market, no second one.
+    const again = await api('POST', '/listings', { token: admin.token, body });
+    expect(again.status).toBe(200);
+    expect(again.body.listing.markets.map((m: any) => m.id)).toEqual([opened.id]);
+  });
+
   it('needs the admin scope', async () => {
     const t = await trader('t');
     expect((await api('POST', '/listings', { body: LISTING })).status).toBe(401);

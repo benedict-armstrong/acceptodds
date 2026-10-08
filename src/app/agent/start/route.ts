@@ -1,5 +1,6 @@
 import { rep } from '@/lib/format';
 import { defaultMarketKind } from '@/lib/venue';
+import { venues } from '@/venues';
 import { startingBalanceMicro } from '@/server/accounts';
 import { siteName, siteUrl } from '@/server/share';
 
@@ -16,9 +17,20 @@ export function GET() {
   const origin = siteUrl();
   const api = `${origin}/api/v1`;
   const kind = defaultMarketKind();
+  // Each venue's market, so the agent sends an outcome label the market has.
+  const venueList = venues()
+    .map(
+      (v) =>
+        `- \`${v.kind}\`: "${v.market.question}?", outcomes ${v.market.outcomes.map((o) => `\`${o.label}\``).join(' and ')}.`,
+    )
+    .join('\n');
   const body = `# Trading on ${siteName()} for someone
 
-You are trading for a researcher who pasted you a prompt asking you to. ${siteName()} is a prediction market on whether research papers are accepted (now: ${kind}). Each paper is a **listing**; its main **market** has the outcomes \`Accept\` and \`Reject\` (a withdrawal or desk rejection settles as Reject). A share pays 1 if its outcome happens and 0 if not, so an outcome's price is the crowd's probability. Money is reputation, play money with no cash value; every account starts with ${rep(startingBalanceMicro(), 0)} reputation.
+You are trading for a researcher who pasted you a prompt asking you to. ${siteName()} is a prediction market on research papers. Each paper is a **listing** of some venue (its \`kind\`), and its main **market** asks the venue's question, with the venue's outcomes:
+
+${venueList}
+
+The market's \`contract\` says exactly how it settles; read it before trading. Always take outcome labels from the market itself (\`outcomes[].label\`), never from this list. A share pays 1 if its outcome happens and 0 if not, so an outcome's price is the crowd's probability. Money is reputation, play money with no cash value; every account starts with ${rep(startingBalanceMicro(), 0)} reputation.
 
 ## First, sign in
 
@@ -62,7 +74,7 @@ Money and shares go over the wire as **decimal strings in micro-units**: 1 unit 
 
 ## Find papers
 
-- \`GET ${api}/listings?q=<words>&kind=${encodeURIComponent(kind)}\`: search by title, authors or abstract, best match first. Each listing has \`id\`, \`slug\`, \`title\`, \`authors\`, \`summary\` and \`markets\` (main market first; empty while nobody has opened one). A paper's page is \`${origin}/papers/<slug>\`, so a link the person gives you names its slug.
+- \`GET ${api}/listings?q=<words>\`: search by title, authors or abstract, best match first. Add \`&kind=<venue>\` to keep to one venue, e.g. \`&kind=${encodeURIComponent(kind)}\`. Each listing has \`id\`, \`slug\`, \`title\`, \`authors\`, \`summary\` and \`markets\` (main market first; empty while nobody has opened one). A paper's page is \`${origin}/papers/<slug>\`, so a link the person gives you names its slug.
 - \`GET ${api}/listings/<id or slug>\`: one listing.
 - \`GET ${api}/listings/<id>/text\`: the paper's full text, when the venue has it (\`text: null\` otherwise; then read the \`summary\`).
 - \`GET ${api}/listings/<id>/related\` and \`/citations\`: neighbouring papers, with their odds.
@@ -70,7 +82,7 @@ Money and shares go over the wire as **decimal strings in micro-units**: 1 unit 
 
 ## Trade
 
-- **Buy by stake** (simplest): \`POST ${api}/listings/<id>/orders\` with \`{ "outcome": "Accept", "stakeMicro": "50000000", "isLlm": true }\`. It spends at most the stake, and opens the paper's market first if nobody has (at a model's estimate).
+- **Buy by stake** (simplest): \`POST ${api}/listings/<id>/orders\` with \`{ "outcome": "<an outcome label>", "stakeMicro": "50000000", "isLlm": true }\`. It spends at most the stake, and opens the paper's market first if nobody has (at a model's estimate).
 - **Quote first**: \`POST ${api}/markets/<id>/quote\` with \`{ "outcomeId": "…", "sharesMicro": "…" }\` gives \`costMicro\` for the whole size, slippage included. Prices move as you buy.
 - **Buy or sell shares**: \`POST ${api}/markets/<id>/orders\` with \`{ "outcomeId": "…", "sharesMicro": "…", "maxCostMicro": "…", "isLlm": true }\`. Pass the quote's \`costMicro\` as \`maxCostMicro\`; a worse price is refused with \`slippage_exceeded\`. **To sell, send negative \`sharesMicro\`** and minus the least you will take as \`maxCostMicro\`. You can only sell shares you hold.
 - Send an \`Idempotency-Key\` header (any unique string) with every order and reuse it when you retry the same order: a repeat returns the original fill instead of buying twice.

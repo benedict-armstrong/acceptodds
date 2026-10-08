@@ -128,11 +128,22 @@ resolution rule. If a change needs to know _what_ is being traded, it belongs
 in `../research`, which is just another API client.
 
 **One exception, on the owner's call: a listing's market is opened on
-demand** (below), from `server/market-templates.ts` (the question,
-contract and outcomes per listing `kind`) at prices from one JEV call
-(`server/jev.ts`). Those two files are the only ones that know a listing is
-a paper under review, and JEV is the only model the platform calls. Keep it
-that way.
+demand** (below), from its **venue** (`src/venues/`, one file per listing
+`kind`: the market's question, contract, outcomes with their colours and
+fallback prices, JEV's instructions, and every word the site uses for it —
+the home title and abstract, the running head, the headline's name, the
+share line), at prices from one JEV call (`server/jev.ts`) or, for a
+venue that asks JEV nothing (`jev: null`), at its own `openingPrice`s.
+`server/market-templates.ts` turns a venue into what the engine and JEV
+take. The venue files and those two are the only ones that know what a
+listing is; everything else reads the venue's words by `kind` and never
+branches on a kind's name. JEV is the only model the platform calls. Keep
+it that way. **To add a venue**, copy a venue file, register it in
+`venues/index.ts` and run `npm test` (`tests/unit/venues.test.ts`). Its
+outcome colours must be what the bar draws by position (`paletteSlot`);
+the UI does not read them yet, and the test says so. A kind with no venue
+falls back to the conference wording (`runningHead`, ` @ <kind>?`) and
+the plain headline name.
 
 The venue never goes looking for outcomes either: settlement is an
 authenticated admin call made by `../research` when it observes a decision.
@@ -577,7 +588,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   booktabs table), the paper's furniture — `TitleBlock` (venue line,
   title, author line, `Abstract`; papers, traders and `/about` open
   with it), `RunningHead` (the template's line over a rule at the top of a
-  paper's page: "Under review as a conference paper at <kind>"), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
+  paper's page: the venue's `runningHead`, "Under review as a conference paper at <kind>" by default), `TableNotes`, `Equation`/`EqRef` (numbered displays, KaTeX)
   and `References`/`Cite` (numbered by hand, like tables) — and `Popover` (Radix, the primitive shadcn
   wraps, in our tokens) for anything that floats over the page, and
   `Modal` (Radix Dialog, likewise) for anything that takes it over — with
@@ -1122,8 +1133,10 @@ unpaginated, and 5 s for that search.
   `markets.headline` cache, #12; its backfill in `drizzle/0006` is the same
   formula in SQL, exponents clamped because Postgres raises on `exp` over-
   _and_ underflow), sparklines, follows, the digest,
-  badges and previews. The UI calls it "accept" on a paper; elsewhere it is
-  the first label, or "not <last label>". A market with more outcomes that
+  badges and previews. On a listing's market the UI calls it by its venue's
+  `headlineLabel` ("accept", "verified"); elsewhere, or for a kind with no
+  venue, it is the first label, or "not <last label>". The map mixes venues
+  and its points carry no kind, so it says "chance". A market with more outcomes that
   are not ordered will get a meaningless headline: that is the convention's
   price.
 - **The outcome bar** draws prices worst on the left in the `tier-1..4`
@@ -1140,7 +1153,8 @@ unpaginated, and 5 s for that search.
     as a slug (old links, and the badge's `/badge/<slug>.svg`).
   - `opengraph-image.tsx` on `/papers/[slug]` and `/markets/[slug]`
     (`server/og.tsx`): the question, `<title> @ <kind>?` (`shareTitleLine`,
-    ~120 characters, `@ <kind>?` in the accent), and the outcome bar with
+    ~120 characters, the ending in the accent; the ending is the venue's
+    `shareSuffix`, e.g. ` verified by 2027?`), and the outcome bar with
     each outcome's price and label centred on its segment, alternately
     below and above the bar, nudged apart only where a row would still
     collide (`placeLabels`); no band, trader count or link (the card already shows the link).
@@ -1188,6 +1202,15 @@ unpaginated, and 5 s for that search.
 
 ### Markets opened on demand
 
+- **Except where the venue opens them with its listings**
+  (`opensWithListing`, OpenAI Math, on the owner's call): `POST /listings`
+  opens the listing's market right after the listing's own commit
+  (`market-start.openWithListing`, through `ensureMainMarket` and the
+  engine), `created_by` null and nobody following it, at the venue's
+  `openingPrice`s (50/50) with no JEV call. Re-posting finds the market it
+  made; a failure is the POST's 500, and the client's retry makes it. Such
+  a listing never shows "Open Market". Everything below is for the other
+  venues.
 - **The venue opens with no markets on its listings.** Two calls open
   one (`trade` scope, trading eligibility; the first also with no
   credential, for `/welcome`, below), both `server/market-start.ts`:
@@ -1225,7 +1248,9 @@ unpaginated, and 5 s for that search.
   (JEV's price only) has no bar or headline on the home list
   (`orderCount > 0`) or the map (`headline` null), and sorts with the
   listings that have no market, after every traded row.
-- **The market is the kind's template** (`market-templates.ts`), slug
+- **The market is the kind's template** (`market-templates.ts`, from
+  `venues/`: `ICLR 2027`, and `OpenAI Math`, "independently verified by
+  the end of 2027", `Verified`/`Not verified`, open until 2028), slug
   `<listing>-decision`, rank 0, `created_by` the trader who opened it.
   `created_by` is stored, never shown: the tape is anonymous, and
   "opened by @x" would point at the first fill. Whoever opens it follows the
@@ -1282,8 +1307,10 @@ unpaginated, and 5 s for that search.
 ### Agents trading for people
 
 - **`[onboard your agent]`** (`components/OnboardAgent`: under the home
-  page's title, signed in only; "Onboard my agent", the tutorial's second
-  button on its last step, for anyone; `/profile`'s API keys) copies
+  page's title, signed in only; "Copy the prompt" on the tutorial's
+  unnumbered agent screen (`agentPromptStep`, `/welcome?step=agent-prompt`),
+  reached by "Onboard my agent" on its last step, for anyone; `/profile`'s
+  API keys) copies
   `lib/agent-prompt.ts`'s prompt, which has the agent ask one thing at a
   time. **Signed in, the prompt carries the login address and a one-time
   code** (`POST /me/agent-code`, session-only, an hour, a new one each
@@ -1324,8 +1351,9 @@ unpaginated, and 5 s for that search.
   a trader's institutions — a filter like the name, not `?institution=`'s
   ranking among itself. `is:bot` keeps the bots and the viewer's own row
   (`-is:bot` the rest).
-  The table's unrealized P/L is a percentage of `openCostMicro` (what open
-  holdings cost net of sales; "—" when sales returned it) by default, `REP`
+  The table's unrealized P/L is a percentage of the starting balance
+  (`STARTING_BALANCE_MICRO`, the same base for every row, so it reads as
+  a return next to net worth) by default, `REP`
   on a click of the heading (`components/PnlToggle`). The API's `?q=` is still only a name. Institution is
   matched exactly against any of a trader's `institutions`, so a trader
   with two affiliations is ranked at both.
@@ -1461,8 +1489,11 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
 - **One question at a time**, each in `components/OnboardingCard`, the step
   in `?step=` so back works: a visitor's "Get started" first walks the
   home page's tutorial in line, one step a page (`pick`, `trade`,
-  `cash-out`, from `tutorialSteps`, the same steps as the modal), then which paper (search in `DEFAULT_MARKET_KIND`,
-  the most traded open ones before anything is typed), the bet (the market's
+  `cash-out`, from `tutorialSteps`, the same steps as the modal), then which paper (search in one venue,
+  the most traded open ones before anything is typed; with more than one
+  venue open, the choice is under the search bar: `?kind=`, else the one
+  this browser picked last, on `/welcome` or the home page's venue filter,
+  in the `venue` cookie, else `DEFAULT_MARKET_KIND`), the bet (the market's
   own `TradeBox`), then the email alone, which goes on to `/verify-email` (the name and the
   password come there, after confirming). No comment step: it was dropped to
   keep the way in short. A signed-in viewer's bet goes straight through the

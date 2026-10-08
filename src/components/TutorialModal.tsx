@@ -85,7 +85,8 @@ export type TutorialStep = { title: string; art: ReactNode; body: ReactNode; fin
 /**
  * The tutorial's steps, after Polymarket's: pick a paper, place a trade,
  * cash out; then an AI agent instead, whose button (`OnboardAgentButton`)
- * the last step shows under its own. The illustrations are drawn from one real open market;
+ * the last step shows under its own, leading to one more screen
+ * (`agentPromptStep`) that copies the prompt. The illustrations are drawn from one real open market;
  * without one, the steps are text alone. Shown as a sheet by `TutorialModal`
  * and in line, one step a page, by `/welcome`.
  */
@@ -142,7 +143,7 @@ export function tutorialSteps({
       art: example && <PositionSketch example={example} />,
       body: (
         <>
-          Sell your shares at any time, or wait until the decision to redeem each winning share for 1 {REP}.{' '}
+          Sell your shares at any time, or wait until the market settles to redeem each winning share for 1 {REP}.{' '}
           {signedIn
             ? 'Pick a paper and place your first trade.'
             : 'Create an account and place your first trade in minutes.'}
@@ -156,11 +157,11 @@ export function tutorialSteps({
 /** The last step: an AI agent instead. Its button, which copies the prompt, sits under the step's own. */
 function agentStep(signedIn: boolean): TutorialStep {
   return {
-    title: 'Or onboard your agent',
+    title: '[optional] onboard your agent',
     art: <AgentSketch />,
     body: (
       <>
-        Contribute your agent's intelligence, steered by you, to sorting through the slop.{' '}
+        Contribute your agent’s intelligence, steered by you, to sorting through the slop.{' '}
         {signedIn
           ? 'Paste a prompt into your AI agent, and it trades for you.'
           : 'Paste a prompt into your AI agent: it signs in with a code we email you.'}
@@ -169,16 +170,38 @@ function agentStep(signedIn: boolean): TutorialStep {
   };
 }
 
-/** The tutorial's second button on its last step: copies the prompt for an AI agent. */
-export function OnboardAgentButton({ signedIn }: { signedIn: boolean }) {
+/**
+ * The screen after the last step, reached only by its "Onboard my agent":
+ * what to do with the prompt, which `AgentPromptButton` copies. Unnumbered,
+ * as it is a detour, not a step.
+ */
+export function agentPromptStep(signedIn: boolean): TutorialStep {
+  return {
+    title: 'Paste the prompt into your agent',
+    art: <AgentSketch />,
+    body: (
+      <>
+        Paste it into <b className="font-semibold text-ink">Claude Code</b>,{' '}
+        <b className="font-semibold text-ink">Codex</b> or any AI agent. It{' '}
+        {signedIn ? 'signs in as you' : 'creates your account'} and trades for you, and it’s a great way to discover
+        papers too.
+      </>
+    ),
+  };
+}
+
+/** The tutorial's second button on its last step: on to `agentPromptStep`. */
+export function OnboardAgentButton({ onClick }: { onClick: () => void }) {
   return (
-    <OnboardAgent
-      signedIn={signedIn}
-      className={ui.btn({ ghost: true })}
-      label="Onboard my agent"
-      copiedLabel="Prompt copied"
-    />
+    <button type="button" className={ui.btn({ ghost: true })} onClick={onClick}>
+      Onboard my agent
+    </button>
   );
+}
+
+/** `agentPromptStep`'s button: copies the prompt (`OnboardAgent`). */
+export function AgentPromptButton({ signedIn }: { signedIn: boolean }) {
+  return <OnboardAgent signedIn={signedIn} className={ui.btn()} label="Copy the prompt" copiedLabel="Prompt copied" />;
 }
 
 /** A step's illustration, faded towards the top, as if it rose out of the page. */
@@ -221,8 +244,10 @@ export function TutorialModal({
   const content = useRef<HTMLDivElement>(null);
   /** The furthest step reached since the tutorial was opened. */
   const reached = useRef(0);
-  const steps = tutorialSteps({ example, startingBalanceMicro, signedIn });
-  const last = steps.length - 1;
+  const tour = tutorialSteps({ example, startingBalanceMicro, signedIn });
+  // The tour's last step, then the agent screen past it, reached only by "Onboard my agent".
+  const last = tour.length - 1;
+  const steps = [...tour, agentPromptStep(signedIn)];
   const current = steps[step];
 
   function go(next: number) {
@@ -280,11 +305,13 @@ export function TutorialModal({
             <div key={s.title} className={`[grid-area:1/1] ${i === step ? '' : 'invisible'}`} aria-hidden={i !== step}>
               {i === step ? (
                 <ModalTitle className={STEP_TITLE}>
-                  {i + 1}. {s.title}
+                  {i <= last && `${i + 1}. `}
+                  {s.title}
                 </ModalTitle>
               ) : (
                 <p className={STEP_TITLE}>
-                  {i + 1}. {s.title}
+                  {i <= last && `${i + 1}. `}
+                  {s.title}
                 </p>
               )}
               <TutorialText step={s} />
@@ -292,7 +319,9 @@ export function TutorialModal({
           ))}
         </div>
         <div className="mt-6">
-          {step < last ? (
+          {step > last ? (
+            <AgentPromptButton signedIn={signedIn} />
+          ) : step < last ? (
             <button type="button" className={ui.btn()} onClick={() => go(step + 1)}>
               Next
             </button>
@@ -312,7 +341,7 @@ export function TutorialModal({
               Make your first trade
             </Link>
           )}
-          {step === last && <OnboardAgentButton signedIn={signedIn} />}
+          {step === last && <OnboardAgentButton onClick={() => go(last + 1)} />}
         </div>
       </SheetContent>
     </Modal>

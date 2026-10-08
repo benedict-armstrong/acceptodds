@@ -1,3 +1,5 @@
+import { shareSuffix, venue } from '@/venues';
+
 /**
  * A market's **headline**: one probability that stands for the whole market in
  * lists, badges, previews, follows and the digest. Pure and client-safe.
@@ -60,12 +62,13 @@ export function marketHeadline(m: MarketLike): number | null {
 }
 
 /**
- * What the headline is called. On a paper (a listing's market) the UI calls
- * it "accept" — the one place the paper convention is spelled out; elsewhere
- * the first outcome's label, or "not <last>".
+ * What the headline is called. On a listing's market, pass the listing's
+ * `kind`: its venue names it ("accept", "verified", `venues/`). Elsewhere,
+ * or for a kind with no venue, the first outcome's label, or "not <last>".
  */
-export function headlineLabel(labels: readonly string[], paper = false): string {
-  if (paper) return 'accept';
+export function headlineLabel(labels: readonly string[], listingKind: string | null = null): string {
+  const named = venue(listingKind)?.headlineLabel;
+  if (named) return named;
   return labels.length <= 2 ? (labels[0] ?? '') : `not ${labels[labels.length - 1]}`;
 }
 
@@ -169,12 +172,13 @@ export function squareRow(prices: readonly number[], squares = 10): string {
 // the text share
 // ---------------------------------------------------------------------------
 
-/** The title line (`<title> @ <kind>?`) is kept to about two lines on a phone. */
+/** The title line (`<title> @ <kind>?`, or the venue's own ending) is kept to about two lines on a phone. */
 export const SHARE_TITLE_MAX = 50;
 
 /**
- * `<title> @ <kind>?`, at most `max` characters: the title is cut at a word
- * boundary and gets `…`; `@ <kind>?` is always kept whole. TeX `$` delimiters
+ * The title and the venue's share ending (`venues/` `shareSuffix`, by default
+ * ` @ <kind>?`), at most `max` characters: the title is cut at a word
+ * boundary and gets `…`; the ending is always kept whole. TeX `$` delimiters
  * are dropped, since a chat app shows them raw.
  */
 export function shareTitleLine(title: string, kind: string | null, max = SHARE_TITLE_MAX): string {
@@ -182,13 +186,13 @@ export function shareTitleLine(title: string, kind: string | null, max = SHARE_T
   return head + suffix;
 }
 
-/** `shareTitleLine` in two parts, the (cut) title and ` @ <kind>?`, for a card that sets them apart. */
+/** `shareTitleLine` in two parts, the (cut) title and the venue's ending, for a card that sets them apart. */
 export function shareTitleParts(
   title: string,
   kind: string | null,
   max = SHARE_TITLE_MAX,
 ): { head: string; suffix: string } {
-  const suffix = kind ? ` @ ${kind}?` : '?';
+  const suffix = shareSuffix(kind);
   const clean = title.replace(/\$/g, '').replace(/\s+/g, ' ').trim();
   const room = Math.max(8, max - suffix.length);
   if ([...clean].length <= room) return { head: clean, suffix };
@@ -239,7 +243,7 @@ function bibEscape(text: string): string {
 
 /**
  * The text a share copies (issue #33): a BibTeX `@misc` entry, keyed by the
- * slug, whose title is the usual `<title> @ <kind>?` line, `howpublished` the
+ * slug, whose title is the usual share line (`shareTitleLine`), `howpublished` the
  * link and `note` the outcome bar. The bar (prices, never a value, §1.1) is
  * there only while the market is open or closed and has 2–4 outcomes.
  */

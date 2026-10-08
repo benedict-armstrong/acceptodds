@@ -40,12 +40,15 @@ import {
 export function JevPrice({
   listingId,
   slug,
+  kind,
   outcomes,
   viewer,
   asked,
 }: {
   listingId: string;
   slug: string;
+  /** The listing's kind, whose venue names the headline. */
+  kind: string | null;
   /** The labels the market will open with, best first (its template's). */
   outcomes: readonly string[];
   viewer: { signedIn: boolean; canTrade: boolean };
@@ -178,7 +181,7 @@ export function JevPrice({
           className="pointer-events-none -m-6 flex transform-gpu flex-col justify-center self-stretch justify-self-stretch p-6 blur-[5px] select-none"
         >
           <div className="mb-2 text-[22px]">
-            <b>??%</b> {headlineLabel(outcomes, true)}
+            <b>??%</b> {headlineLabel(outcomes, kind)}
           </div>
           <OutcomeBar prices={outcomes.map(() => 1 / n)} className="h-2.5 w-full" />
           <div className="mt-1.5 flex flex-wrap justify-between gap-x-4 font-sans text-[13px] text-subtle">

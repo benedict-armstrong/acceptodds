@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import useSWR from 'swr';
 import type { z } from 'zod';
 import { PaperRow } from '@/components/PaperRow';
@@ -36,6 +36,7 @@ export function PaperSearch({
   suggestions,
   sparks,
   canOpen,
+  below,
   onPick,
 }: {
   kind: string;
@@ -44,6 +45,8 @@ export function PaperSearch({
   sparks: Record<string, number[]>;
   /** Whether the viewer may open a paper's market: its kind's template is open, and they may trade or are signed out. */
   canOpen: boolean;
+  /** Set under the search bar, above the papers (`/welcome`'s venue choice). */
+  below?: ReactNode;
   onPick: (l: Listing) => void;
 }) {
   const [q, setQ] = useState('');
@@ -82,6 +85,7 @@ export function PaperSearch({
           className={ui.searchInput}
         />
       </form>
+      {below}
       {!debounced && shown.length > 0 && <div className="mt-4 font-sans text-xs text-faint">Most traded</div>}
       <div className={debounced ? 'mt-4' : 'mt-1'}>
         {shown.map((l) => {

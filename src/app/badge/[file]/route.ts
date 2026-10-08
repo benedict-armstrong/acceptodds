@@ -57,7 +57,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ file: st
       const h = marketHeadline(m);
       message = `${h === null ? '—' : pct(h)} ${headlineLabel(
         main.outcomes.map((o) => o.label),
-        subject.listing !== null,
+        subject.listing?.kind ?? null,
       )}`;
       if (bar) prices = main.outcomes.map((o) => o.price);
     }

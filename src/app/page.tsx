@@ -7,6 +7,7 @@ import { Pager } from '@/components/Pager';
 import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { PaperRow } from '@/components/PaperRow';
+import { RememberVenue } from '@/components/RememberVenue';
 import { TitleBlock } from '@/components/TitleBlock';
 import { OnboardAgent } from '@/components/OnboardAgent';
 import { TutorialModal } from '@/components/TutorialModal';
@@ -16,6 +17,7 @@ import type * as S from '@/server/api/schemas';
 import { presentListing } from '@/server/api/present';
 import { ui } from '@/components/ui';
 import { defaultMarketKind } from '@/lib/venue';
+import { venue, venues, type Venue } from '@/venues';
 import { rep, REP } from '@/lib/format';
 import { REPO_URL } from '@/lib/links';
 import { parseSearch, peopleText } from '@/lib/query';
@@ -56,14 +58,24 @@ const POSITIONS_COOKIE = 'home_positions_open';
 /** Traders shown above the papers when a search reads like a name. */
 const PEOPLE = 5;
 
-/** What the site is, above the search; hidden while searching. */
-const abstract = () => (
+/** "A, B or C": the organisations the abstract disclaims, then "any other". */
+function orList(items: readonly string[]): string {
+  return items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
+}
+
+/**
+ * What the site is, above the search, in the selected venue's words
+ * (`venues/`); with no venue, words that fit them all. Hidden while searching.
+ */
+const abstract = (v: Venue | null) => (
   <>
-    A prediction market on peer review. Each paper has a market on its decision (accept or reject), priced by
-    researchers who stake $rep, an in app currency, on what they expect. Everyone who signs up receives{' '}
-    {rep(startingBalanceMicro(), 0)} {REP} to trade with. Prices are probabilities, and every market settles when the
-    venue publishes its decisions. It is a game made for fun, and has no connection to ICLR, OpenReview or any other
-    organisation. acceptodds is an open source project, open to contributions, at{' '}
+    {v?.lede ?? 'A prediction market on research papers'}. Each paper has a market on{' '}
+    {v?.marketOn ?? 'what becomes of it'}, priced by researchers who stake $rep, an in app currency, on what they
+    expect. Everyone who signs up receives {rep(startingBalanceMicro(), 0)} {REP} to trade with. Prices are
+    probabilities, and every market settles when {v?.settlesWhen ?? 'its outcome is known'}. It is a game made for fun,
+    and has no connection to{' '}
+    {orList([...new Set((v ? [v] : venues()).flatMap((x) => x.unaffiliated)), 'any other organisation'])}. acceptodds is
+    an open source project, open to contributions, at{' '}
     <a href={REPO_URL} className={ui.hyperref}>
       {REPO_URL.replace(/^https:\/\//, '')}
     </a>
@@ -90,8 +102,16 @@ const FOOTNOTE = (
 
 /** The home page's sorts, default first. The venue's `closing` is not offered. */
 const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
-/** Sort keys shown under another name. The venue's `likelihood` is the headline (`lib/headline.ts`). */
-const SORT_LABEL: Partial<Record<BrowseSort, string>> = { likelihood: 'acceptance' };
+/**
+ * Sort keys shown under another name. `likelihood` is the headline
+ * (`lib/headline.ts`), named by the venue ("acceptance").
+ */
+const sortLabel = (s: BrowseSort, v: Venue | null) => (s === 'likelihood' ? (v?.headlineSort ?? 'odds') : s);
+
+/** The page's title after the wordmark: the venue's question, or one that fits any venue. */
+function homeTitle(kind: string | null): string {
+  return venue(kind)?.homeTitle ?? `Which papers will make it${kind ? ` at ${kind}` : ''}?`;
+}
 
 function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -127,7 +147,7 @@ export async function generateMetadata({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const kind = selectedKind(one((await searchParams).kind), await marketKinds());
-  return { title: `acceptodds: Which papers will get accepted${kind ? ` at ${kind}` : ''}?` };
+  return { title: `acceptodds: ${homeTitle(kind)}` };
 }
 
 export default async function Home({
@@ -240,14 +260,15 @@ export default async function Home({
 
   return (
     <main className={ui.page}>
+      {/* A venue picked here is the one `/welcome` searches first. */}
+      {wanted && venue(wanted) && <RememberVenue kind={wanted} />}
       <TitleBlock
         title={
           <>
-            <Wordmark />: Which papers will get accepted
-            {kind ? ` at ${kind}` : ''}?
+            <Wordmark />: {homeTitle(kind)}
           </>
         }
-        abstract={q ? null : abstract()}
+        abstract={q ? null : abstract(venue(kind))}
         abstractFull
       >
         <div className="flex flex-wrap items-baseline justify-center gap-x-6">
@@ -326,7 +347,7 @@ export default async function Home({
                 {sorts.map((s) => (
                   <PopoverClose key={s} asChild>
                     <Link href={href({ sort: s })} className={s === sort ? ON : ''}>
-                      {SORT_LABEL[s] ?? s}
+                      {sortLabel(s, venue(kind))}
                     </Link>
                   </PopoverClose>
                 ))}
@@ -422,7 +443,7 @@ export default async function Home({
           sort:
           {sorts.map((s) => (
             <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
-              {SORT_LABEL[s] ?? s}
+              {sortLabel(s, venue(kind))}
             </Link>
           ))}
         </span>
