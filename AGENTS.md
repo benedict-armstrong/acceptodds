@@ -691,9 +691,9 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **"Venue" is the market's `kind`.** The home page filters on it and opens
   on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
   The platform still knows nothing about venues: it is a string the creating
-  client chose. Sorts: acceptance (the default; the `likelihood` sort: the
-  main market's **headline** (#11, below), highest first, 1/0 once settled,
-  void last), volume, activity (last fill), newest. The
+  client chose. Sorts: activity (the default: last fill), acceptance (the
+  `likelihood` sort: the main market's **headline** (#11, below), highest
+  first, 1/0 once settled, void last), volume, newest. The
   venue's `closing` sort is not offered. Status and "following" filters sit
   in a `⋯` `Popover` menu, which shows the active one when not the default.
   A signed-in viewer sees a **Following** section above the list: the
@@ -821,6 +821,12 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   them — the result line says where and links "search everything" — and
   sorts by `relevance` (listed only while searching) unless another sort is
   picked; every filter link keeps `q`, "clear" drops it.
+- **"Join traders from"** (`components/InstitutionStrip`, signed out and
+  not searching): a slow strip of institution names under the home page's
+  title, read from `views.traderInstitutions`, only those with at least
+  `MIN_TRADERS` (2) traders, so no one person makes their institution show.
+  Names, never logos: a logo reads as an endorsement the institution never
+  gave.
 - **The logo returns to the last home search** (`components/HomeLink`):
   the home page keeps its query string (venue, status, sort, `q`, pages)
   in this tab's `sessionStorage` (`RememberHomeSearch`), and the logo on

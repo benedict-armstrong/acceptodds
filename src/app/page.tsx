@@ -11,6 +11,7 @@ import { RememberVenue } from '@/components/RememberVenue';
 import { RememberHomeSearch } from '@/components/HomeLink';
 import { TitleBlock } from '@/components/TitleBlock';
 import { OnboardAgent } from '@/components/OnboardAgent';
+import { InstitutionStrip } from '@/components/InstitutionStrip';
 import { TutorialModal } from '@/components/TutorialModal';
 import { Wordmark } from '@/components/Wordmark';
 import type { z } from 'zod';
@@ -34,6 +35,7 @@ import {
   marketKinds,
   searchPeople,
   sparklines,
+  traderInstitutions,
   type BrowsePage,
   type BrowseRow,
   type BrowseSort,
@@ -101,8 +103,8 @@ const FOOTNOTE = (
   </div>
 );
 
-/** The home page's sorts, default first. The venue's `closing` is not offered. */
-const SORTS = MARKET_SORTS.filter((s) => s !== 'closing');
+/** The home page's sorts, default first: activity. The venue's `closing` is not offered. */
+const SORTS: readonly BrowseSort[] = ['activity', ...MARKET_SORTS.filter((s) => s !== 'closing' && s !== 'activity')];
 /**
  * Sort keys shown under another name. `likelihood` is the headline
  * (`lib/headline.ts`), named by the venue ("acceptance").
@@ -195,7 +197,7 @@ export default async function Home({
   // A search that is only words may be a name: traders above the papers, on
   // the first page.
   const who = peopleText(parsed?.node ?? null);
-  const [all, followed, held, people, busiest, traded] = await Promise.all([
+  const [all, followed, held, people, busiest, traded, institutions] = await Promise.all([
     pageOf(sp.page, PAGE, {
       ...browse,
       kind: kindFilter,
@@ -212,6 +214,8 @@ export default async function Home({
     browseListings({ kind: kind ?? defaultMarketKind(), status: 'open', sort: 'volume', traded: true, limit: 1 }),
     // A trader who has placed an order is past getting started: no tutorial.
     me !== null ? hasTraded(me) : false,
+    // Signed out, and not searching: where the traders are from.
+    viewer === null && !q ? traderInstitutions() : [],
   ]);
   const busiestListing = busiest.rows[0]?.listing;
   const [tutorialExample] = busiestListing
@@ -289,6 +293,7 @@ export default async function Home({
           )}
         </div>
       </TitleBlock>
+      <InstitutionStrip institutions={institutions} />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
         <input type="hidden" name="kind" value={kind ?? 'all'} />
