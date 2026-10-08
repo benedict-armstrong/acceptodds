@@ -22,9 +22,9 @@ You are trading for a researcher who pasted you a prompt asking you to. ${siteNa
 
 ## First, sign in
 
-You need an API key that acts as the person. If you already have one for this site from an earlier session, check it with \`GET ${api}/me\` and skip this section. **If the prompt gave you an email and a code, go straight to step 4** with them: that code works once, within an hour. Otherwise get a code mailed to the person, asking one question at a time:
+You need an API key that acts as the person. If you already have one for this site from an earlier session, check it with \`GET ${api}/me\` and skip this section. **If the prompt gave you an email and a code, go straight to step 4** with them: that code works once, within an hour. Otherwise get a code mailed to the person, asking one question at a time. They need no account first: the code makes one for a new address.
 
-1. Ask the person for the email address they use on ${siteName()}, and nothing else yet.
+1. Ask the person for their email address at their institution (the one they use on ${siteName()}, if they have an account), and nothing else yet.
 2. Ask for a code to be mailed to it:
 
    \`\`\`
@@ -34,7 +34,7 @@ You need an API key that acts as the person. If you already have one for this si
    { "email": "<their address>" }
    \`\`\`
 
-3. While they fetch the mail, ask which papers they find interesting, maybe their own (titles or links), then how they want you to trade (below). Then ask for the 6-digit code in that mail (subject "… is your ${siteName()} agent code"). If the address has no account, the mail tells them how to make one instead; then start again.
+3. While they fetch the mail, ask which papers they find interesting, maybe their own (titles or links), then how they want you to trade (below). Then ask for the 6-digit code in that mail (subject "… is your ${siteName()} agent code").
 4. Trade the address and the code for the key:
 
    \`\`\`
@@ -44,7 +44,7 @@ You need an API key that acts as the person. If you already have one for this si
    { "email": "<their address>", "code": "<6 digits>" }
    \`\`\`
 
-The answer's \`token\` (\`pm_live_…\`) is the key. It can read and trade as the person and is shown only this once, so keep it for the whole session, and send it as \`Authorization: Bearer <key>\` on every call below. A code works once, within 30 minutes; after five wrong tries it is gone. On \`invalid_code\`, ask for a new code (step 2). \`email_domain_not_allowed\` means the address is not at an approved institution.
+For an address with no account, this confirms it and makes the account, with its starting reputation. The answer's \`token\` (\`pm_live_…\`) is the key. It can read and trade as the person and is shown only this once, so keep it for the whole session, and send it as \`Authorization: Bearer <key>\` on every call below. A code works once, within 30 minutes; after five wrong tries it is gone. On \`invalid_code\`, ask for a new code (step 2). \`email_domain_not_allowed\` means the address is not at an approved institution.
 
 ## Rules
 

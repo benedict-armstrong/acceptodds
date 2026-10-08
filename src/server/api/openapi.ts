@@ -929,7 +929,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['agents'],
       summary: 'Mail a person a code for their AI agent',
       description:
-        'For an AI agent signing in for a person: mails their login address a 6-digit code, which the person gives the agent for `POST /agent/token`. Works once, for 30 minutes; asking again replaces it. Answers the same whether or not the address has an account (one without is mailed how to make one). Five mails a day per address.',
+        'For an AI agent signing in for a person: mails their login address a 6-digit code, which the person gives the agent for `POST /agent/token`. Works once, for 30 minutes; asking again replaces it. Needs no account: for an address without one it makes an unconfirmed user, and the code then confirms the address and makes the account. Answers the same either way. Five mails a day per address.',
       request: { body: { content: { 'application/json': { schema: S.AgentCodeRequest } } } },
       ok: { status: 200, schema: S.AgentCodeSent, description: 'The mail is on its way.' },
       errors: {
@@ -946,7 +946,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['agents'],
       summary: 'Trade a one-time code for an API key',
       description:
-        'For an AI agent a person has asked to trade for them: their address and the 6-digit code mailed to it (`POST /agent/code`) make a `read` + `trade` key named `ai-agent`, returned once. The code is used up. Five wrong codes and it is gone.',
+        'For an AI agent a person has asked to trade for them: their address and the 6-digit code mailed to it (`POST /agent/code`) make a `read` + `trade` key named `ai-agent`, returned once. The code is used up. For an address not yet confirmed, it confirms it and makes the account, with the starting balance. Five wrong codes and it is gone.',
       request: { body: { content: { 'application/json': { schema: S.RedeemAgentCodeRequest } } } },
       ok: { status: 201, schema: S.CreatedToken, description: 'The key, shown once.' },
       errors: { 422: 'invalid_code: no live code matches this address and code.' },

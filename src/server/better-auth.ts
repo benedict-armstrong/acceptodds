@@ -182,10 +182,11 @@ const AUTH_MAIL_BUDGET: RateLimitConfig = { burst: 10, perSecond: 10 / 86_400 };
 
 /**
  * Drop the passwords and sessions a user had before proving the address
- * (`afterEmailVerification`). Sign-up takes no password, so this
- * only finds one set by a sign-up from before that, or by someone else.
+ * (`beforeEmailVerification`, and an agent code confirming an address).
+ * Sign-up takes no password, so this only finds one set by a sign-up from
+ * before that, or by someone else.
  */
-async function revokeUnprovenAccess(userId: string, database: Database): Promise<void> {
+export async function revokeUnprovenAccess(userId: string, database: Pick<Database, 'delete'>): Promise<void> {
   await database
     .delete(authSchema.account)
     .where(and(eq(authSchema.account.userId, userId), eq(authSchema.account.providerId, 'credential')));

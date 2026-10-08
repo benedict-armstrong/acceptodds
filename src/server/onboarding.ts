@@ -108,8 +108,9 @@ async function checkBet(bet: NonNullable<StartOnboarding['bet']>, database: Data
 /**
  * The user for `email`, made if there is none: no name, no credential,
  * unconfirmed. Two sign-ups at once for one address: the other one won.
+ * Also how an agent's code makes a user (`agent-codes.ts`).
  */
-async function userForEmail(email: string, database: Database): Promise<{ id: string; emailVerified: boolean }> {
+export async function userForEmail(email: string, database: Database): Promise<{ id: string; emailVerified: boolean }> {
   const find = async () => {
     const [row] = await database
       .select({ id: user.id, emailVerified: user.emailVerified })

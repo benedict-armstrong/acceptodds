@@ -46,13 +46,12 @@ export default function AboutPage() {
         title={
           <>
             About <Wordmark />
-            .com
           </>
         }
         byline={<Authors authors={[{ name: 'Benedict Armstrong', affiliations: ['ETH Zürich'] }]} />}
         abstract={
           <>
-            <Wordmark /> {` `} is a prediction market on papers under review. Every paper has a market on its decision
+            <Wordmark /> {` `} is a prediction market for papers under review. Every paper has a market on its decision
             (e.g. Accept or Reject), and its price is what the people trading it think the odds are. Users buy shares in
             the outcome they believe in. Shares can be bought and sold at any time and when a market is settled users
             who are holding the winning outcome are paid out 1 {`${REP}`} for each of their shares. Prices are set by an

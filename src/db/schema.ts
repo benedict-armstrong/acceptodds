@@ -811,13 +811,15 @@ export const affiliations = pgTable(
  */
 /**
  * One-time codes an AI agent trades in for an API key (`server/agent-codes.ts`,
- * which alone writes it): one per account, replaced by every new one, deleted
- * when used. Only the SHA-256 is stored.
+ * which alone writes it): one per Better Auth user, replaced by every new one,
+ * deleted when used. Keyed on the user, not the trader account, because a
+ * code mailed to a new address comes before the account: redeeming it
+ * confirms the address, which makes the account. Only the SHA-256 is stored.
  */
 export const agentCodes = pgTable('agent_codes', {
-  accountId: uuid('account_id')
+  userId: text('user_id')
     .primaryKey()
-    .references(() => accounts.id, { onDelete: 'cascade' }),
+    .references(() => user.id, { onDelete: 'cascade' }),
   codeHash: text('code_hash').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
   /** Wrong codes tried against this one. */

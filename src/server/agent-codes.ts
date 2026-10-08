@@ -1,14 +1,17 @@
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { user } from '@/db/auth-schema';
-import { accounts, agentCodes, type Account } from '@/db/schema';
+import { agentCodes, type Account } from '@/db/schema';
 import { AGENT_KEY_NAME } from '@/lib/agent-prompt';
-import { agentCodeMail, agentNoAccountMail } from '@/lib/auth-mails';
+import { agentCodeMail } from '@/lib/auth-mails';
+import { ensureAccountForUser } from './accounts';
 import { normalizeEmail } from './affiliations';
 import { ApiError } from './api/errors';
+import { revokeUnprovenAccess } from './better-auth';
 import { institutionForEmail } from './institution-domains';
 import { sendMail } from './mail';
+import { userForEmail } from './onboarding';
 import { consume, rateLimitHeaders, type RateLimitConfig } from './ratelimit';
 import { siteUrl } from './share';
 import { mintToken, type MintedToken } from './tokens';
@@ -21,13 +24,20 @@ import { mintToken, type MintedToken } from './tokens';
  * the proof, as for every sign-in here; the agent never sees a password or
  * a session.
  *
+ * An address with no account gets a code too: asking makes a Better Auth
+ * user for it (no name, no credential, unconfirmed, as onboarding does), and
+ * redeeming the code confirms the address — the inbox is proven exactly as
+ * by a confirmation link — which makes the trader account and its starting
+ * balance (`ensureAccountForUser`). So a person can start with their agent
+ * alone, and there is still no account or reputation before confirmation.
+ *
  * A signed-in person skips the mail: `issueAgentCode` puts a code straight
  * into the prompt they copy.
  *
  * A million codes, at most {@link MAX_ATTEMPTS} wrong guesses each, one
  * outstanding per account and only for {@link MAILED_TTL_MS} (mailed) or
- * {@link PROMPT_TTL_MS} (in a prompt): guessing one is 1 in 200,000. Asking again replaces the code. `agent_codes` is written
- * only here.
+ * {@link PROMPT_TTL_MS} (in a prompt): guessing one is 1 in 200,000.
+ * Asking again replaces the code. `agent_codes` is written only here.
  */
 
 /** How long a mailed code works. */
@@ -39,28 +49,16 @@ export const MAX_ATTEMPTS = 5;
 /** Agent-code mails per address: 5, refilling over a day, like sign-in links. */
 const MAIL_BUDGET: RateLimitConfig = { burst: 5, perSecond: 5 / 86_400 };
 
-type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
-
 function hashCode(code: string): string {
   return createHash('sha256').update(code).digest('hex');
 }
 
-/** The trader whose confirmed login address this is, if any. Never a house account. */
-async function accountForEmail(email: string, database: Database | Tx): Promise<Account | null> {
-  const [row] = await database
-    .select({ account: accounts })
-    .from(user)
-    .innerJoin(accounts, eq(accounts.userId, user.id))
-    .where(and(eq(sql`lower(${user.email})`, email), eq(user.emailVerified, true), eq(accounts.isHouse, false)));
-  return row?.account ?? null;
-}
-
 /**
- * Mails `email` a code for an agent, replacing any outstanding one. The
- * answer is the same whether or not the address has an account; one without
- * is mailed how to make one instead, so only the inbox learns. Unlisted
- * domains are refused (the list is public), and each address has a mail
- * budget of its own.
+ * Mails `email` a code for an agent, replacing any outstanding one. An
+ * address with no user gets one made (unconfirmed), and its mail says the
+ * code also makes the account; the answer is the same either way, so only
+ * the inbox learns which. Unlisted domains are refused (the list is public),
+ * and each address has a mail budget of its own.
  */
 export async function requestAgentCode(rawEmail: string, database: Database = getDb()): Promise<void> {
   const email = normalizeEmail(rawEmail);
@@ -82,13 +80,9 @@ export async function requestAgentCode(rawEmail: string, database: Database = ge
     );
   }
 
-  const account = await accountForEmail(email, database);
-  if (!account) {
-    await sendMail({ to: email, ...agentNoAccountMail(siteUrl()) });
-    return;
-  }
-  const { code } = await storeCode(account.id, MAILED_TTL_MS, database);
-  await sendMail({ to: email, ...agentCodeMail(code, siteUrl()) });
+  const person = await userForEmail(email, database);
+  const { code } = await storeCode(person.id, MAILED_TTL_MS, database);
+  await sendMail({ to: email, ...agentCodeMail(code, siteUrl(), { newAccount: !person.emailVerified }) });
 }
 
 /**
@@ -102,15 +96,15 @@ export async function issueAgentCode(
   database: Database = getDb(),
 ): Promise<{ email: string; code: string; expiresAt: Date }> {
   const [login] = account.userId
-    ? await database.select({ email: user.email }).from(user).where(eq(user.id, account.userId))
+    ? await database.select({ id: user.id, email: user.email }).from(user).where(eq(user.id, account.userId))
     : [];
   if (!login) throw new ApiError(403, 'session_required', 'this account has no sign-in');
-  return { email: normalizeEmail(login.email), ...(await storeCode(account.id, PROMPT_TTL_MS, database)) };
+  return { email: normalizeEmail(login.email), ...(await storeCode(login.id, PROMPT_TTL_MS, database)) };
 }
 
-/** A new code for this account, replacing any it had. */
+/** A new code for this user, replacing any it had. */
 async function storeCode(
-  accountId: string,
+  userId: string,
   ttlMs: number,
   database: Database,
 ): Promise<{ code: string; expiresAt: Date }> {
@@ -118,8 +112,8 @@ async function storeCode(
   const row = { codeHash: hashCode(code), expiresAt: new Date(Date.now() + ttlMs), attempts: 0, createdAt: new Date() };
   await database
     .insert(agentCodes)
-    .values({ accountId, ...row })
-    .onConflictDoUpdate({ target: agentCodes.accountId, set: row });
+    .values({ userId, ...row })
+    .onConflictDoUpdate({ target: agentCodes.userId, set: row });
   return { code, expiresAt: row.expiresAt };
 }
 
@@ -127,19 +121,26 @@ async function storeCode(
  * The address's code for a new API key, used up by it. Every failure is the
  * same `invalid_code`, whether the address, the code or its age was wrong.
  * A wrong guess counts, committed.
+ *
+ * The right code for an unconfirmed address confirms it, as a confirmation
+ * link would: first dropping any password or session set before the inbox
+ * was proven (`revokeUnprovenAccess`), then making the trader account.
  */
 export async function redeemAgentCode(
   input: { email: string; code: string },
   database: Database = getDb(),
 ): Promise<MintedToken & { accountId: string }> {
   const email = normalizeEmail(input.email);
-  const account = await database.transaction(async (tx) => {
-    const owner = await accountForEmail(email, tx);
+  const person = await database.transaction(async (tx) => {
+    const [owner] = await tx
+      .select({ id: user.id, name: user.name, email: user.email, emailVerified: user.emailVerified })
+      .from(user)
+      .where(eq(sql`lower(${user.email})`, email));
     if (!owner) return null;
-    const [code] = await tx.select().from(agentCodes).where(eq(agentCodes.accountId, owner.id)).for('update');
+    const [code] = await tx.select().from(agentCodes).where(eq(agentCodes.userId, owner.id)).for('update');
     if (!code) return null;
     if (code.expiresAt.getTime() <= Date.now() || code.attempts >= MAX_ATTEMPTS) {
-      await tx.delete(agentCodes).where(eq(agentCodes.accountId, owner.id));
+      await tx.delete(agentCodes).where(eq(agentCodes.userId, owner.id));
       return null;
     }
     const given = Buffer.from(hashCode(input.code.trim()), 'hex');
@@ -147,16 +148,22 @@ export async function redeemAgentCode(
       await tx
         .update(agentCodes)
         .set({ attempts: sql`${agentCodes.attempts} + 1` })
-        .where(eq(agentCodes.accountId, owner.id));
+        .where(eq(agentCodes.userId, owner.id));
       return null;
     }
     // Used up before the key exists: a failed mint costs a new code, never a second key.
-    await tx.delete(agentCodes).where(eq(agentCodes.accountId, owner.id));
+    await tx.delete(agentCodes).where(eq(agentCodes.userId, owner.id));
+    if (!owner.emailVerified) {
+      await revokeUnprovenAccess(owner.id, tx);
+      await tx.update(user).set({ emailVerified: true }).where(eq(user.id, owner.id));
+    }
     return owner;
   });
-  if (!account) {
+  if (!person) {
     throw new ApiError(422, 'invalid_code', 'that email and code do not match a live code; ask for a new one');
   }
+  // After the commit, like Better Auth's `afterEmailVerification`; idempotent, and repeated lazily by any session.
+  const account = await ensureAccountForUser(person, database);
   const minted = await mintToken({ account, name: AGENT_KEY_NAME, scopes: ['read', 'trade'] });
   return { ...minted, accountId: account.id };
 }

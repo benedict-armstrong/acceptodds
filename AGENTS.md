@@ -1293,13 +1293,18 @@ unpaginated, and 5 s for that search.
   then for the code. An agent that already has a key skips the sign-in.
 - **An agent signs in by a code mailed to the person**
   (`server/agent-codes.ts`): it asks for their address, `POST /agent/code`
-  mails a 6-digit code (or, with no account, how to make one; the same
-  answer either way; allowlisted domains only; 5 mails a day per address),
-  the person reads it out, and `POST /agent/token { email, code }` mints a
-  `read` + `trade` key named `ai-agent`. `agent_codes`, written only there:
-  one per account, replaced by each request, 30 minutes, used up on
-  success, gone after 5 wrong guesses, every failure the same
-  `422 invalid_code`.
+  mails a 6-digit code (allowlisted domains only; 5 mails a day per
+  address), the person reads it out, and `POST /agent/token { email, code }`
+  mints a `read` + `trade` key named `ai-agent`. **It needs no account**:
+  for a new address the request makes an unconfirmed user (as onboarding
+  does), and redeeming the code confirms the address — the inbox is proven
+  as by a confirmation link, so `revokeUnprovenAccess` runs first — and
+  makes the account with `ensureAccountForUser`; still none before that.
+  The answer is the same either way; only the mail's wording differs.
+  `agent_codes`, written only there: keyed on the Better Auth user, since
+  the code precedes the account; one per user, replaced by each request, 30
+  minutes, used up on success, gone after 5 wrong guesses, every failure
+  the same `422 invalid_code`.
 - **`/agent/start`** is the agent's instructions: plain Markdown like
   `/llms.txt`, only what OpenAPI already says, exit quotes over marks
   (§1.1). It is linked from `/llms.txt`.

@@ -1,7 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { orders } from '@/db/schema';
+import { account as authAccount, user } from '@/db/auth-schema';
+import { accounts, orders } from '@/db/schema';
 import { MAX_ATTEMPTS } from '@/server/agent-codes';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { api, signUp, trader } from './api-client';
@@ -69,9 +70,45 @@ describe('agent sign-in by mailed code', () => {
     expect(again.body.error.code).toBe('invalid_code');
   });
 
-  it('answers an address with no account the same, and mails it no code', async () => {
-    expect(await mailedCode('nobody@example.org')).toBeNull();
-    expect((await redeem('nobody@example.org', '123456')).body.error.code).toBe('invalid_code');
+  it('makes an account for a new address, confirmed by the code, and none before', async () => {
+    const code = await mailedCode('newcomer@example.org');
+    expect(code).toMatch(/^\d{6}$/);
+    const [pending] = await db.select().from(user).where(eq(user.email, 'newcomer@example.org'));
+    expect(pending).toMatchObject({ emailVerified: false, name: '' });
+    expect(await db.select().from(accounts).where(eq(accounts.userId, pending.id))).toEqual([]);
+
+    expect((await redeem('newcomer@example.org', wrong(code!))).status).toBe(422);
+    const minted = await redeem('newcomer@example.org', code!);
+    expect(minted.status).toBe(201);
+    const [confirmed] = await db.select().from(user).where(eq(user.id, pending.id));
+    expect(confirmed.emailVerified).toBe(true);
+
+    const me = await api('GET', '/me', { token: minted.body.token });
+    expect(me.status).toBe(200);
+    expect(me.body.handle).toMatch(/^trader-/);
+    expect(me.body).toMatchObject({ balanceMicro: STARTING_MICRO.toString(), canTrade: true });
+
+    // Confirmed now, so the next code is an ordinary sign-in for the same account.
+    const next = (await mailedCode('newcomer@example.org'))!;
+    const again = await redeem('newcomer@example.org', next);
+    expect((await api('GET', '/me', { token: again.body.token })).body.handle).toBe(me.body.handle);
+  });
+
+  it('drops a password set on an unconfirmed address when the code confirms it', async () => {
+    await mailedCode('newcomer@example.org');
+    const [pending] = await db.select().from(user).where(eq(user.email, 'newcomer@example.org'));
+    await db.insert(authAccount).values({
+      id: 'planted',
+      accountId: pending.id,
+      providerId: 'credential',
+      userId: pending.id,
+      password: 'not-theirs',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const code = (await mailedCode('newcomer@example.org'))!;
+    expect((await redeem('newcomer@example.org', code)).status).toBe(201);
+    expect(await db.select().from(authAccount).where(eq(authAccount.userId, pending.id))).toEqual([]);
   });
 
   it('refuses an address outside the allowlist before mailing anything', async () => {
