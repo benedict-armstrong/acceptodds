@@ -17,8 +17,11 @@ export interface MarketTemplate {
   expectedTraders: number;
   /** Where the market opens when JEV is not asked or gives no answer: one price per outcome, summing to 1. */
   fallbackPrices: number[];
-  /** What JEV is asked: one criterion per outcome, in outcome order; `null`: no model call. */
-  jev: { instructions: string; criteria: string[] } | null;
+  /**
+   * What JEV is asked: one criterion per outcome, in outcome order; `null`: no model call. `typical` is
+   * JEV's own average answer, read against the prior (`jev.calibrated`).
+   */
+  jev: { instructions: string; criteria: string[]; typical: number[] } | null;
   /** Opened when the listing is posted (`POST /listings`), not on demand. */
   opensWithListing: boolean;
 }

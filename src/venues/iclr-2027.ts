@@ -29,9 +29,9 @@ export const ICLR_2027: Venue = {
       '- **Reject**: the paper is rejected. This also covers a paper that is withdrawn or desk-rejected before the decision.',
     ].join('\n'),
     outcomes: [
-      // The previous oral, spotlight and poster rates combined into about a 33% acceptance rate.
-      { label: 'Accept', color: 'green', openingPrice: 0.33 },
-      { label: 'Reject', color: 'red', openingPrice: 0.67 },
+      // ICLR's oral, spotlight and poster rates combined: about 32% of submissions are accepted.
+      { label: 'Accept', color: 'green', openingPrice: 0.32 },
+      { label: 'Reject', color: 'red', openingPrice: 0.68 },
     ],
     closesAt: new Date('2026-12-14T00:00:00Z'),
     expectedTraders: 6,
@@ -42,7 +42,7 @@ export const ICLR_2027: Venue = {
       instructions: [
         'This paper is under review at ICLR 2027. Predict its final decision.',
         '',
-        'Start from the base rate: about 33% of ICLR submissions are accepted (oral, spotlight and poster ' +
+        'Start from the base rate: about 32% of ICLR submissions are accepted (oral, spotlight and poster ' +
           'combined), so most papers are rejected, and a competent, well-written paper is not by itself ' +
           'above the base rate. Move away from it only as far as the paper gives you reason to.',
         '',
@@ -59,6 +59,9 @@ export const ICLR_2027: Venue = {
           'minor flaws, while a serious flaw in soundness or a lack of novelty usually means rejection.',
       ].join('\n'),
       criteria: ['accepted in any form (oral, spotlight or poster)', 'rejected, withdrawn or desk-rejected'],
+      // Measured 2026-10-08 on 100 random ICLR 2027 abstracts with the instructions above: mean log-odds of
+      // Accept 1.20 (sd 0.91), i.e. about 77%. JEV ignores the base rate it is told, so it is applied here.
+      typical: [0.77, 0.23],
     },
   },
 };

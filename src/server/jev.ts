@@ -57,7 +57,8 @@ export async function jevPrices(
     const p = body.answers?.decision?.probabilities;
     const raw = labels.map((l) => Number(p?.[l]));
     if (raw.some((x) => !Number.isFinite(x) || x < 0)) throw new Error(`unexpected answer ${JSON.stringify(p)}`);
-    return floored(raw);
+    const prices = calibrated(raw, template.jev.typical, template.fallbackPrices);
+    return prices && floored(prices);
   } catch (err) {
     console.error('jev: no opening prices, using the fallback:', err);
     return null;
@@ -65,6 +66,19 @@ export async function jevPrices(
 }
 
 const JEV_TIMEOUT_MS = 15_000;
+
+/**
+ * JEV's answer read against its own habit: `p_i ∝ raw_i · prior_i / typical_i`. Told the base rate, JEV
+ * still answers about 77% Accept for a typical ICLR paper, so its raw answer is not a probability of
+ * acceptance; how far it is from JEV's typical answer is the evidence. A typical answer opens at the
+ * prior, and for two outcomes any answer moves the log-odds from the prior by as much as it is from
+ * `typical`. `null` when nothing is left to normalize.
+ */
+export function calibrated(raw: number[], typical: number[], prior: number[]): number[] | null {
+  const w = raw.map((x, i) => (x * prior[i]) / typical[i]);
+  const total = w.reduce((a, x) => a + x, 0);
+  return total > 0 && Number.isFinite(total) ? w.map((x) => x / total) : null;
+}
 
 /**
  * The least an outcome may open at. The house pays `b·ln(1/p_min)` for a
