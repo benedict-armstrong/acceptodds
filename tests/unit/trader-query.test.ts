@@ -7,6 +7,7 @@ describe('parseTraderSearch', () => {
       name: 'ada lovelace',
       include: [],
       exclude: [],
+      bots: null,
       errors: [],
     });
   });
@@ -16,6 +17,7 @@ describe('parseTraderSearch', () => {
       name: 'ada',
       include: ['eth', 'ETH Zurich'],
       exclude: ['epfl', 'mit'],
+      bots: null,
       errors: [],
     });
   });
@@ -26,6 +28,23 @@ describe('parseTraderSearch', () => {
 
   it('treats another key as part of the name', () => {
     expect(parseTraderSearch('title:foo bar').name).toBe('title:foo bar');
+  });
+
+  it('reads is:bot and its negations', () => {
+    expect(parseTraderSearch('is:bot')).toMatchObject({ name: null, bots: true, errors: [] });
+    expect(parseTraderSearch('IS:Bot opus').bots).toBe(true);
+    expect(parseTraderSearch('opus IS:Bot').name).toBe('opus');
+    expect(parseTraderSearch('-is:bot').bots).toBe(false);
+    expect(parseTraderSearch('is!=bot').bots).toBe(false);
+    expect(parseTraderSearch('-is!=bot').bots).toBe(true);
+  });
+
+  it('drops an is: filter other than bot with an error', () => {
+    expect(parseTraderSearch('is:human ada')).toMatchObject({
+      name: 'ada',
+      bots: null,
+      errors: ['“is:human”: only is:bot'],
+    });
   });
 
   it('drops an empty filter with an error', () => {

@@ -8,6 +8,8 @@ const HEIGHT = 190;
 const PAD = { top: 30, right: 12, bottom: 26, left: 12 };
 /** Headroom for a second row of labels, when the viewer and another trader are both marked. */
 const LABEL_ROW = 15;
+/** How near the pointer, in pixels, a mark must be to be named in the readout. */
+const MARK_HIT = 5;
 
 /** Whole units with grouping: axis ticks and the tooltip, not the ledger's figures. */
 function units(x: number): string {
@@ -22,8 +24,9 @@ function units(x: number): string {
  * them shaded (its share is the percentile) and a maroon line at them. A
  * second trader (the leaderboard's `?around=`) gets a dashed ink line, no
  * shading, labelled a row above the viewer's so the two never collide. Hover
- * (or arrow keys) reads any point off: how many traders have less. One
- * series, so no legend.
+ * (or arrow keys) reads any point off: how many traders have less. `marks`
+ * (the bots, on the global board) are open circles on the curve, unlabelled
+ * so they never collide; hovering one names it. One series, so no legend.
  */
 export function StandingChart({
   curve,
@@ -32,6 +35,7 @@ export function StandingChart({
   you,
   label,
   other = null,
+  marks = [],
 }: {
   /** The density at evenly spaced points across `domain`, peaking at 1. */
   curve: number[];
@@ -45,6 +49,8 @@ export function StandingChart({
   label: string | null;
   /** Another trader to mark, in the same units, e.g. the one the leaderboard is focused on. */
   other?: { value: number; label: string } | null;
+  /** More traders to mark, in the same units, each named only on hover. */
+  marks?: readonly { value: number; label: string }[];
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
@@ -87,6 +93,9 @@ export function StandingChart({
 
   const hoverX = hover === null ? null : sx(hover);
   const hoverBelow = hover === null ? 0 : countBelow(values, hover);
+  // The marks within a few pixels of the pointer, named in the readout.
+  const hoverMarks =
+    hoverX === null ? [] : marks.filter((m) => Math.abs(sx(clamp(m.value)) - hoverX) <= MARK_HIT).map((m) => m.label);
 
   return (
     <div ref={box} className="relative mt-2 select-none">
@@ -128,6 +137,19 @@ export function StandingChart({
             {units(t)}
           </text>
         ))}
+        {marks.map((m) => {
+          const x = clamp(m.value);
+          return (
+            <circle
+              key={m.label}
+              cx={sx(x)}
+              cy={sy(yAt(d, x))}
+              r={3.5}
+              strokeWidth={1.5}
+              className="fill-card stroke-ink"
+            />
+          );
+        })}
         {otherX !== null && otherY !== null && other && (
           <>
             {/* Another trader: above the viewer's label row, when there is one. */}
@@ -193,6 +215,7 @@ export function StandingChart({
             {units(hover)} {REP}
           </span>
           <span className="text-muted"> {Math.floor((100 * hoverBelow) / values.length)}% of traders have less</span>
+          {hoverMarks.length > 0 && <div>{hoverMarks.join(', ')}</div>}
         </div>
       )}
     </div>

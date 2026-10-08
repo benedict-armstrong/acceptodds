@@ -14,6 +14,7 @@ import { WORTH_NOTES } from '@/components/WorthTable';
 import { signedRep } from '@/lib/format';
 import { standingBand } from '@/lib/leaderboard';
 import { publicPositionPath } from '@/lib/links';
+import { authHref } from '@/lib/return-to';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { fieldSnapshot } from '@/server/field-snapshot';
@@ -48,6 +49,15 @@ export async function generateMetadata({ params }: { params: Promise<{ handle: s
   };
 }
 
+/** The viewer's rank against a bot's on the net-worth board (ties share a rank). */
+function versus(yours: number, its: number): string {
+  const r = (n: number) => `#${n.toLocaleString('en')}`;
+  if (yours === its) return `You are tied with it at ${r(yours)}.`;
+  return yours < its
+    ? `You are ahead of it, ${r(yours)} to its ${r(its)}.`
+    : `It is ahead of you, ${r(its)} to your ${r(yours)}.`;
+}
+
 const POSITION_STATE = { held: 'held', sold: 'sold', won: 'won', lost: 'lost', void: 'void' } as const;
 
 /**
@@ -79,6 +89,18 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
         {isViewer && (
           <div className="mt-1 font-sans text-[13px] text-muted">
             This is your public page, as everyone sees it. <Link href="/profile">your profile →</Link>
+          </div>
+        )}
+        {a.isBot && !isViewer && (
+          <div className="mt-2 font-sans text-sm text-muted">
+            <b className="text-ink">Can you beat this bot?</b>{' '}
+            {!viewer ? (
+              <>
+                <Link href={authHref('/signin', personPath(a.handle))}>Sign in</Link> to trade against it.
+              </>
+            ) : (
+              mine && row && <>{versus(mine.rank, row.rank)}</>
+            )}
           </div>
         )}
       </TraderHeader>

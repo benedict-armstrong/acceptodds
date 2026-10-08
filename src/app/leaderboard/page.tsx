@@ -7,11 +7,12 @@ import { Authors } from '@/components/Authors';
 import { BoardPicker } from '@/components/BoardPicker';
 import { GroupActions, NewGroupButton } from '@/components/Groups';
 import { Pager } from '@/components/Pager';
+import { Pnl, PnlToggleHeading, PnlToggleProvider } from '@/components/PnlToggle';
 import { FieldCurve } from '@/components/FieldCurve';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
-import { REP, rep, signedRep } from '@/lib/format';
+import { REP, rep } from '@/lib/format';
 import { leaderboardSegments, standingBand } from '@/lib/leaderboard';
 import { groupPath, institutionPath } from '@/lib/links';
 import { authHref } from '@/lib/return-to';
@@ -54,7 +55,8 @@ function one(v: string | string[] | undefined): string | undefined {
  * board (`?page=`). `?institution=` ranks one institution among itself,
  * `?group=` one group (#25); either opens like a paper, its members as the
  * author line, with its own Figure 1. `?q=` finds traders by name and
- * `institution:` (`lib/trader-query.ts`), each at their rank on the board.
+ * `institution:` and `is:bot` (`lib/trader-query.ts`; `is:bot` keeps the
+ * viewer's row too), each at their rank on the board.
  * The title names the board — "Global leaderboard" — and its name is a
  * find box over the boards (`BoardPicker`): global, the viewer's
  * institutions and groups, and any institution by name. "+ New group" sits
@@ -106,9 +108,18 @@ export default async function LeaderboardPage({
             new Date(),
           );
   const search = q === null ? null : parseTraderSearch(q);
-  const matches = (await matchingTraders(field, search?.name)).filter(
-    (r) => search === null || institutionsMatch(r.institutions, search),
-  );
+  const named = new Set(await matchingTraders(field, search?.name));
+  // `is:bot` keeps the viewer's own row too, whatever else the query says: the board as you against the bots.
+  const matches =
+    search === null
+      ? field
+      : field.filter(
+          (r) =>
+            (search.bots === true && r.accountId === viewer?.account.id) ||
+            (named.has(r) &&
+              institutionsMatch(r.institutions, search) &&
+              (search.bots === null || r.isBot === search.bots)),
+        );
   events.log('leaderboard.read', { accountId: viewer?.account.id ?? null });
 
   const me = viewer?.account.id ?? null;
@@ -145,6 +156,8 @@ export default async function LeaderboardPage({
     return s ? `/leaderboard?${s}` : '/leaderboard';
   };
   const where = group ? ` in ${group.name}` : institution ? ` at ${institution}` : '';
+  // The bots on the global board, circled on Figure 1 only when the search asks for them (`is:bot`).
+  const bots = board || search?.bots !== true ? [] : field.filter((r) => r.isBot);
   // The best figure in each column over the whole board, set in bold as a results table sets it.
   const best = bestOf(field);
 
@@ -228,7 +241,7 @@ export default async function LeaderboardPage({
           defaultValue={q ?? ''}
           maxLength={SEARCH_MAX_LENGTH}
           aria-label="Search traders"
-          placeholder="Find a trader by name, or institution:eth"
+          placeholder="Find a trader by name, institution:eth or is:bot"
           className="min-w-0 flex-1 border border-rule bg-card px-2 py-1.5 font-sans text-sm leading-[normal] placeholder:text-faint narrow:text-base focus:border-frame focus:outline-none"
         />
         <button
@@ -316,6 +329,7 @@ export default async function LeaderboardPage({
                 }
               : null
           }
+          marks={bots.map((r) => ({ handle: r.handle, worth: r.netWorthMicro }))}
         />
       )}
 
@@ -330,48 +344,64 @@ export default async function LeaderboardPage({
                 : 'No traders yet.'}
         </div>
       ) : (
-        <div className={ui.tableScroll}>
-          <table className={ui.table}>
-            {/* A paper's table caption sits above the table, its figure captions below. */}
-            <caption className={ui.tableCaption}>
-              <b>Table 1.</b> Traders{where}
-              {basis === 'net_worth' ? ' ranked by net worth' : ' ranked by settled profit'}
-              {q ? `, matching “${q}”` : ''}.
-              {signedIn ? ' Column leaders are bold.' : ` Only the top ${TOP} are shown.`}
-            </caption>
-            <thead>
-              <tr>
-                <th className={ui.th()}>#</th>
-                <th className={ui.th()}>Trader</th>
-                <th className={`${ui.th()}`}>Institutions</th>
-                {signedIn && (
+        <PnlToggleProvider>
+          <div className={ui.tableScroll}>
+            <table className={ui.table}>
+              {/* A paper's table caption sits above the table, its figure captions below. */}
+              <caption className={ui.tableCaption}>
+                <b>Table 1.</b> Traders{where}
+                {basis === 'net_worth' ? ' ranked by net worth' : ' ranked by settled profit'}
+                {q ? `, matching “${q}”` : ''}.
+                {signedIn ? ' Column leaders are bold.' : ` Only the top ${TOP} are shown.`}
+              </caption>
+              <thead>
+                <tr>
+                  <th className={ui.th()}>#</th>
+                  <th className={ui.th()}>Trader</th>
+                  <th className={`${ui.th()}`}>Institutions</th>
+                  {signedIn && (
+                    <th className={ui.th(true)}>
+                      Net worth<sup className={ui.mark}>a</sup>
+                    </th>
+                  )}
                   <th className={ui.th(true)}>
-                    Net worth<sup className={ui.mark}>a</sup>
+                    {signedIn ? (
+                      <>
+                        <PnlToggleHeading label="Unrealized P/L" />
+                        <sup className={ui.mark}>b</sup>
+                      </>
+                    ) : (
+                      'Unrealized P/L'
+                    )}
                   </th>
-                )}
-                <th className={ui.th(true)}>Unrealized P/L</th>
-              </tr>
-            </thead>
-            <tbody>
-              {segments.map((segment, i) => (
-                <Segment
-                  key={segment[0]?.accountId ?? i}
-                  rows={segment}
-                  gapBefore={i > 0}
-                  me={me}
-                  best={best}
-                  money={signedIn}
-                  focus={focus >= 0 ? field[focus].accountId : null}
-                  institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
-                  signInHref={authHref('/signin', href({}))}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+                </tr>
+              </thead>
+              <tbody>
+                {segments.map((segment, i) => (
+                  <Segment
+                    key={segment[0]?.accountId ?? i}
+                    rows={segment}
+                    gapBefore={i > 0}
+                    me={me}
+                    best={best}
+                    money={signedIn}
+                    focus={focus >= 0 ? field[focus].accountId : null}
+                    institutionHref={(name) => href({ institution: name, group: null, around: null, page: null })}
+                    signInHref={authHref('/signin', href({}))}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </PnlToggleProvider>
       )}
       {onScreen > 0 && signedIn && (
-        <TableNotes notes={[['a', 'Cash plus the proceeds from selling all holdings now.']]} />
+        <TableNotes
+          notes={[
+            ['a', 'Cash plus the proceeds from selling all holdings now.'],
+            ['b', <>Click the heading to toggle between % and absolute.</>],
+          ]}
+        />
       )}
       {!signedIn && onScreen > 0 && (
         <p className="mt-2 font-sans text-[13px] text-muted">
@@ -401,7 +431,7 @@ export default async function LeaderboardPage({
   );
 }
 
-type Best = { netWorth: bigint | null; unrealized: bigint | null };
+type Best = { netWorth: bigint | null; unrealized: bigint | null; unrealizedPct: string | null };
 
 /**
  * Each column's highest figure on the board, or null when nobody is above
@@ -412,9 +442,20 @@ function bestOf(field: readonly LeaderboardRow[]): Best {
     const m = field.reduce<bigint | null>((acc, r) => (acc === null || pick(r) > acc ? pick(r) : acc), null);
     return m !== null && m > 0n ? m : null;
   };
+  // The best gain as a share of its base, compared as fractions in integers: a/b > c/d ⇔ a·d > c·b (bases > 0).
+  const pct = field.reduce<LeaderboardRow | null>(
+    (acc, r) =>
+      r.openCostMicro > 0n &&
+      r.unrealizedPnlMicro > 0n &&
+      (acc === null || r.unrealizedPnlMicro * acc.openCostMicro > acc.unrealizedPnlMicro * r.openCostMicro)
+        ? r
+        : acc,
+    null,
+  );
   return {
     netWorth: max((r) => r.netWorthMicro),
     unrealized: max((r) => r.unrealizedPnlMicro),
+    unrealizedPct: pct?.accountId ?? null,
   };
 }
 
@@ -483,10 +524,15 @@ function Segment({
             {money ? (
               <>
                 <td className={`${ui.td} ${ui.num} ${bold(r.netWorthMicro, best.netWorth)}`}>{rep(r.netWorthMicro)}</td>
-                <td
-                  className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)} ${bold(r.unrealizedPnlMicro, best.unrealized)}`}
-                >
-                  {signedRep(r.unrealizedPnlMicro)}
+                <td className={`${ui.td} ${ui.num} ${ui.pnl(r.unrealizedPnlMicro)}`}>
+                  <Pnl
+                    micro={r.unrealizedPnlMicro}
+                    base={r.openCostMicro}
+                    best={{
+                      absolute: r.unrealizedPnlMicro === best.unrealized,
+                      percent: r.accountId === best.unrealizedPct,
+                    }}
+                  />
                 </td>
               </>
             ) : (

@@ -1,18 +1,23 @@
 /**
- * The leaderboard's search syntax: a name, plus `institution:` filters.
- * Pure and client-safe.
+ * The leaderboard's search syntax: a name, plus `institution:` and `is:bot`
+ * filters. Pure and client-safe.
  *
  *     ada institution:eth -institution:"ETH Zurich"
+ *     is:bot
  *
  * `institution:x` (aliases `inst:`, `i:`) keeps traders with an institution
  * containing `x`, case-insensitively; `-institution:x` or `institution!=x`
- * keeps those with none. Several filters all apply. Everything else is the
- * name, searched as before (`views.matchingTraders`). A key that is not
- * `institution` is part of the name. The filters only narrow the board: every
- * row keeps its rank in the field.
+ * keeps those with none. `is:bot` keeps the bots, and the page keeps the
+ * viewer's own row with them, so the board reads as you against the bots;
+ * `-is:bot` or `is!=bot` keeps everyone else. Several filters all apply.
+ * Everything else is the name, searched as before (`views.matchingTraders`).
+ * A key that is not `institution` or `is` is part of the name. The filters
+ * only narrow the board: every row keeps its rank in the field.
  */
 
 const ALIASES = new Set(['institution', 'inst', 'i']);
+const IS = 'is';
+const BOT = 'bot';
 const FIELD = /^(-?)([A-Za-z]+)(!=|:|=)/;
 
 export interface TraderSearch {
@@ -20,6 +25,8 @@ export interface TraderSearch {
   name: string | null;
   include: string[];
   exclude: string[];
+  /** `true` for `is:bot`, `false` for `-is:bot`, `null` when not asked. */
+  bots: boolean | null;
   /** One line per term that was dropped, for the page to show. */
   errors: string[];
 }
@@ -29,6 +36,7 @@ export function parseTraderSearch(input: string): TraderSearch {
   const include: string[] = [];
   const exclude: string[] = [];
   const errors: string[] = [];
+  let bots: boolean | null = null;
   let i = 0;
   const n = input.length;
   const isSpace = (c: string) => /\s/.test(c);
@@ -52,7 +60,12 @@ export function parseTraderSearch(input: string): TraderSearch {
     }
     const start = i;
     const head = FIELD.exec(input.slice(i));
-    if (head && ALIASES.has(head[2].toLowerCase())) {
+    if (head && head[2].toLowerCase() === IS) {
+      i += head[0].length;
+      const v = value().trim();
+      if (v.toLowerCase() !== BOT) errors.push(`“${input.slice(start, i)}”: only is:bot`);
+      else bots = (head[1] === '-') === (head[3] === '!=');
+    } else if (head && ALIASES.has(head[2].toLowerCase())) {
       i += head[0].length;
       const v = value().trim();
       if (v === '') errors.push(`“${input.slice(start, i)}”: no value`);
@@ -63,7 +76,7 @@ export function parseTraderSearch(input: string): TraderSearch {
     }
   }
   const name = words.join(' ').trim();
-  return { name: name === '' ? null : name, include, exclude, errors };
+  return { name: name === '' ? null : name, include, exclude, bots, errors };
 }
 
 /** Whether a trader's institutions pass the search's filters. */

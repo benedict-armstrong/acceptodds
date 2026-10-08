@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clip, clock, day, dayMonth, payoutReturn, shares } from '@/lib/format';
+import { clip, clock, day, dayMonth, payoutReturn, shares, signedPctOf } from '@/lib/format';
 
 describe('payoutReturn', () => {
   it('is a multiple once the payout at least doubles the cost', () => {
@@ -14,6 +14,19 @@ describe('payoutReturn', () => {
 
   it('has nothing to say about a zero cost', () => {
     expect(payoutReturn(1n, 0n)).toBeNull();
+  });
+});
+
+describe('signedPctOf', () => {
+  it('signs a change as a share of its base', () => {
+    expect(signedPctOf(5_000_000n, 100_000_000n)).toBe('+5.0%');
+    expect(signedPctOf(-12_340_000n, 100_000_000n)).toBe('−12.3%');
+    expect(signedPctOf(0n, 100_000_000n)).toBe('+0.0%');
+  });
+
+  it('has no percentage without a positive base', () => {
+    expect(signedPctOf(5_000_000n, 0n)).toBe('—');
+    expect(signedPctOf(5_000_000n, -1n)).toBe('—');
   });
 });
 

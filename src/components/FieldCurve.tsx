@@ -20,6 +20,7 @@ export function FieldCurve({
   you,
   label,
   other = null,
+  marks = [],
   of,
 }: {
   field: FieldSnapshot;
@@ -32,6 +33,8 @@ export function FieldCurve({
   label: string | null;
   /** The trader the board is focused on (`?around=`), when that is not the viewer. */
   other?: { handle: string; worth: bigint; label: string } | null;
+  /** More traders to mark as open circles, named on hover: the bots, on the global board. */
+  marks?: readonly { handle: string; worth: bigint }[];
 }) {
   const worths = field.worthsMicro;
   if (worths.length < 2) return null;
@@ -44,12 +47,14 @@ export function FieldCurve({
         you={you === null ? null : toUnits(you)}
         label={label}
         other={other && { value: toUnits(other.worth), label: other.label }}
+        marks={marks.map((m) => ({ value: toUnits(m.worth), label: `@${m.handle}` }))}
       />
       <p className={ui.caption}>
         <b>Figure 1.</b> Net worth of {of ?? 'all traders'}, if each sold everything now
         {of ? '.' : `, as of ${ago(field.computedAt)} ago.`}
         {you !== null && ' The shaded part is everyone below you.'}
         {other && ` The dashed line is @${other.handle}.`}
+        {marks.length > 0 && ` Open circles are bots; hover one to name it.`}
       </p>
     </section>
   );

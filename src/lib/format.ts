@@ -43,6 +43,16 @@ export function shares(micro: string | bigint, maxDecimals = 6): string {
   return `${neg ? '−' : ''}${group((abs / MICRO).toString())}${frac ? '.' + frac : ''}`;
 }
 
+/**
+ * A change as a share of its base: "+5.0%", "−5.0%", "+0.0%". A float, for
+ * display only; "—" when the base is zero or less, as nothing is at stake.
+ */
+export function signedPctOf(changeMicro: bigint, baseMicro: bigint): string {
+  if (baseMicro <= 0n) return '—';
+  const size = changeMicro < 0n ? -changeMicro : changeMicro;
+  return `${changeMicro < 0n ? '−' : '+'}${((Number(size) / Number(baseMicro)) * 100).toFixed(1)}%`;
+}
+
 /** 0.6213 -> "62%"; `precise` -> "62.1%". */
 export function pct(p: number, precise = false): string {
   if (precise) return `${(p * 100).toFixed(1)}%`;

@@ -1306,7 +1306,11 @@ unpaginated, and 5 s for that search.
   `?q=` also takes `institution:x` (`inst:`, `i:`, `-` or `!=` to
   exclude; `lib/trader-query.ts`), a case-insensitive substring of any of
   a trader's institutions — a filter like the name, not `?institution=`'s
-  ranking among itself. The API's `?q=` is still only a name. Institution is
+  ranking among itself. `is:bot` keeps the bots and the viewer's own row
+  (`-is:bot` the rest).
+  The table's unrealized P/L is a percentage of `openCostMicro` (what open
+  holdings cost net of sales; "—" when sales returned it) by default, `REP`
+  on a click of the heading (`components/PnlToggle`). The API's `?q=` is still only a name. Institution is
   matched exactly against any of a trader's `institutions`, so a trader
   with two affiliations is ranked at both.
 - **The page opens compact**: the top 10, a "…", the viewer (or
@@ -1354,6 +1358,9 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   trader's liquidation net worth (never a mark), and for a signed-in
   viewer the part below them shaded and a line at their exact figure from the board; the `?around=` trader, when not
   the viewer, a dashed line, unshaded. Floats there are for plotting only.
+  On the global board under `is:bot`, every bot is an open circle on the
+  curve, named on hover. A bot's `/people/<handle>` asks "Can you beat this bot?" with the
+  viewer's rank against its own.
 - **The ranked field is cached in process** (`views.rankedField`, per
   basis, frozen rows — never mutate them): the leaderboard and its API need
   exact live ranks, so it is invalidated, not aged. `server/standings-cache.ts`

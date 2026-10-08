@@ -9,7 +9,7 @@ import { SellModal } from '@/components/SellModal';
 import { SharePositionModal } from '@/components/SharePosition';
 import { TableNotes } from '@/components/TableNotes';
 import { ui } from '@/components/ui';
-import { pct, rep, REP } from '@/lib/format';
+import { pct, rep, REP, signedPctOf } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 
 type Holding = z.output<typeof S.Holding>;
@@ -24,9 +24,7 @@ function formatChange(h: Holding, absolute: boolean): string {
   const c = change(h);
   const sign = c < 0n ? '−' : '+';
   const size = c < 0n ? -c : c;
-  if (absolute) return `${sign}${rep(size)} ${REP}`;
-  const basis = BigInt(h.costBasisMicro);
-  return basis > 0n ? `${sign}${((Number(size) / Number(basis)) * 100).toFixed(1)}%` : '—';
+  return absolute ? `${sign}${rep(size)} ${REP}` : signedPctOf(c, BigInt(h.costBasisMicro));
 }
 
 /** What the payout is as a multiple of the stake, `(7.9×)`; nothing without a cost basis. */

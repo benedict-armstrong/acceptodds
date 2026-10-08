@@ -43,6 +43,12 @@ export interface Valuation {
    * was already sold.
    */
   unrealizedPnlMicro: bigint;
+  /**
+   * `−Σ trade ledger rows on markets not yet settled`: what the open
+   * holdings cost net of sales, the base unrealized P&L is a percentage of.
+   * Zero or less when sales have already returned the stake.
+   */
+  openCostMicro: bigint;
   /** Σ `trade` + `settlement` ledger rows on settled markets. */
   realizedPnlMicro: bigint;
   /** Distinct settled markets the account traded in. */
@@ -171,6 +177,7 @@ export async function valuations(
       holdingsValueMicro: value,
       netWorthMicro: account.balanceMicro + value,
       unrealizedPnlMicro: value + (f?.openTradeMicro ?? 0n),
+      openCostMicro: -(f?.openTradeMicro ?? 0n),
       realizedPnlMicro: f?.realizedMicro ?? 0n,
       settledMarkets: f?.settledMarkets ?? 0,
     });
@@ -201,6 +208,7 @@ async function readValuation(accountId: string, database: Database): Promise<Val
     holdingsValueMicro,
     netWorthMicro: snapshot.account.balanceMicro + holdingsValueMicro,
     unrealizedPnlMicro: holdingsValueMicro + (flow?.openTradeMicro ?? 0n),
+    openCostMicro: -(flow?.openTradeMicro ?? 0n),
     realizedPnlMicro: flow?.realizedMicro ?? 0n,
     settledMarkets: flow?.settledMarkets ?? 0,
   };
