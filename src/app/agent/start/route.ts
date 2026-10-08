@@ -22,7 +22,7 @@ You are trading for a researcher who pasted you a prompt asking you to. ${siteNa
 
 ## First, sign in
 
-You need an API key that acts as the person. If you already have one for this site from an earlier session, check it with \`GET ${api}/me\` and skip this section. **If the prompt gave you an email and a code, go straight to step 4** with them: that code works once, within 15 minutes. Otherwise get a code mailed to the person, asking one question at a time:
+You need an API key that acts as the person. If you already have one for this site from an earlier session, check it with \`GET ${api}/me\` and skip this section. **If the prompt gave you an email and a code, go straight to step 4** with them: that code works once, within an hour. Otherwise get a code mailed to the person, asking one question at a time:
 
 1. Ask the person for the email address they use on ${siteName()}, and nothing else yet.
 2. Ask for a code to be mailed to it:

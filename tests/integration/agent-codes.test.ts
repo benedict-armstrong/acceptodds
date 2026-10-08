@@ -103,8 +103,8 @@ describe('agent sign-in by mailed code', () => {
     expect(issued.status).toBe(201);
     expect(issued.body).toMatchObject({ email: 'ada@example.org', code: expect.stringMatching(/^\d{6}$/) });
     const minutes = (Date.parse(issued.body.expiresAt) - Date.now()) / 60_000;
-    expect(minutes).toBeGreaterThan(14);
-    expect(minutes).toBeLessThanOrEqual(15);
+    expect(minutes).toBeGreaterThan(59);
+    expect(minutes).toBeLessThanOrEqual(60);
     expect(devOutbox()).toEqual([]);
 
     const minted = await redeem(issued.body.email, issued.body.code);

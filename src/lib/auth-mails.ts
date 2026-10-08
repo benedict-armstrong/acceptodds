@@ -40,7 +40,7 @@ export function existingAccountMail(code: string, url: string): RenderedMail {
       {
         kind: 'p',
         text:
-          'Your bet is waiting there. The code works for an hour, the link once, for 15 minutes. ' +
+          'Your bet is waiting there. The code and the link work for an hour, the link once. ' +
           'If you did not ask for this, ignore it; nothing has changed.',
       },
     ],
@@ -56,7 +56,7 @@ export function magicLinkMail(url: string): RenderedMail {
       { kind: 'link', label: 'Sign in', url },
       {
         kind: 'p',
-        text: 'It works once, for 15 minutes. If you did not ask for it, ignore this; nothing has changed.',
+        text: 'It works once, for an hour. If you did not ask for it, ignore this; nothing has changed.',
       },
     ],
   });

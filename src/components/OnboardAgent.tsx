@@ -32,7 +32,7 @@ async function copyWhenReady(pending: Promise<string>): Promise<boolean> {
 /**
  * `[onboard your agent]`: copies `lib/agent-prompt.ts`'s prompt for the
  * viewer's AI agent. Signed in, the prompt carries a one-time code for an
- * API key (`POST /api/v1/me/agent-code`, a new one each press, 15 minutes),
+ * API key (`POST /api/v1/me/agent-code`, a new one each press, an hour),
  * so the agent signs in without a mail; signed out, the agent signs in by a
  * code mailed to the person (`/agent/start`). Where there is no clipboard,
  * the prompt is shown to copy by hand.

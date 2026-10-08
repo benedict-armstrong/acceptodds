@@ -55,7 +55,7 @@ export const EMAIL_DOMAIN_NOT_ALLOWED = 'EMAIL_DOMAIN_NOT_ALLOWED';
 const CONFIRMATION_TTL_SECONDS = 60 * 60;
 
 /** How long a sign-in link stays valid: it is a credential on its own. */
-const MAGIC_LINK_TTL_SECONDS = 15 * 60;
+const MAGIC_LINK_TTL_SECONDS = 60 * 60;
 
 /**
  * Sign-in links per address: 5, refilling over a day. The route is

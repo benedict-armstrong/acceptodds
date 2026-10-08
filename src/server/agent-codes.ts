@@ -33,7 +33,7 @@ import { mintToken, type MintedToken } from './tokens';
 /** How long a mailed code works. */
 export const MAILED_TTL_MS = 30 * 60 * 1000;
 /** How long a code in a signed-in person's prompt works. */
-export const PROMPT_TTL_MS = 15 * 60 * 1000;
+export const PROMPT_TTL_MS = 60 * 60 * 1000;
 /** Wrong guesses allowed against one code; then it is gone. */
 export const MAX_ATTEMPTS = 5;
 /** Agent-code mails per address: 5, refilling over a day, like sign-in links. */

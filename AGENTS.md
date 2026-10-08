@@ -491,8 +491,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   allowlist and a per-address budget (`magic-link-mail:<email>`, 5 a day)
   are checked in `sendMagicLink`, before any mail, so an unlisted address
   is a 422 on the page, never a dead link; otherwise the answer is the same
-  whether or not the address has an account. A link works once, 15
-  minutes. **Every sign-in and confirmation mail links to `/signin/link`,
+  whether or not the address has an account. A link works once, an
+  hour. **Every sign-in and confirmation mail links to `/signin/link`,
   never to Better Auth's `/magic-link/verify` or `/verify-email`**
   (`links.mailLinkUrl`, `?to=` naming which): the first spends its token
   on a GET and the second confirms and signs in whoever opens it, and
@@ -1286,7 +1286,7 @@ unpaginated, and 5 s for that search.
   button on its last step, for anyone; `/profile`'s API keys) copies
   `lib/agent-prompt.ts`'s prompt, which has the agent ask one thing at a
   time. **Signed in, the prompt carries the login address and a one-time
-  code** (`POST /me/agent-code`, session-only, 15 minutes, a new one each
+  code** (`POST /me/agent-code`, session-only, an hour, a new one each
   press), which the agent redeems at once, then asks which papers the person finds interesting
   and how to trade. Signed out, it asks for the email, and while
   the mailed code (below) is on its way, for the papers and how to trade,

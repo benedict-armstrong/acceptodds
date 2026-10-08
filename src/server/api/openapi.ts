@@ -917,7 +917,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['agents'],
       summary: 'A one-time code for your own AI agent',
       description:
-        'For a signed-in person handing their agent a prompt: a 6-digit code and your login address, which the agent redeems at `POST /agent/token` with no mail. Works once, for 15 minutes; asking again replaces it.',
+        'For a signed-in person handing their agent a prompt: a 6-digit code and your login address, which the agent redeems at `POST /agent/token` with no mail. Works once, for an hour; asking again replaces it.',
       ok: { status: 201, schema: S.AgentPromptCode, description: 'The code.' },
     }),
   );

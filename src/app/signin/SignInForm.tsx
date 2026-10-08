@@ -150,7 +150,7 @@ export function SignInForm({ next }: { next: string }) {
       )}
       {linkSent && (
         <div className={ui.note(true)}>
-          Sent to <b>{linkSent}</b>. Open the link in it to sign in; it works for 15 minutes. No account yet? The link
+          Sent to <b>{linkSent}</b>. Open the link in it to sign in; it works for an hour. No account yet? The link
           makes one.
         </div>
       )}

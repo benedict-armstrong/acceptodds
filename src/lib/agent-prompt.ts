@@ -7,7 +7,7 @@ export const AGENT_KEY_NAME = 'ai-agent';
 /**
  * The prompt `[onboard your agent]` copies. It has the agent ask one thing at
  * a time. Signed in, it carries the person's login address and a one-time
- * code (`POST /me/agent-code`, 15 minutes), which the agent redeems straight
+ * code (`POST /me/agent-code`, an hour), which the agent redeems straight
  * away before asking which papers they find interesting and how to trade.
  * Signed out, the agent asks for the email first and, while the person waits
  * for the mailed code (`server/agent-codes.ts`), for those papers and how to trade, then
@@ -24,7 +24,7 @@ Then talk me through it, asking one question at a time and waiting for each answ
   if (signIn) {
     return `${intro}
 
-1. Sign in now: exchange this one-time code for an API key as the instructions say (POST /api/v1/agent/token). It works once, within 15 minutes.
+1. Sign in now: exchange this one-time code for an API key as the instructions say (POST /api/v1/agent/token). It works once, within an hour.
    email: ${signIn.email}
    code: ${signIn.code}
 2. Ask me which papers I find interesting, maybe my own (titles or links). Suggest a few interesting related papers.
