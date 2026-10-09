@@ -21,7 +21,6 @@ import { SignUpEmail } from '@/components/SignUpEmail';
 import { ui } from '@/components/ui';
 import { marketHref } from '@/lib/links';
 import { WELCOMED_COOKIE } from '@/lib/onboarding';
-import { rememberVenue } from '@/lib/venue';
 import { venue } from '@/venues';
 import { rememberPending } from '@/lib/pending-confirmation';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
@@ -144,9 +143,8 @@ export function Welcome({
     window.history.pushState(null, '', href(s));
   }
 
-  /** Search another venue: remembered for next time, and read again on the server for its papers. */
+  /** Search another venue, read again on the server for its papers; the page remembers it (`RememberVenue`). */
   function chooseVenue(venue: string) {
-    rememberVenue(venue);
     router.replace(href('search', venue));
   }
 

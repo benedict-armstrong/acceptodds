@@ -140,7 +140,10 @@ field curve — is one venue's.
 - A venue's leaderboard field is the non-house accounts with a wallet in
   it: who has traded there. A page with no venue of its own (navbar,
   profile, `/people`) uses `currentVenue()` (`server/current-venue.ts`:
-  the `venue` cookie, else `DEFAULT_MARKET_KIND`).
+  the `venue` cookie, else `DEFAULT_MARKET_KIND`). Picking a venue on the
+  home page or `/welcome` sets the cookie in `RememberVenue`, which
+  refreshes the page when the navbar was drawn in another venue: the root
+  layout is not rendered again on a client navigation.
 - `drizzle/0040` split pre-existing balances by replaying the ledger: each
   row went to its market's venue, rows with no market to the venue of the
   account's first order, every further venue got its own grant, and a

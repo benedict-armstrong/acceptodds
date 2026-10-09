@@ -10,6 +10,8 @@ import { openMarketTemplate } from '@/server/market-templates';
 import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
+import { RememberVenue } from '@/components/RememberVenue';
 import { browseListings, listingViews, marketView, resolveListing, resolveMarket, sparklines } from '@/server/views';
 import { Welcome, type Chosen } from './Welcome';
 
@@ -61,29 +63,35 @@ export default async function WelcomePage({
   const suggestions = (await listingViews(listed)).map(presentListing) as Listing[];
   const sparks = Object.fromEntries(await sparklines(rows.flatMap((r) => (r.main ? [r.main] : []))));
 
+  // A venue picked here (`?kind=`) is remembered, and moves the navbar to it.
+  const picked = params.kind !== undefined && params.kind === kind;
+  const stale = viewer !== null && kind !== (await currentVenue());
   return (
-    <Welcome
-      kind={kind}
-      venues={choosable}
-      next={safeReturnTo(params.next)}
-      suggestions={suggestions}
-      sparks={sparks}
-      // A paper with no market opens one at JEV's price when picked: while its kind's template is open,
-      // for a visitor or a viewer who may trade (the call's own gate).
-      canOpen={
-        openMarketTemplate(kind) !== null && (!viewer || viewer.account.isBot || viewer.account.verifiedAt !== null)
-      }
-      chosen={chosen}
-      viewer={
-        viewer
-          ? {
-              signedIn: true,
-              canTrade: viewer.account.isBot || viewer.account.verifiedAt !== null,
-              cashMicro: (await cashIn(viewer.account.id, kind)).toString(),
-            }
-          : { signedIn: false, canTrade: false, cashMicro: startingBalanceMicro().toString() }
-      }
-    />
+    <>
+      {picked && <RememberVenue kind={kind} stale={stale} />}
+      <Welcome
+        kind={kind}
+        venues={choosable}
+        next={safeReturnTo(params.next)}
+        suggestions={suggestions}
+        sparks={sparks}
+        // A paper with no market opens one at JEV's price when picked: while its kind's template is open,
+        // for a visitor or a viewer who may trade (the call's own gate).
+        canOpen={
+          openMarketTemplate(kind) !== null && (!viewer || viewer.account.isBot || viewer.account.verifiedAt !== null)
+        }
+        chosen={chosen}
+        viewer={
+          viewer
+            ? {
+                signedIn: true,
+                canTrade: viewer.account.isBot || viewer.account.verifiedAt !== null,
+                cashMicro: (await cashIn(viewer.account.id, kind)).toString(),
+              }
+            : { signedIn: false, canTrade: false, cashMicro: startingBalanceMicro().toString() }
+        }
+      />
+    </>
   );
 }
 

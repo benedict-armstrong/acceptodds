@@ -25,6 +25,7 @@ import { REPO_URL } from '@/lib/links';
 import { parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import { startingBalanceMicro } from '@/server/accounts';
 import * as events from '@/server/events';
 import {
@@ -183,6 +184,8 @@ export default async function Home({
   // One row per listing (a paper), read from its main market; plus one per
   // market that belongs to no listing. Each section is paged in the database.
   const viewer = await viewerFromHeaders(await headers());
+  // The venue the navbar was drawn in, to refresh it when another is picked here.
+  const navVenue = await currentVenue();
   // ?following=1: only papers the signed-in viewer follows.
   const onlyFollowed = viewer !== null && one(sp.following) === '1';
   const me = viewer?.account.id ?? null;
@@ -265,8 +268,8 @@ export default async function Home({
 
   return (
     <main className={ui.page}>
-      {/* A venue picked here is the one `/welcome` searches first. */}
-      {wanted && venue(wanted) && <RememberVenue kind={wanted} />}
+      {/* A venue picked here is the one `/welcome` searches first, and the navbar's. */}
+      {wanted && venue(wanted) && <RememberVenue kind={wanted} stale={viewer !== null && wanted !== navVenue} />}
       {/* The logo, from any other page, comes back to this list as it is now. */}
       <RememberHomeSearch />
       <TitleBlock
