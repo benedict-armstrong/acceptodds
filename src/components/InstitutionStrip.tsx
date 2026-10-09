@@ -1,18 +1,26 @@
 /** An institution is named only once this many traders are from it, so no one person makes it show. */
 const MIN_TRADERS = 2;
 
+/** A copy of `items` in random order (Fisher–Yates). */
+function shuffle<T>(items: readonly T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 /**
  * "Join traders from" and a slow strip of institution names, under the home
- * page's title, most traders first. Names, not logos: a logo reads as an
- * endorsement the institution never gave. Pure CSS: the row is drawn twice
- * and slid by half its width, so it loops without a seam. Under reduced
- * motion it stands still (the second copy is then hidden).
+ * page's title, in a fresh random order on every render. Names, not logos:
+ * a logo reads as an endorsement the institution never gave. Pure CSS: the
+ * row is drawn twice and slid by half its width, so it loops without a
+ * seam. Under reduced motion it stands still (the second copy is then
+ * hidden).
  */
 export function InstitutionStrip({ institutions }: { institutions: { name: string; traders: number }[] }) {
-  const names = institutions
-    .filter((i) => i.traders >= MIN_TRADERS)
-    .sort((a, b) => b.traders - a.traders || a.name.localeCompare(b.name))
-    .map((i) => i.name);
+  const names = shuffle(institutions.filter((i) => i.traders >= MIN_TRADERS).map((i) => i.name));
   if (names.length < 4) return null;
   const row = (copy: number) => (
     <ul

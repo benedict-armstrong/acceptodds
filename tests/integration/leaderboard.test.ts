@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { accounts, fieldSnapshots, ledgerEntries } from '@/db/schema';
 import { createAccount, createHouse } from '@/server/accounts';
+import { createMarket, trade } from '@/server/engine';
 import { fieldSnapshot, refreshFieldSnapshot } from '@/server/field-snapshot';
 import { invalidateStandings } from '@/server/standings-cache';
 import { leaderboardStandings, searchPeople, standingOf } from '@/server/views';
@@ -143,10 +144,36 @@ describe('the cached field', () => {
 });
 
 describe('the shared field snapshot', () => {
+  it('draws only accounts that have placed an order', async () => {
+    await db.delete(fieldSnapshots);
+    const untraded = await refreshFieldSnapshot();
+    expect(untraded.worthsMicro).toEqual([]);
+    expect(untraded.curve).toEqual([]);
+
+    // Two fixture traders buy; the other three still have never traded.
+    const market = await createMarket({
+      slug: 'field-snapshot',
+      question: 'Will it?',
+      outcomes: ['YES', 'NO'],
+      closesAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      startingBalanceMicro: 1000n * UNIT,
+      expectedTraders: 10,
+    });
+    const field = await leaderboardStandings({ basis: 'net_worth' });
+    const idOf = (handle: string) => field.find((r) => r.handle === handle)!.accountId;
+    for (const handle of ['ada', 'bengio']) {
+      await trade(idOf(handle), market.marketId, market.outcomeIds[0], UNIT, 10n * UNIT);
+    }
+    const traded = await leaderboardStandings({ basis: 'net_worth' });
+    const worthOf = (handle: string) => traded.find((r) => r.handle === handle)!.netWorthMicro;
+    await db.delete(fieldSnapshots);
+    expect((await refreshFieldSnapshot()).worthsMicro).toEqual([worthOf('bengio'), worthOf('ada')]);
+  });
+
   it('is computed once, stored, and shared until it is old', async () => {
     await db.delete(fieldSnapshots);
     const first = await fieldSnapshot();
-    expect(first.worthsMicro).toEqual([300n, 300n, 400n, 500n, 600n].map((u) => u * UNIT));
+    expect(first.worthsMicro).toHaveLength(2);
     expect(first.curve).toHaveLength(120);
     expect(Math.max(...first.curve)).toBeCloseTo(1);
     expect(first.domain[0]).toBeLessThan(300);

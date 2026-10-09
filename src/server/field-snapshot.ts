@@ -4,7 +4,7 @@ import { fieldSnapshots } from '@/db/schema';
 import { density } from '@/lib/distribution';
 import { microToFloat } from '@/lib/money';
 import { ReadCache } from './read-cache';
-import { leaderboardStandings } from './views';
+import { leaderboardStandings, tradedAccountIds, type LeaderboardRow } from './views';
 
 /**
  * The field's shape for the "where you stand" curves (navbar, portfolio),
@@ -26,7 +26,7 @@ export const CURVE_POINTS = 120;
 
 export interface FieldSnapshot {
   computedAt: Date;
-  /** Every non-house trader's net worth at liquidation value, ascending. */
+  /** Every non-house trader's net worth at liquidation value, ascending — only those who have placed an order. */
   worthsMicro: bigint[];
   /** Kernel density at evenly spaced points across `domain`, peaking at 1. Empty for an empty field. */
   curve: number[];
@@ -88,6 +88,19 @@ export function shapeOf(worths: readonly bigint[], computedAt: Date): FieldSnaps
   return { computedAt, worthsMicro, curve, domain };
 }
 
+/**
+ * The net worths a curve draws: only accounts that have placed at least one
+ * order. An account that never traded sits at its starting balance, and a
+ * crowd of them there would swamp the shape of those who did.
+ */
+export async function tradedWorths(rows: readonly LeaderboardRow[], database: Database = getDb()): Promise<bigint[]> {
+  const traded = await tradedAccountIds(
+    rows.map((r) => r.accountId),
+    database,
+  );
+  return rows.filter((r) => traded.has(r.accountId)).map((r) => r.netWorthMicro);
+}
+
 let refreshing: Promise<FieldSnapshot> | null = null;
 
 /**
@@ -106,10 +119,7 @@ async function computeAndStore(database: Database): Promise<FieldSnapshot> {
   // Stamped before reading, so the stamp never claims more freshness than the data has.
   const computedAt = new Date();
   const field = await leaderboardStandings({ basis: BASIS }, database);
-  const { worthsMicro, curve, domain } = shapeOf(
-    field.map((r) => r.netWorthMicro),
-    computedAt,
-  );
+  const { worthsMicro, curve, domain } = shapeOf(await tradedWorths(field, database), computedAt);
   const values = { computedAt, worthsMicro, curve, domainLo: domain[0], domainHi: domain[1] };
   await database
     .insert(fieldSnapshots)

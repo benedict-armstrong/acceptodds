@@ -466,7 +466,7 @@ export async function profileImage(p: ProfilePreview): Promise<ImageResponse> {
             )}
           </svg>
           <div style={{ display: 'flex', marginTop: 14, fontSize: 24, color: MUTED }}>
-            {`Net worth of all ${p.field.worthsMicro.length.toLocaleString('en')} traders, if each sold everything now.`}
+            {`Net worth of all ${p.field.worthsMicro.length.toLocaleString('en')} traders who have placed an order, if each sold everything now.`}
           </div>
         </div>
       )}

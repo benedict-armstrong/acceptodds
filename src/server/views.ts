@@ -1827,6 +1827,19 @@ export async function hasTraded(accountId: string, database: Database = getDb())
   return row !== undefined;
 }
 
+/** Which of `accountIds` have ever placed an order: the field curves draw only those. */
+export async function tradedAccountIds(
+  accountIds: readonly string[],
+  database: Database = getDb(),
+): Promise<Set<string>> {
+  if (accountIds.length === 0) return new Set();
+  const rows = await database
+    .selectDistinct({ accountId: orders.accountId })
+    .from(orders)
+    .where(inArray(orders.accountId, [...accountIds]));
+  return new Set(rows.map((r) => r.accountId));
+}
+
 /**
  * The earliest order an account ever placed, for the first-trade page: what
  * it staked, on which outcome of which market, and how it moved that

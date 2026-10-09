@@ -1436,7 +1436,7 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   updates never extend the full valuation's 30 s lifetime.
 - **The curves share one snapshot**, `field_snapshots`
   (`server/field-snapshot.ts`), since the field's shape is the same for
-  everyone: every trader's net worth, sorted, as `BIGINT` micro, and its
+  everyone: the net worth of every trader who has placed an order, sorted, as `BIGINT` micro, and its
   density at 120 points, peaking at 1. Recomputed at most every
   `FIELD_SNAPSHOT_MAX_AGE_SECONDS` (300), stale-while-revalidate: an old row
   is served at once and one background refresh starts; only a missing row

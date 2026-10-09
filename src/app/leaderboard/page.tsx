@@ -21,7 +21,7 @@ import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
 import { startingBalanceMicro } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
-import { fieldSnapshot, shapeOf } from '@/server/field-snapshot';
+import { fieldSnapshot, shapeOf, tradedWorths } from '@/server/field-snapshot';
 import { groupById, groupMembersOf, groupsOf, roleIn } from '@/server/groups';
 import {
   leaderboardStandings,
@@ -104,10 +104,7 @@ export default async function LeaderboardPage({
       ? null
       : byWorth === null
         ? await fieldSnapshot()
-        : shapeOf(
-            byWorth.map((r) => r.netWorthMicro),
-            new Date(),
-          );
+        : shapeOf(await tradedWorths(byWorth), new Date());
   const search = q === null ? null : parseTraderSearch(q);
   const named = new Set(await matchingTraders(field, search?.name));
   // `is:bot` keeps the viewer's own row too, whatever else the query says: the board as you against the bots.
@@ -314,9 +311,9 @@ export default async function LeaderboardPage({
           field={snapshot}
           of={
             group
-              ? `the ${snapshot.worthsMicro.length.toLocaleString('en')} members of ${group.name}`
+              ? `the ${snapshot.worthsMicro.length.toLocaleString('en')} members of ${group.name} who have traded`
               : institution
-                ? `the ${snapshot.worthsMicro.length.toLocaleString('en')} traders at ${institution}`
+                ? `the ${snapshot.worthsMicro.length.toLocaleString('en')} traders at ${institution} who have traded`
                 : undefined
           }
           you={mine >= 0 ? field[mine].netWorthMicro : null}
