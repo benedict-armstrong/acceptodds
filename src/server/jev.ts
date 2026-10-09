@@ -9,7 +9,8 @@ import type { MarketTemplate } from './market-templates';
  * (`/v1/decisions`, the same model `../scraping` ranks related papers with),
  * over the paper's full text when `../research` supplied it,
  * asked once, when the listing's market is opened
- * (`server/market-start.ts`). The only model call the platform makes.
+ * (`server/market-start.ts`), and read only as a rank ({@link ranked}).
+ * The only model call the platform makes.
  *
  * `null` whenever there is no answer — no key, a timeout, an error, a reply
  * of the wrong shape — and the caller opens at the template's fallback. A
@@ -22,62 +23,149 @@ export async function jevPrices(
 ): Promise<number[] | null> {
   const key = process.env.NANOGPT_API_KEY;
   if (!key) return null;
-  const labels = template.outcomes;
   try {
     const [full] = await database
       .select({ body: listingTexts.body })
       .from(listingTexts)
       .where(eq(listingTexts.listingId, listing.id));
-    const ask = (text: string) =>
-      fetch(process.env.JEV_URL ?? 'https://nano-gpt.com/api/v1/decisions', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          model: process.env.JEV_MODEL ?? 'typesafe/jev-1.13',
-          state: { paper: text },
-          questions: {
-            decision: {
-              type: 'choice',
-              instructions: template.jev.instructions,
-              criteria: Object.fromEntries(labels.map((l, i) => [l, template.jev.criteria[i]])),
-            },
-          },
-        }),
-        signal: AbortSignal.timeout(JEV_TIMEOUT_MS),
-      });
-    let res = await ask(paperText(listing, full?.body ?? null));
-    // A full text past JEV's context is refused outright (a 400): the abstract still gets an answer.
-    if (res.status === 400 && full) res = await ask(paperText(listing, null));
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const body = (await res.json()) as {
-      answers?: { decision?: { probabilities?: Record<string, unknown> } };
-      usage?: { cost?: unknown };
-    };
-    await recordCost(body.usage?.cost, database);
-    const p = body.answers?.decision?.probabilities;
-    const raw = labels.map((l) => Number(p?.[l]));
-    if (raw.some((x) => !Number.isFinite(x) || x < 0)) throw new Error(`unexpected answer ${JSON.stringify(p)}`);
-    const prices = calibrated(raw, template.jev.typical, template.fallbackPrices);
-    return prices && floored(prices);
+    const answer = await askJev(listing, full?.body ?? null, template, key);
+    await recordCost(answer.cost, database);
+    return ranked(answer.raw, template.jev.reference[answer.read], template.fallbackPrices, template.jev.spread);
   } catch (err) {
     console.error('jev: no opening prices, using the fallback:', err);
     return null;
   }
 }
 
+/** What JEV read: the full text, or the abstract when there is none or the full text was refused. */
+export type JevRead = 'fullText' | 'abstract';
+
+/**
+ * One question to JEV about a listing, as {@link jevPrices} asks it (also `scripts/measure-jev-reference.ts`,
+ * which must ask exactly the same way): its raw answer, one number per outcome, what it read, and what it
+ * cost. Throws on anything but a well-formed answer.
+ */
+export async function askJev(
+  listing: Pick<Listing, 'title' | 'summary' | 'keywords' | 'primaryArea'>,
+  fullText: string | null,
+  template: Pick<MarketTemplate, 'outcomes'> & {
+    jev: Pick<NonNullable<MarketTemplate['jev']>, 'instructions' | 'criteria'>;
+  },
+  key: string,
+  timeoutMs = JEV_TIMEOUT_MS,
+): Promise<{ raw: number[]; read: JevRead; cost: unknown }> {
+  const labels = template.outcomes;
+  const ask = (text: string) =>
+    fetch(process.env.JEV_URL ?? 'https://nano-gpt.com/api/v1/decisions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.JEV_MODEL ?? JEV_MODEL,
+        state: { paper: text },
+        questions: {
+          decision: {
+            type: 'choice',
+            instructions: template.jev.instructions,
+            criteria: Object.fromEntries(labels.map((l, i) => [l, template.jev.criteria[i]])),
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  let read: JevRead = fullText ? 'fullText' : 'abstract';
+  let res = await ask(paperText(listing, fullText));
+  // A full text past JEV's context is refused outright (a 400): the abstract still gets an answer.
+  if (res.status === 400 && fullText) {
+    read = 'abstract';
+    res = await ask(paperText(listing, null));
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const body = (await res.json()) as {
+    answers?: { decision?: { probabilities?: Record<string, unknown> } };
+    usage?: { cost?: unknown };
+  };
+  const p = body.answers?.decision?.probabilities;
+  const raw = labels.map((l) => Number(p?.[l]));
+  if (raw.some((x) => !Number.isFinite(x) || x < 0) || !(raw.reduce((a, x) => a + x, 0) > 0)) {
+    throw new Error(`unexpected answer ${JSON.stringify(p)}`);
+  }
+  return { raw, read, cost: body.usage?.cost };
+}
+
+/** The model the venues' reference samples were measured with. `JEV_MODEL` overrides it, and then they need re-measuring. */
+export const JEV_MODEL = 'typesafe/jev-1.13';
+
 const JEV_TIMEOUT_MS = 15_000;
 
 /**
- * JEV's answer read against its own habit: `p_i ∝ raw_i · prior_i / typical_i`. Told the base rate, JEV
- * still answers about 77% Accept for a typical ICLR paper, so its raw answer is not a probability of
- * acceptance; how far it is from JEV's typical answer is the evidence. A typical answer opens at the
- * prior, and for two outcomes any answer moves the log-odds from the prior by as much as it is from
- * `typical`. `null` when nothing is left to normalize.
+ * An answer's score: the log-odds of its headline, `1 − P(last)` (`lib/headline.ts`), clamped so a
+ * certain answer is still a number. Only its rank among the reference sample's scores is ever used.
  */
-export function calibrated(raw: number[], typical: number[], prior: number[]): number[] | null {
-  const w = raw.map((x, i) => (x * prior[i]) / typical[i]);
-  const total = w.reduce((a, x) => a + x, 0);
-  return total > 0 && Number.isFinite(total) ? w.map((x) => x / total) : null;
+export function jevScore(raw: number[]): number {
+  const total = raw.reduce((a, x) => a + x, 0);
+  const last = Math.min(Math.max(raw[raw.length - 1] / total, 1e-6), 1 - 1e-6);
+  return Math.log((1 - last) / last);
+}
+
+/**
+ * JEV's answer, kept only as a rank. JEV orders papers usefully, but its level is not a probability: told the
+ * base rate, its median answer is still about 80% Accept, and a fixed correction for that drifts with the
+ * model and with what it reads. So an answer is placed among JEV's own
+ * answers to a random sample of the venue's listings, read the same way (`reference`, sorted scores), and
+ * that percentile `u` becomes a headline drawn from a target distribution we choose: logit-normal, its median
+ * at the prior's headline and its spread `spread` in log-odds, `logit(h) = logit(h_prior) + spread·Φ⁻¹(u)`.
+ * A shift in JEV's level moves no opening price; how far JEV may move one is `spread`'s call alone.
+ *
+ * Ties (JEV's answers are coarse) take the middle of their run, and `u` stays inside `(0, 1)`, so the
+ * extremes are bounded by the sample size. The other outcomes share the headline in proportion to JEV's
+ * answer (to the prior's, if JEV gave them nothing); the last gets the rest. `null` without a reference.
+ */
+export function ranked(raw: number[], reference: readonly number[], prior: number[], spread: number): number[] | null {
+  if (reference.length === 0) return null;
+  const s = jevScore(raw);
+  let below = 0;
+  let equal = 0;
+  for (const r of reference) {
+    if (r < s) below++;
+    else if (r === s) equal++;
+  }
+  const u = (below + equal / 2 + 0.5) / (reference.length + 1);
+  const n = prior.length;
+  const h0 = 1 - prior[n - 1];
+  const h = 1 / (1 + Math.exp(-(Math.log(h0 / (1 - h0)) + spread * normalQuantile(u))));
+  const head = raw.slice(0, n - 1);
+  const shares = head.some((x) => x > 0) ? head : prior.slice(0, n - 1);
+  const total = shares.reduce((a, x) => a + x, 0);
+  const prices = [...shares.map((x) => (h * x) / total), 1 - h];
+  return prices.every((x) => x >= PRICE_FLOOR) ? prices : floored(prices);
+}
+
+/** Φ⁻¹, the standard normal quantile (Acklam's rational approximation, relative error below 1.2e-9). */
+export function normalQuantile(p: number): number {
+  const a = [
+    -39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239,
+  ];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [
+    -0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968,
+    2.938163982698783,
+  ];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const lo = 0.02425;
+  if (p < lo) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
+  }
+  if (p > 1 - lo) return -normalQuantile(1 - p);
+  const q = p - 0.5;
+  const r = q * q;
+  return (
+    ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
+    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+  );
 }
 
 /**

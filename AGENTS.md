@@ -1273,8 +1273,19 @@ unpaginated, and 5 s for that search.
   open follows nothing. Opens from before this are backfilled by
   `npm run follows:backfill-openers` (a dry run without `--apply`). No template, or past its
   `closesAt`: refused, and nothing is made.
-- **It opens at JEV's prices**, floored (`jev.floored`: `(1 − n·f)·p + f`,
-  `PRICE_FLOOR` 0.05), so one market costs the house at most
+- **It opens at JEV's rank, never its number** (`jev.ranked`). JEV
+  orders papers usefully but its level is not a probability (told the
+  32% base rate, its median answer is ~80% Accept), and a fixed
+  correction for that drifts with the model and the input. So the answer is placed among
+  JEV's answers to a random sample of the venue's listings (the venue's
+  `jev.reference`, per read: full text or abstract; measured by
+  `npm run jev:reference`, read-only, and re-measured whenever the
+  instructions, criteria or model change), and that percentile opens
+  the market on a logit-normal round the prior's headline, `spread`
+  wide in log-odds (ICLR: 0.5, so 10–90% of papers open between ~20%
+  and ~47%). Deterministic: the same answer always opens at the same
+  price. Floored if it ever falls below `PRICE_FLOOR` (0.05;
+  `jev.floored`), so one market costs the house at most
   `b·ln(1/PRICE_FLOOR)` (§1.7). No `NANOGPT_API_KEY`, a timeout, an error
   or a malformed answer: the template's `fallbackPrices`. The order never
   fails on the model. Each call's `usage.cost` goes to `usd_costs`

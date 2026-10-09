@@ -1,3 +1,5 @@
+import type { JevRead } from '@/server/jev';
+
 /**
  * A venue: everything that differs between the kinds of listing the site
  * trades, in one file per venue (`venues/<venue>.ts`), registered in
@@ -74,12 +76,19 @@ export interface Venue {
     /**
      * What JEV is asked about the listing, with one criterion per outcome in
      * outcome order; `null`: no model call, the market opens at the outcomes'
-     * `openingPrice`. `typical` is JEV's own average answer over the venue's
-     * listings, one price per outcome summing to 1, measured, never the
-     * prior: its answer is read relative to it (`jev.calibrated`), so a
-     * typical listing opens at the `openingPrice`s.
+     * `openingPrice`. JEV's answer is read only as a rank (`jev.ranked`):
+     * `reference` is JEV's own answers to a random sample of the venue's
+     * listings, as sorted scores (`jev.jevScore`), one sample per way it reads
+     * a listing, measured by `npm run jev:reference`, never the prior; its
+     * percentile there opens the market on a logit-normal round the
+     * `openingPrice`s' headline, `spread` wide in log-odds.
      */
-    jev: { instructions: string; criteria: string[]; typical: number[] } | null;
+    jev: {
+      instructions: string;
+      criteria: string[];
+      reference: Record<JevRead, readonly number[]>;
+      spread: number;
+    } | null;
     /**
      * `true`: a listing's market opens when `../research` posts the listing
      * (`POST /listings`), opened by nobody. `false`: it opens on demand, when

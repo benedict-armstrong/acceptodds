@@ -1,3 +1,4 @@
+import reference from './iclr-2027.jev-reference.json';
 import type { Venue } from './types';
 
 /** Submissions under review at ICLR 2027. Decisions are released on 2026-12-15; the markets close the day before. */
@@ -59,9 +60,13 @@ export const ICLR_2027: Venue = {
           'minor flaws, while a serious flaw in soundness or a lack of novelty usually means rejection.',
       ].join('\n'),
       criteria: ['accepted in any form (oral, spotlight or poster)', 'rejected, withdrawn or desk-rejected'],
-      // Measured 2026-10-08 on 100 random ICLR 2027 abstracts with the instructions above: mean log-odds of
-      // Accept 1.20 (sd 0.91), i.e. about 77%. JEV ignores the base rate it is told, so it is applied here.
-      typical: [0.77, 0.23],
+      // JEV's answers to 800 random ICLR 2027 listings (255 read in full, 545 by abstract), measured 2026-10-09
+      // by `npm run jev:reference`. It ignores the base rate it is told (its median answer is about 80% Accept),
+      // so only a paper's rank among these is used (`jev.ranked`). Re-measure when the question changes.
+      reference: { fullText: reference.fullText, abstract: reference.abstract },
+      // Narrow on purpose: JEV's rank is weak evidence, and the price is the traders' to find. Ten to ninety
+      // per cent of papers open between about 20% and 47%; nothing opens below about 8% or above about 70%.
+      spread: 0.5,
     },
   },
 };

@@ -5,7 +5,9 @@ import { getDb } from '@/db';
 import { listingTexts, markets, usdCosts } from '@/db/schema';
 import { followedListingIds, followOpenedListings, unfollow } from '@/server/follows';
 import { setRelated, setText, upsertListing } from '@/server/listings';
+import { ranked } from '@/server/jev';
 import { ANONYMOUS_OPEN_BUDGET, OPEN_BUDGET } from '@/server/market-start';
+import { marketTemplate } from '@/server/market-templates';
 import { consume } from '@/server/ratelimit';
 import { browseListings, marketKinds } from '@/server/views';
 import { api, trader } from './api-client';
@@ -60,6 +62,12 @@ function stubJev(answer: { probabilities?: Record<string, number>; cost?: number
   return calls;
 }
 
+/** Where a paper with no full text opens on JEV's answer `a` for Accept, as the venue ranks it. */
+const opensAt = (a: number) => {
+  const t = marketTemplate('ICLR 2027')!;
+  return ranked([a, 1 - a], t.jev!.reference.abstract, t.fallbackPrices, t.jev!.spread)!;
+};
+
 const mainMarketOf = async (listingId: string) => db.select().from(markets).where(eq(markets.listingId, listingId));
 
 describe('a listing’s first trade makes its market', () => {
@@ -91,14 +99,13 @@ describe('a listing’s first trade makes its market', () => {
     expect(await mainMarketOf(p.id)).toHaveLength(1);
   });
 
-  it('opens at JEV’s prices, calibrated and floored, and books what it cost in real money', async () => {
+  it('opens at JEV’s rank, and books what it cost in real money', async () => {
     const calls = stubJev({ probabilities: { Accept: 0.9, Reject: 0.1 }, cost: 0.0000288 });
     const p = await paper('p');
     const t = await trader('t');
     const res = await order(t.token, p.id, 'Reject', '1000000');
     expect(res.status).toBe(201);
-    // Reject ∝ 0.1·0.68/0.23 against Accept ∝ 0.9·0.32/0.77, then (1 − 2·0.05)·p + 0.05
-    expect((res.body as any).priceBefore).toBeCloseTo(0.4473, 4);
+    expect((res.body as any).priceBefore).toBeCloseTo(opensAt(0.9)[1], 6);
     expect(calls).toHaveLength(1);
     expect(calls[0].state.paper).toContain('Paper p');
     expect(Object.keys(calls[0].questions.decision.criteria)).toEqual(['Accept', 'Reject']);
@@ -228,7 +235,6 @@ describe('opening a market at JEV’s price, without a trade', () => {
     api('POST', `/listings/${listingId}/market`, { token });
 
   it('opens it at JEV’s price for a trading-eligible account, once', async () => {
-    // JEV's typical answer, so the prior, floored: (1 − 2·0.05)·0.32 + 0.05
     stubJev({ probabilities: { Accept: 0.77, Reject: 0.23 }, cost: 0.00003 });
     const p = await paper('p');
     const t = await trader('t');
@@ -237,7 +243,7 @@ describe('opening a market at JEV’s price, without a trade', () => {
     expect(first.status).toBe(201);
     const body = first.body as any;
     expect(body.created).toBe(true);
-    expect(body.market.outcomes[0].price).toBeCloseTo(0.338, 4);
+    expect(body.market.outcomes[0].price).toBeCloseTo(opensAt(0.77)[0], 6);
     expect(body.market.orderCount).toBe(0);
     const [m] = await mainMarketOf(p.id);
     expect(m.createdBy).toBe(t.id);
@@ -325,8 +331,9 @@ describe('opening a market at JEV’s price, without a trade', () => {
 
     const first = await open(undefined, a.id);
     expect(first.status).toBe(201);
-    // 30% is well below JEV's typical 77%, so the paper opens well below the prior.
-    expect((first.body as any).market.outcomes[0].price).toBeCloseTo(0.1);
+    // 30% is below nearly every answer JEV gives, so the paper opens well below the prior.
+    expect((first.body as any).market.outcomes[0].price).toBeCloseTo(opensAt(0.3)[0], 6);
+    expect((first.body as any).market.outcomes[0].price).toBeLessThan(0.2);
     const [m] = await mainMarketOf(a.id);
     expect(m.createdBy).toBeNull();
 
@@ -477,6 +484,7 @@ describe('JEV reads the full text when it is supplied', () => {
     expect(res.status).toBe(201);
     expect(calls).toHaveLength(2);
     expect(calls[1].state.paper).toContain('Abstract: The abstract.');
-    expect((res.body as any).market.outcomes[0].price).toBeCloseTo(0.5527, 3);
+    // Ranked among JEV's answers to abstracts, since an abstract is what it read.
+    expect((res.body as any).market.outcomes[0].price).toBeCloseTo(opensAt(0.9)[0], 6);
   });
 });
