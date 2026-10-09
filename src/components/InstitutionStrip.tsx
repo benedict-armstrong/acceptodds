@@ -1,6 +1,9 @@
 /** An institution is named only once this many traders are from it, so no one person makes it show. */
 const MIN_TRADERS = 2;
 
+/** How long each name takes to scroll past, so the strip's speed doesn't grow with the list. */
+const SECONDS_PER_NAME = 4;
+
 /** A copy of `items` in random order (Fisher–Yates). */
 function shuffle<T>(items: readonly T[]): T[] {
   const out = [...items];
@@ -38,7 +41,10 @@ export function InstitutionStrip({ institutions }: { institutions: { name: strin
     <section aria-label="Where our traders are from" className="mt-4 flex items-baseline gap-3">
       <span className="shrink-0 font-sans text-[12px] text-muted">Join traders from</span>
       <div className="min-w-0 flex-1 overflow-hidden font-serif text-[14px] text-subtle italic [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
-        <div className="flex w-max animate-marquee motion-reduce:animate-none">
+        <div
+          className="flex w-max animate-marquee motion-reduce:animate-none"
+          style={{ animationDuration: `${names.length * SECONDS_PER_NAME}s` }}
+        >
           {row(0)}
           {row(1)}
         </div>
