@@ -4,6 +4,7 @@ import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { Pager } from '@/components/Pager';
 import { PaperName } from '@/components/PaperName';
 import { PositionsTable } from '@/components/PositionsTable';
+import { SwitchVenue } from '@/components/SwitchVenue';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
@@ -12,6 +13,7 @@ import { day, rep, REP, shares, signedRep } from '@/lib/format';
 import { presentPortfolio } from '@/server/api/present';
 import { closedPositions, getPortfolio, startingBalanceMicro } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import * as events from '@/server/events';
 import { tradingMarketIds } from '@/server/views';
 
@@ -24,7 +26,8 @@ const CLOSED_BY = { sold: 'sold', won: 'settled, won', lost: 'settled, lost' } a
  * Per venue wallet: cash, net worth at liquidation value, and P&L; then the open positions in
  * the same `PositionsTable` as a market's page, with a market column and a
  * sell button on every open market (never a mark, §1.1). The mark-based net
- * worth (§1.2) is not shown. Then the closed positions (#22),
+ * worth (§1.2) is not shown. Rows from a venue other than the navbar's
+ * (§1.8) are faded, not hidden. Then the closed positions (#22),
  * 50 a page on `?page=`.
  */
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
@@ -39,6 +42,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   if (page !== requested) {
     closed = await closedPositions(viewer.account.id, { limit: CLOSED_PAGE, offset: (page - 1) * CLOSED_PAGE });
   }
+  const venue = await currentVenue();
   events.log('portfolio.read', { accountId: viewer.account.id });
   const canTrade = viewer.account.isBot || viewer.account.verifiedAt !== null;
   const sellable = canTrade ? await tradingMarketIds([...new Set(p.holdings.map((h) => h.marketId))]) : [];
@@ -78,8 +82,10 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               </thead>
               <tbody>
                 {p.wallets.map((w) => (
-                  <tr key={w.kind}>
-                    <td className={ui.td}>{w.kind}</td>
+                  <tr key={w.kind} className={w.kind === venue ? undefined : ui.otherVenue}>
+                    <td className={`${ui.td} ${w.kind === venue ? 'font-semibold' : ''}`}>
+                      {w.kind === venue ? w.kind : <SwitchVenue kind={w.kind} />}
+                    </td>
                     <td className={`${ui.td} ${ui.num}`}>{rep(w.cashMicro)}</td>
                     <td className={`${ui.td} ${ui.num}`}>{rep(w.netWorthMicro)}</td>
                     <td className={`${ui.td} ${ui.num} ${ui.pnl(w.unrealizedPnlMicro)}`}>
@@ -120,6 +126,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           }
           showMarket
           sellable={sellable}
+          venue={venue}
         />
       )}
 
@@ -150,7 +157,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               </thead>
               <tbody>
                 {closed.rows.map((c) => (
-                  <tr key={c.outcomeId}>
+                  <tr key={c.outcomeId} className={c.kind === venue ? undefined : ui.otherVenue}>
                     {/* The title has a line of its own and the shares bought sit under it; as the open positions' table. */}
                     <td className={`${ui.td} w-full max-w-0`}>
                       <PaperName m={c} />

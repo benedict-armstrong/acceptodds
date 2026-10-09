@@ -83,7 +83,7 @@ export function BoardPicker({
       {/* In the title's own type, marked as a field the way the trade box's stake is: a dashed rule, solid on hover or focus. */}
       <PopoverTrigger
         title={current.label.length > TITLE_MAX ? current.label : undefined}
-        className="cursor-pointer border-0 border-b-2 border-dashed border-rule-strong text-accent outline-none hover:border-solid hover:border-accent focus-visible:border-solid focus-visible:border-accent data-[state=open]:border-solid data-[state=open]:border-accent"
+        className={`${ui.picker} text-accent`}
       >
         {clip(current.label, TITLE_MAX)}
       </PopoverTrigger>

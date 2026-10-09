@@ -305,6 +305,8 @@ export interface ClosedPosition {
   listingSlug: string | null;
   listingTitle: string | null;
   question: string;
+  /** The market's venue (§1.8). */
+  kind: string;
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
   outcomeLabel: string;
@@ -344,6 +346,7 @@ export async function closedPositions(
     listing_slug: string | null;
     listing_title: string | null;
     question: string;
+    kind: string;
     status: ClosedPosition['marketStatus'];
     outcome_id: string;
     label: string;
@@ -357,7 +360,7 @@ export async function closedPositions(
     closed_at: Date;
     total: number;
   }>(sql`
-    select m.slug as market_slug, l.slug as listing_slug, l.title as listing_title, m.question, m.status,
+    select m.slug as market_slug, l.slug as listing_slug, l.title as listing_title, m.question, m.kind, m.status,
            oc.id as outcome_id, oc.label, oc.ordinal,
            (select count(*)::int from outcomes x where x.market_id = m.id) as outcome_count,
            m.resolved_outcome_id,
@@ -391,6 +394,7 @@ export async function closedPositions(
       listingSlug: r.listing_slug,
       listingTitle: r.listing_title,
       question: r.question,
+      kind: r.kind,
       marketStatus: r.status,
       outcomeId: r.outcome_id,
       outcomeLabel: r.label,

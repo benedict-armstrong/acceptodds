@@ -7,6 +7,7 @@ import { Authors } from '@/components/Authors';
 import { BoardPicker } from '@/components/BoardPicker';
 import { GroupActions, NewGroupButton } from '@/components/Groups';
 import { Pager } from '@/components/Pager';
+import { RememberVenue } from '@/components/RememberVenue';
 import { Pnl, PnlToggleHeading, PnlToggleProvider } from '@/components/PnlToggle';
 import { FieldCurve } from '@/components/FieldCurve';
 import { TableNotes } from '@/components/TableNotes';
@@ -47,10 +48,11 @@ function one(v: string | string[] | undefined): string | undefined {
 }
 
 /**
- * One board per venue (`?kind=`, else this browser's venue): each venue is a
- * wallet of its own, so a trader is ranked in a venue on what they did there
- * alone, and is on its board once they have traded in it. Venue links sit
- * under the title.
+ * One board per venue (`?kind=`, else the navbar's, `currentVenue()`): each
+ * venue is a wallet of its own, so a trader is ranked in a venue on what they
+ * did there alone, and is on its board once they have traded in it. The
+ * venue is picked in the navbar (`VenueSwitcher`); one named in the URL
+ * becomes the navbar's.
  *
  * Two rankings. "Net worth" is **liquidation value** — cash plus what selling
  * every open holding now would pay — which a trader cannot inflate with their
@@ -84,7 +86,8 @@ export default async function LeaderboardPage({
 }) {
   const sp = await searchParams;
   const pickedKind = one(sp.kind)?.trim() || null;
-  const kind = pickedKind ?? (await currentVenue());
+  const navVenue = await currentVenue();
+  const kind = pickedKind ?? navVenue;
   const basis: LeaderboardBasis = one(sp.basis) === 'settled_pnl' ? 'settled_pnl' : 'net_worth';
   const institution = one(sp.institution)?.trim() || null;
   const groupId = one(sp.group)?.trim() || null;
@@ -223,6 +226,10 @@ export default async function LeaderboardPage({
 
   return (
     <main className={ui.page}>
+      {/* A venue named in the URL becomes the navbar's. */}
+      {pickedKind && kinds.some((k) => k.kind === pickedKind) && (
+        <RememberVenue kind={pickedKind} stale={pickedKind !== navVenue} />
+      )}
       {board ? (
         <TitleBlock
           title={<>{picker} leaderboard</>}
@@ -255,21 +262,6 @@ export default async function LeaderboardPage({
       ) : (
         <TitleBlock title={<>{picker} leaderboard</>} />
       )}
-      {/* Each venue is its own wallet and its own board. */}
-      <nav aria-label="Venue" className="mb-3 flex flex-wrap gap-x-3 font-sans text-[13px] text-muted">
-        <span>Venue:</span>
-        {[...new Set([kind, ...kinds.map((k) => k.kind)])].map((k) =>
-          k === kind ? (
-            <b key={k} className="text-ink">
-              {k}
-            </b>
-          ) : (
-            <Link key={k} href={href({ kind: k, around: null, page: null })}>
-              {k}
-            </Link>
-          ),
-        )}
-      </nav>
       <form action="/leaderboard" method="get" role="search" className="flex gap-2">
         {pickedKind && <input type="hidden" name="kind" value={pickedKind} />}
         {basis !== 'net_worth' && <input type="hidden" name="basis" value={basis} />}

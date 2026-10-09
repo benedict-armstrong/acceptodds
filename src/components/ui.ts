@@ -64,6 +64,14 @@ export const ui = {
   tableScroll: 'overflow-x-auto',
   /** A table note's mark on a column heading, "Net worth<sup>a</sup>": an italic letter, as threeparttable sets it. */
   mark: 'ml-px font-serif text-[10px] font-normal italic',
+  /**
+   * A popover's trigger that picks something (the leaderboard's board, the navbar's venue), marked as a field
+   * the way the trade box's stake is: a dashed rule, solid accent on hover, focus or while open. Sets no colour.
+   */
+  picker:
+    'cursor-pointer border-0 border-b-2 border-dashed border-rule-strong outline-none hover:border-solid hover:border-accent focus-visible:border-solid focus-visible:border-accent data-[state=open]:border-solid data-[state=open]:border-accent',
+  /** A table row from a venue other than the navbar's (§1.8): still there, but set back; full again on hover. */
+  otherVenue: 'opacity-45 transition-opacity hover:opacity-100',
   /** The selected link in a row of filter or tab links. */
   on: 'font-semibold text-ink',
   /** A P&L's colour: profit green, loss red, zero plain ink. */

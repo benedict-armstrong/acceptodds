@@ -4,12 +4,15 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 
-/** This tab's last home-page query string (venue, status, sort, search, page), in `sessionStorage`. */
+/** This tab's last home-page query string (status, sort, search, page), in `sessionStorage`. */
 const KEY = 'home-search';
 
 /** The home page's part: remembers its query string while it is shown, so the logo can return to it. */
 export function RememberHomeSearch() {
-  const search = useSearchParams().toString();
+  const params = useSearchParams();
+  // Never a venue the URL named: that one is now the navbar's (`RememberVenue`), and coming back
+  // to it later would undo a switch made since. Every venue (`all`) is a search scope; it stays.
+  const search = new URLSearchParams([...params].filter(([k, v]) => k !== 'kind' || v === 'all')).toString();
   useEffect(() => {
     try {
       sessionStorage.setItem(KEY, search);
@@ -22,7 +25,7 @@ export function RememberHomeSearch() {
 
 /**
  * The logo's link: back to the home page as this tab last left it (its
- * venue, filters, search and page), from anywhere else. On the home page
+ * filters, search and page; the venue is the navbar's), from anywhere else. On the home page
  * itself it is the plain `/`, so the logo still clears the filters. The
  * server renders `/`, and hydration then reads the stored search.
  */

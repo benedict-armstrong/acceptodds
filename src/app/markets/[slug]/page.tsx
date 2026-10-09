@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
+import { RememberVenue } from '@/components/RememberVenue';
 import { ui } from '@/components/ui';
 import { ApiError } from '@/server/api/errors';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import { shareSubject, siteName } from '@/server/share';
 import { resolveListing, resolveMarket } from '@/server/views';
 import { loadMarketLive } from './load';
@@ -47,6 +49,8 @@ export default async function MarketPage({ params }: { params: Promise<{ slug: s
 
   return (
     <main className={ui.page}>
+      {/* The market's venue becomes the navbar's, so the wallet shown is the one the trade box spends. */}
+      <RememberVenue kind={market.kind} stale={market.kind !== (await currentVenue())} />
       <MarketLive initial={initial} />
     </main>
   );

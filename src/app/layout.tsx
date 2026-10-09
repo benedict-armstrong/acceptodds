@@ -18,7 +18,9 @@ import { currentVenue } from '@/server/current-venue';
 import { startingBalanceMicro } from '@/server/wallets';
 import { siteName, siteUrl } from '@/server/share';
 import { valuation } from '@/server/valuation';
+import { marketKinds } from '@/server/views';
 import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
+import { VenueSwitcher } from '@/components/VenueSwitcher';
 import { Wordmark } from '@/components/Wordmark';
 import 'katex/dist/katex.min.css';
 import './globals.css';
@@ -69,7 +71,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const viewer = await viewerFromHeaders(await headers());
   // Liquidation value, not a mark (§1.1, §1.2): what the viewer would hold if they sold everything now,
   // in the venue they are browsing — each venue is a wallet of its own.
-  const kind = await currentVenue();
+  const [kind, kinds] = await Promise.all([currentVenue(), marketKinds()]);
   const [worth, memberships] = viewer
     ? await Promise.all([valuation(viewer.account.id, kind), groupsOf(viewer.account.id)])
     : [null, []];
@@ -81,12 +83,23 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         {/* On a phone, keep the mini distribution beside a menu containing every navigation link. */}
         <header className="flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 px-6 pt-4 pb-2.5 narrow:px-4">
-          <HomeLink className="text-[22px]">
-            <LogoMark />
-            <span className={viewer ? 'narrow:hidden' : ''}>
-              <Wordmark />
+          {/* The venue beside the logo, set like a journal's name and volume: it scopes the whole site —
+              wallet, curve, lists and boards. */}
+          <span className="flex min-w-0 items-baseline gap-x-2">
+            <HomeLink className="text-[22px]">
+              <LogoMark />
+              <span className={viewer ? 'narrow:hidden' : ''}>
+                <Wordmark />
+              </span>
+            </HomeLink>
+            {/* Raised a little off the shared baseline: at 18px beside the 22px wordmark it otherwise reads low. */}
+            <span className="relative -top-0.5 flex items-baseline gap-x-2">
+              <span aria-hidden className="text-lg text-rule-strong">
+                /
+              </span>
+              <VenueSwitcher current={kind} kinds={kinds.map((k) => k.kind)} />
             </span>
-          </HomeLink>
+          </span>
           <span className="flex-1" />
           <nav
             aria-label="Main navigation"
@@ -103,7 +116,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <NavWorth
                   groups={readingGroups}
                   handle={viewer.account.handle}
-                  venue={kind}
                   worth={`${rep(worth?.netWorthMicro ?? startingBalanceMicro())} ${REP}`}
                   cash={`${rep(worth?.cashMicro ?? startingBalanceMicro())} ${REP}`}
                   pnlMicro={((worth?.unrealizedPnlMicro ?? 0n) + (worth?.realizedPnlMicro ?? 0n)).toString()}

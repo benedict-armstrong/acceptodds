@@ -65,7 +65,7 @@ export default async function WelcomePage({
 
   // A venue picked here (`?kind=`) is remembered, and moves the navbar to it.
   const picked = params.kind !== undefined && params.kind === kind;
-  const stale = viewer !== null && kind !== (await currentVenue());
+  const stale = kind !== (await currentVenue());
   return (
     <>
       {picked && <RememberVenue kind={kind} stale={stale} />}

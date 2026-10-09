@@ -4,11 +4,13 @@ import { redirect } from 'next/navigation';
 import { MathText } from '@/components/MathText';
 import { Confetti } from '@/components/Confetti';
 import { OnboardingCard } from '@/components/OnboardingCard';
+import { RememberVenue } from '@/components/RememberVenue';
 import { pct, rep, REP } from '@/lib/format';
 import { shareText } from '@/lib/headline';
 import { FIRST_TRADE_PATH, marketHref } from '@/lib/links';
 import { authHref, VERIFY_EMAIL } from '@/lib/return-to';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import { missingFromUser } from '@/server/better-auth';
 import { shareSubject, siteName, siteUrl } from '@/server/share';
 import { firstFill, marketView, resolveMarket } from '@/server/views';
@@ -68,6 +70,8 @@ export default async function FirstTradePage() {
         <span className="font-mono">{pct(fill.priceAfter, precise)}</span>.
       </p>
       <Confetti />
+      {/* The trade's venue becomes the navbar's. */}
+      <RememberVenue kind={fill.kind} stale={fill.kind !== (await currentVenue())} />
       <InviteFriends
         siteName={siteName()}
         url={shareUrl}

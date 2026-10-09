@@ -19,8 +19,8 @@ export interface NavStanding {
 
 /**
  * The navbar's figure (#17): a tiny bell curve of the net-worth field with a
- * line at the viewer (`MiniCurve`), in one venue: each venue is a wallet and
- * a field of its own, and the panel names which. Hovering it (or tapping, where there is no
+ * line at the viewer (`MiniCurve`), in the navbar's venue (`VenueSwitcher`):
+ * each venue is a wallet and a field of its own. Hovering it (or tapping, where there is no
  * hover) opens a panel below with net worth at liquidation value, cash and lifetime P&L (unrealized plus realized).
  * Without a field to draw, the net worth itself.
  *
@@ -32,7 +32,6 @@ export interface NavStanding {
  */
 export function NavWorth({
   handle,
-  venue,
   worth,
   cash,
   pnlMicro,
@@ -40,8 +39,6 @@ export function NavWorth({
   groups,
 }: {
   handle: string;
-  /** The venue every figure is in. */
-  venue: string;
   worth: string;
   cash: string;
   /** Lifetime P&L, micro-units as a decimal string: unrealized plus realized. */
@@ -109,7 +106,6 @@ export function NavWorth({
           <p className="hidden px-1 py-1.5 font-serif text-lg break-words narrow:block">@{handle}</p>
           <hr className="my-1 hidden border-rule narrow:block" />
           <div className="flex flex-col gap-1 narrow:px-1 narrow:py-1.5">
-            <p className="text-muted italic">{venue}</p>
             <div className="flex justify-between gap-4">
               <span className="text-muted">net worth</span> <b className={ui.mono}>{worth}</b>
             </div>

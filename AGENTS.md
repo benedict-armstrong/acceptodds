@@ -138,12 +138,23 @@ field curve — is one venue's.
   and `account_id` (for per-account reads); a venue's flows are found
   through `market_id` → `markets.kind`.
 - A venue's leaderboard field is the non-house accounts with a wallet in
-  it: who has traded there. A page with no venue of its own (navbar,
-  profile, `/people`) uses `currentVenue()` (`server/current-venue.ts`:
-  the `venue` cookie, else `DEFAULT_MARKET_KIND`). Picking a venue on the
-  home page or `/welcome` sets the cookie in `RememberVenue`, which
+  it: who has traded there.
+- **The venue is global, and picked in one place: the navbar**, beside
+  the logo (`components/VenueSwitcher`), since it scopes everything but
+  the account. A page with no venue of its own (home, leaderboard,
+  portfolio, profile, `/people`) shows `currentVenue()`
+  (`server/current-venue.ts`: the `venue` cookie, else
+  `DEFAULT_MARKET_KIND`). A page that has one — a paper, a market, a
+  position, `/first-trade` (`lib/venue.ts` `pageHasVenue`) — or a URL
+  naming one (`?kind=` on the home page, the leaderboard, `/welcome`)
+  makes it the navbar's with `RememberVenue`, so the wallet the navbar
+  shows is always the one the page's trade box spends. `RememberVenue`
   refreshes the page when the navbar was drawn in another venue: the root
-  layout is not rendered again on a client navigation.
+  layout is not rendered again on a client navigation. No page has a
+  venue picker of its own; don't add one. `/portfolio` lists every
+  venue but sets back (`ui.otherVenue`) the rows not in the navbar's,
+  and its summary's venue names switch to that venue
+  (`components/SwitchVenue`, as the navbar does): a link, not a picker.
 - `drizzle/0040` split pre-existing balances by replaying the ledger: each
   row went to its market's venue, rows with no market to the venue of the
   account's first order, every further venue got its own grant, and a
@@ -323,8 +334,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `Cf-Connecting-Ip`. An ESLint rule rejects the header names anywhere else.
   Nothing is keyed on it yet.
 - **The leaderboard is one venue's** (`?kind=`, default `DEFAULT_MARKET_KIND`;
-  the page's default is `currentVenue()`, with venue links under its
-  title), ranked on that venue's wallets and markets alone (§1.8).
+  the page's default is the navbar's, `currentVenue()`), ranked on that
+  venue's wallets and markets alone (§1.8).
 - **The leaderboard has two bases, `?basis=settled_pnl|net_worth`.**
   `settled_pnl` (the API default, so existing bots see no change) is `trade` +
   `settlement` ledger rows on settled markets: exact, and immune to
@@ -687,7 +698,7 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   shows only for a market in `sellable` (`views.tradingMarketIds`: open
   and before `closes_at`, the engine's own test).
 - **The navbar shows where the viewer stands** (#17, `components/NavWorth`),
-  in `currentVenue()` (§1.8), named in its panel:
+  in the navbar's venue (`currentVenue()`, §1.8):
   a tiny bell curve of the net-worth field with a line at the viewer
   (`MiniCurve`). Hovering it (tapping, on touch) opens a `Popover` below
   with net worth at liquidation value, cash and lifetime P&L (unrealized
@@ -728,8 +739,10 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   move only by fills, so the shares held into settlement are the fills'
   net, and settlement paid exactly that on the winner. P&L is sells +
   payout − buys, the ledger's own integers; it is not a mark (§1.1).
-- **"Venue" is the market's `kind`.** The home page filters on it and opens
-  on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
+- **"Venue" is the market's `kind`.** The home page lists the navbar's
+  venue (§1.8) when it has papers, else every venue; its links carry no
+  `kind`, except `?kind=all` (every venue), which only a search reaches,
+  by "search everything".
   The platform still knows nothing about venues: it is a string the creating
   client chose. Sorts: activity (the default: last fill), odds (the
   `likelihood` sort: the main market's **headline** (#11, below), highest
@@ -868,7 +881,8 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   Names, never logos: a logo reads as an endorsement the institution never
   gave.
 - **The logo returns to the last home search** (`components/HomeLink`):
-  the home page keeps its query string (venue, status, sort, `q`, pages)
+  the home page keeps its query string (status, sort, `q`, pages; a
+  `kind` only when `all`, since a named one is already the navbar's)
   in this tab's `sessionStorage` (`RememberHomeSearch`), and the logo on
   any other page links back to it. On the home page itself the logo is
   the plain `/`, which clears it.

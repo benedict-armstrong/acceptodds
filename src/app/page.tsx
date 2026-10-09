@@ -18,7 +18,6 @@ import type { z } from 'zod';
 import type * as S from '@/server/api/schemas';
 import { presentListing } from '@/server/api/present';
 import { ui } from '@/components/ui';
-import { defaultMarketKind } from '@/lib/venue';
 import { pricedBeforeTrade, venue, venues, type Venue } from '@/venues';
 import { rep, REP } from '@/lib/format';
 import { REPO_URL } from '@/lib/links';
@@ -139,10 +138,13 @@ async function pageOf(
   return { ...result, page: pages, pages };
 }
 
-/** The venue the list shows: `?kind=` if given (`all` is none), else the default venue if it has markets. */
-function selectedKind(wanted: string | undefined, kinds: { kind: string }[]): string | null {
+/**
+ * The venue the list shows: `?kind=` if given (`all` is none: a search of
+ * every venue), else the navbar's (`currentVenue()`) if it has papers.
+ */
+function selectedKind(wanted: string | undefined, kinds: { kind: string }[], navVenue: string): string | null {
   if (wanted === 'all') return null;
-  return wanted ?? (kinds.some((k) => k.kind === defaultMarketKind()) ? defaultMarketKind() : null);
+  return wanted ?? (kinds.some((k) => k.kind === navVenue) ? navVenue : null);
 }
 
 export async function generateMetadata({
@@ -150,7 +152,7 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
-  const kind = selectedKind(one((await searchParams).kind), await marketKinds());
+  const kind = selectedKind(one((await searchParams).kind), await marketKinds(), await currentVenue());
   return { title: `acceptodds: ${homeTitle(kind)}` };
 }
 
@@ -162,7 +164,9 @@ export default async function Home({
   const sp = await searchParams;
   const kinds = await marketKinds();
   const wanted = one(sp.kind);
-  const kind = selectedKind(wanted, kinds);
+  // The venue the navbar was drawn in: the list's, unless the URL names another.
+  const navVenue = await currentVenue();
+  const kind = selectedKind(wanted, kinds, navVenue);
   const status: Status = (STATUSES as readonly string[]).includes(one(sp.status) ?? '')
     ? (one(sp.status) as Status)
     : 'open';
@@ -189,8 +193,6 @@ export default async function Home({
 
   // One row per listing (a paper), read from its main market; plus one per
   // market that belongs to no listing. Each section is paged in the database.
-  // The venue the navbar was drawn in, to refresh it when another is picked here.
-  const navVenue = await currentVenue();
   // ?following=1: only papers the signed-in viewer follows.
   const onlyFollowed = viewer !== null && one(sp.following) === '1';
   // ?tldr=1: each paper's TLDR under its authors.
@@ -219,7 +221,7 @@ export default async function Home({
     pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
     who && (one(sp.page) ?? '1') === '1' ? searchPeople(who, PEOPLE) : [],
     // The tutorial shows one real market's odds: the venue's most traded open paper.
-    browseListings({ kind: kind ?? defaultMarketKind(), status: 'open', sort: 'volume', traded: true, limit: 1 }),
+    browseListings({ kind: kind ?? navVenue, status: 'open', sort: 'volume', traded: true, limit: 1 }),
     // A trader who has placed an order is past getting started: no tutorial.
     me !== null ? hasTraded(me) : false,
     // Signed out, and not searching: where the traders are from.
@@ -239,9 +241,10 @@ export default async function Home({
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
   // They go back to page 1: pages are kept only by the pagers' own links.
+  // The venue is the navbar's, so links carry it only when it is every venue.
   const href = (patch: Record<string, string>) => {
     const params = new URLSearchParams({
-      kind: kind ?? 'all',
+      ...(kind === null ? { kind: 'all' } : {}),
       status,
       sort,
       ...(q ? { q } : {}),
@@ -271,13 +274,11 @@ export default async function Home({
   // The ⋯ trigger also names a sort picked from its menu, since the row doesn't show it.
   const menuSort = MENU_SORTS.includes(sort) ? sortLabel(sort) : null;
   const moreLabel = [menuSort, activeFilters].filter(Boolean).join(', ');
-  // With one venue, "all venues" is the same list again.
-  const allVenues = kinds.length > 1;
 
   return (
     <main className={ui.page}>
-      {/* A venue picked here is the one `/welcome` searches first, and the navbar's. */}
-      {wanted && venue(wanted) && <RememberVenue kind={wanted} stale={viewer !== null && wanted !== navVenue} />}
+      {/* A venue named in the URL (a link from elsewhere) becomes the navbar's, and the one `/welcome` searches first. */}
+      {wanted && kinds.some((k) => k.kind === wanted) && <RememberVenue kind={wanted} stale={wanted !== navVenue} />}
       {/* The logo, from any other page, comes back to this list as it is now. */}
       <RememberHomeSearch />
       <TitleBlock
@@ -307,7 +308,7 @@ export default async function Home({
       <InstitutionStrip institutions={institutions} />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
-        <input type="hidden" name="kind" value={kind ?? 'all'} />
+        {kind === null && <input type="hidden" name="kind" value="all" />}
         <input type="hidden" name="status" value={status} />
         {onlyFollowed && <input type="hidden" name="following" value="1" />}
         {showTldr && <input type="hidden" name="tldr" value="1" />}
@@ -336,25 +337,6 @@ export default async function Home({
             {activeFilters && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent" />}
           </PopoverTrigger>
           <PopoverContent align="end" className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto text-[13px]">
-            <div>
-              <h3 className={ui.boxHeading}>Venue</h3>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {kinds.map((k) => (
-                  <PopoverClose key={k.kind} asChild>
-                    <Link href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
-                      {k.kind}
-                    </Link>
-                  </PopoverClose>
-                ))}
-                {allVenues && (
-                  <PopoverClose asChild>
-                    <Link href={href({ kind: 'all' })} className={kind === null ? ON : ''}>
-                      all venues
-                    </Link>
-                  </PopoverClose>
-                )}
-              </div>
-            </div>
             <div>
               <h3 className={ui.boxHeading}>Sort</h3>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -440,18 +422,6 @@ export default async function Home({
       )}
 
       <div className="mt-2 mb-1 flex flex-wrap items-baseline gap-x-4.5 gap-y-1.5 font-sans text-[13px] text-muted narrow:hidden">
-        <span className="flex flex-wrap gap-x-3 gap-y-1">
-          {kinds.map((k) => (
-            <Link key={k.kind} href={href({ kind: k.kind })} className={k.kind === kind ? ON : ''}>
-              {k.kind}
-            </Link>
-          ))}
-          {allVenues && (
-            <Link href={href({ kind: 'all' })} className={kind === null ? ON : ''}>
-              all venues
-            </Link>
-          )}
-        </span>
         <span className="flex-1" />
         <span className="flex flex-wrap gap-x-3 gap-y-1">
           sort:

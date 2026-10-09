@@ -16,3 +16,15 @@ export const VENUE_COOKIE = 'venue';
 export function rememberVenue(kind: string): void {
   document.cookie = `${VENUE_COOKIE}=${encodeURIComponent(kind)}; path=/; max-age=31536000; samesite=lax`;
 }
+
+/**
+ * Pages that belong to one venue (a paper, a market, a position, a first
+ * trade): they set this browser's venue to their own (`RememberVenue`), so
+ * the navbar's switcher, wallet and curve are always the page's. Switching
+ * venue on one of them leaves it for that venue's home page.
+ */
+const VENUE_PAGES = ['/papers/', '/markets/', '/positions/', '/first-trade'];
+
+export function pageHasVenue(pathname: string): boolean {
+  return VENUE_PAGES.some((p) => pathname.startsWith(p));
+}

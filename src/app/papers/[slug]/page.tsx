@@ -10,6 +10,7 @@ import { groupsOf } from '@/server/groups';
 import { FollowStar } from '@/components/FollowStar';
 import { MathText } from '@/components/MathText';
 import { TableNotes } from '@/components/TableNotes';
+import { RememberVenue } from '@/components/RememberVenue';
 import { RunningHead } from '@/components/RunningHead';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ViewCount } from '@/components/ViewCount';
@@ -24,6 +25,7 @@ import { ApiError } from '@/server/api/errors';
 import { presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import * as events from '@/server/events';
 import { followedListingIds } from '@/server/follows';
 import { openMarketTemplate } from '@/server/market-templates';
@@ -133,6 +135,7 @@ export default async function PaperPage({
     main === undefined
       ? opening !== null
       : main.orderCount === 0 && (await tradingMarketIds([main.market.id])).length > 0;
+  const venueOf = listing.kind ?? main?.market.kind ?? null;
   events.log('listing.read', { accountId: viewer?.account.id ?? null });
   // Before the discussion, its figure numbered after the market's own.
   const relatedPapers = (
@@ -152,6 +155,8 @@ export default async function PaperPage({
         // `<` escaped so a title can never close the tag.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(paperJsonLd(listing)).replace(/</g, '\\u003c') }}
       />
+      {/* The paper's venue becomes the navbar's, so the wallet shown is the one the trade box spends. */}
+      {venueOf && <RememberVenue kind={venueOf} stale={venueOf !== (await currentVenue())} />}
       {listing.kind && <RunningHead>{runningHead(listing.kind)}</RunningHead>}
       <TitleBlock
         title={<MathText text={listing.title} />}

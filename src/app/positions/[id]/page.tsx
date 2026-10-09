@@ -6,11 +6,13 @@ import { DetailsTable, type DetailsRow } from '@/components/DetailsTable';
 import { MathText } from '@/components/MathText';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { MakePrivateButton } from '@/components/SharePosition';
+import { RememberVenue } from '@/components/RememberVenue';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { day, pct, REP, shares } from '@/lib/format';
 import { marketHref, publicPositionPath } from '@/lib/links';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import * as events from '@/server/events';
 import { positionLine, siteName } from '@/server/share';
 import { loadPublicPosition } from './load';
@@ -94,6 +96,8 @@ export default async function PublicPositionPage({ params }: { params: Promise<{
 
   return (
     <main className={`${ui.page} max-w-[560px]`}>
+      {/* The position's venue becomes the navbar's. */}
+      <RememberVenue kind={p.market.kind} stale={p.market.kind !== (await currentVenue())} />
       <TitleBlock
         above={p.market.kind}
         title={<MathText text={p.market.listingTitle ?? p.market.question} />}

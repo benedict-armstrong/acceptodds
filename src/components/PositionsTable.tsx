@@ -51,6 +51,7 @@ export function PositionsTable({
   caption,
   showMarket = false,
   sellable,
+  venue,
   onFilled = () => {},
 }: {
   holdings: Holding[];
@@ -59,6 +60,8 @@ export function PositionsTable({
   showMarket?: boolean;
   /** Ids of the markets whose holdings may be sold now: trading, and the viewer may trade. Plain data, so a Server Component can pass it. */
   sellable: string[];
+  /** The navbar's venue: rows from any other are faded (`ui.otherVenue`). Unset, none are. */
+  venue?: string;
   /** After a fill; `useOrder` already refreshes the server-rendered page. */
   onFilled?: () => void;
 }) {
@@ -99,6 +102,7 @@ export function PositionsTable({
                 h={h}
                 showMarket={showMarket}
                 sellable={canSell(h)}
+                faded={venue !== undefined && h.kind !== venue}
                 absolute={absolute}
                 onFilled={onFilled}
                 onResult={setNote}
@@ -123,6 +127,7 @@ function Row({
   h,
   showMarket,
   sellable,
+  faded,
   absolute,
   onFilled,
   onResult,
@@ -130,13 +135,14 @@ function Row({
   h: Holding;
   showMarket: boolean;
   sellable: boolean;
+  faded: boolean;
   absolute: boolean;
   onFilled: () => void;
   onResult: (r: OrderResult) => void;
 }) {
   const { send, busy } = useOrder(h.marketId, onFilled);
   return (
-    <tr>
+    <tr className={faded ? ui.otherVenue : undefined}>
       {/* With the paper shown, its title has a line of its own and the outcome sits under it; `w-full max-w-0`
           gives the title the width the other columns leave, cut to it, so the table only scrolls (`PaperName`'s
           minimum) when the screen is too narrow for even that. */}
