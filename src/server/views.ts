@@ -34,6 +34,7 @@ import { standingsGeneration, standingsChangesSince } from './standings-cache';
 import { valuations } from './valuation';
 import { browseReads, BROWSE_READ_TTL_MS, marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
 import { pricedBeforeTradeKinds } from '@/venues';
+import { recommendationScores, scoresTable } from './recommendations';
 
 /**
  * Read models for the public API. **Reads only** — nothing here writes, and
@@ -1403,8 +1404,12 @@ export async function publicAccount(handle: string, database: Database = getDb()
 
 export const MARKET_SORTS = ['closing', 'likelihood', 'volume', 'activity', 'newest'] as const;
 export type MarketSort = (typeof MARKET_SORTS)[number];
-/** Search rank: only meaningful with a query, and the UI's default when there is one. */
-export type BrowseSort = MarketSort | 'relevance';
+/**
+ * Search rank: only meaningful with a query, and the UI's default when there
+ * is one. `recommended` needs `recommendFor` (`server/recommendations.ts`)
+ * and is `activity` without it.
+ */
+export type BrowseSort = MarketSort | 'relevance' | 'recommended';
 
 export interface BrowseRow {
   /** The listing this row stands for, or null for a market that has none. */
@@ -1475,11 +1480,14 @@ export async function browseListings(
     exceptFollowedBy?: string | null;
     /** Leave out the rows this account holds shares in. */
     exceptHeldBy?: string | null;
+    /** The account the `recommended` sort ranks for. */
+    recommendFor?: string | null;
   },
   database: Database = getDb(),
 ): Promise<BrowsePage> {
   // A page that depends on no viewer is the same for everyone: shared (`browseReads`).
-  const personal = q.followedBy || q.heldBy || q.exceptFollowedBy || q.exceptHeldBy;
+  const personal =
+    q.followedBy || q.heldBy || q.exceptFollowedBy || q.exceptHeldBy || (q.sort === 'recommended' && q.recommendFor);
   if (personal || database !== getDb()) return readBrowsePage(q, database);
   const key = JSON.stringify([q.kind ?? null, q.status ?? null, q.sort, q.q ?? null, q.offset, q.limit, !!q.traded]);
   return browseReads.get(`page:${key}`, BROWSE_READ_TTL_MS, () => readBrowsePage(q, database));
@@ -1488,7 +1496,9 @@ export async function browseListings(
 async function readBrowsePage(q: Parameters<typeof browseListings>[0], database: Database): Promise<BrowsePage> {
   const limit = q.limit ?? 50;
   const offset = q.offset ?? 0;
-  const { from, order } = browseQuery(q);
+  const recommendScores =
+    q.sort === 'recommended' && q.recommendFor ? await recommendationScores(q.recommendFor, database) : null;
+  const { from, order } = browseQuery({ ...q, recommendScores });
   const result = await database.execute<{
     listing_id: string | null;
     market_id: string | null;
@@ -1542,7 +1552,10 @@ async function readBrowsePage(q: Parameters<typeof browseListings>[0], database:
   };
 }
 
-type BrowseFilter = Omit<Parameters<typeof browseListings>[0], 'offset' | 'limit'>;
+type BrowseFilter = Omit<Parameters<typeof browseListings>[0], 'offset' | 'limit'> & {
+  /** The `recommended` sort's scores by listing id (`server/recommendations.ts`), read before the query. */
+  recommendScores?: ReadonlyMap<string, number> | null;
+};
 
 /**
  * The home list's rows, one each: every listing (`l`) with its main market
@@ -1639,7 +1652,11 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
   // Rows with a price first, whatever the sort: a listing with no market, or
   // a market nobody has traded (opened at JEV's price), shows no price yet. A
   // venue that sets its own opening price shows it from the start (`venues/`).
+  // Recommended papers first, best first, even one with no price yet; then the rest by activity.
+  const recommending = q.sort === 'recommended' && q.recommendScores?.size ? q.recommendScores : null;
+  const activity = [sql`greatest(m.last_trade_at, sec.last_trade_at) desc nulls last`];
   const order = [
+    ...(recommending ? [sql`rec.score desc nulls last`] : []),
     sql`(m.id is null or (m.order_count = 0 and not ${kindIn(sql`m.kind`, pricedBeforeTradeKinds())}))`,
     ...{
       closing: [sql`m.closes_at asc`],
@@ -1649,7 +1666,8 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
         sql`m.closes_at asc`,
       ],
       volume: [sql`${ROW_VOLUME} desc`],
-      activity: [sql`greatest(m.last_trade_at, sec.last_trade_at) desc nulls last`],
+      activity,
+      recommended: activity,
       newest: [sql`m.created_at desc`],
       relevance: tq ? [sql`hit.r desc`, sql`m.closes_at asc`] : [sql`m.closes_at asc`],
     }[q.sort],
@@ -1658,6 +1676,7 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
   const from = sql`
       from ${ROWS}
       ${hits}
+      ${recommending ? sql`left join ${scoresTable(recommending)} rec on rec.listing_id = l.id` : sql``}
       -- Visible markets of a listing other than its main one, summed into the
       -- row. Few listings have any, and markets_secondary_idx holds just those.
       left join (
