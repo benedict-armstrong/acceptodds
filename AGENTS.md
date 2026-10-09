@@ -1125,6 +1125,27 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   day's mail rather than doubling it. The unsubscribe link is `/profile#email`, not
   a signed token. `digest.sent` is logged after the send, no payload.
 
+### Recommended sort
+
+- **`recommended` is a home-list sort, not a feed**, offered to a signed-in
+  viewer who has traded or has `MIN_INTERACTIONS` (2) interactions, and
+  then the default sort (activity for everyone else). Scored
+  papers first, then the rest by activity, so paging and filters still work.
+  `server/recommendations.ts` gathers the inputs; `lib/recommend.ts` scores.
+- **What is near the viewer's own papers**: each paper they acted on (fills,
+  comments, backings, follows, read markers, opening a market; weighted by
+  kind, and by order — the k-th newest interaction × `RECENCY^k`, never by
+  date) votes for its related list, its 20 nearest papers by the map's
+  vectors and its citations both ways. A light diversity damping stops one
+  paper's neighbours filling the top. Papers with no market are scored like
+  any other; that is how an unopened paper is found.
+- **Only the viewer's own acts are read**: no other trader's activity enters
+  the score. Never page views (`listing_views` cannot name anyone, on
+  purpose) and never reading lists (a group's, not a person's).
+- The vectors are held in memory (`map-cache.ts`, dropped by `setMap`), a
+  viewer's scores for a minute (`ReadCache`). Like the other caches, one
+  app process.
+
 ### The list at venue scale (#12)
 
 A venue is ~30k papers (ICLR's last round). Measured on 30k papers with

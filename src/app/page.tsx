@@ -41,6 +41,7 @@ import {
   type BrowseRow,
   type BrowseSort,
 } from '@/server/views';
+import { canRecommend } from '@/server/recommendations';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,21 +175,25 @@ export default async function Home({
   const parsed = q ? parseSearch(q) : null;
   const kindFilter = parsed?.fields.has('venue') ? null : kind;
   const statusFilter: Status = parsed?.fields.has('status') ? 'all' : status;
-  const sorts: readonly BrowseSort[] = q ? ['relevance', ...SORTS] : SORTS;
+  const viewer = await viewerFromHeaders(await headers());
+  const me = viewer?.account.id ?? null;
+  // `recommended` once the viewer has done enough for it to mean something (`server/recommendations.ts`).
+  const recommends = me !== null && (await canRecommend(me));
+  // It is then the default, listed first.
+  const offered: readonly BrowseSort[] = recommends ? ['recommended', ...SORTS] : SORTS;
+  const sorts: readonly BrowseSort[] = q ? ['relevance', ...offered] : offered;
   const sort: BrowseSort = (sorts as readonly string[]).includes(one(sp.sort) ?? '')
     ? (one(sp.sort) as BrowseSort)
     : q
       ? 'relevance'
-      : SORTS[0];
+      : offered[0];
 
   // One row per listing (a paper), read from its main market; plus one per
   // market that belongs to no listing. Each section is paged in the database.
-  const viewer = await viewerFromHeaders(await headers());
   // The venue the navbar was drawn in, to refresh it when another is picked here.
   const navVenue = await currentVenue();
   // ?following=1: only papers the signed-in viewer follows.
   const onlyFollowed = viewer !== null && one(sp.following) === '1';
-  const me = viewer?.account.id ?? null;
   // ?tldr=1: each paper's TLDR under its authors.
   const showTldr = one(sp.tldr) === '1';
   // Papers the viewer follows, then papers they hold shares in, are pinned
@@ -209,6 +214,7 @@ export default async function Home({
       followedBy: onlyFollowed ? me : null,
       exceptFollowedBy: pins ? me : null,
       exceptHeldBy: pins ? me : null,
+      recommendFor: me,
     }),
     pins ? pageOf(sp.fpage, FOLLOWING_PAGE, { ...browse, followedBy: me, exceptHeldBy: me }) : null,
     pins ? pageOf(sp.hpage, POSITIONS_PAGE, { ...browse, heldBy: me }) : null,
