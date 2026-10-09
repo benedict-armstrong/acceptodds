@@ -1260,6 +1260,15 @@ unpaginated, and 5 s for that search.
     font is `assets/fonts/LiberationSerif-Regular.ttf` (OFL), read from disk
     and named in `outputFileTracingIncludes` so standalone output carries it.
     Latin only: no emoji or arrows in the image.
+  - `/<venue>` (`ICLR2027`, `OpenAIMath`: the kind without spaces or
+    punctuation, any case, `venues.venueSlug`) 307s to `/?kind=<kind>`,
+    which sets the navbar's venue; anything else there is a 404. Its
+    `opengraph-image` is the venue's home card, and the only home card:
+    the home page and `/map` name their venue's (`share.venuePreviewImages`),
+    the root layout the default venue's for every page without its own.
+    Never put an `opengraph-image` at the app root: a file-based image
+    overrides the home page's `openGraph.images`, so every venue's home
+    link showed the default venue's card.
   - `/badge/<slug>.svg` (`lib/badge.ts`): site name, headline, a small bar;
     `?style=compact`, `?bar=0`. Public, five-minute cache, an ETag that
     changes with each fill. An image, not `/api/v1`, so not in OpenAPI.

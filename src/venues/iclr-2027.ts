@@ -12,6 +12,7 @@ export const ICLR_2027: Venue = {
   settlesWhen: 'the venue publishes its decisions',
   unaffiliated: ['ICLR', 'OpenReview'],
   cardQuestion: { predicate: 'be accepted', suffix: '@ ICLR 2027?' },
+  cardNote: 'your paper?',
 
   runningHead: 'Under review as a conference paper at ICLR 2027',
   headlineLabel: 'accept',

@@ -16,7 +16,7 @@ import { microToFloat } from '@/lib/money';
 import { viewerFromHeaders } from '@/server/auth';
 import { currentVenue } from '@/server/current-venue';
 import { startingBalanceMicro } from '@/server/wallets';
-import { siteName, siteUrl } from '@/server/share';
+import { siteName, siteUrl, venuePreviewImages } from '@/server/share';
 import { valuation } from '@/server/valuation';
 import { mapKinds, marketKinds } from '@/server/views';
 import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
@@ -32,8 +32,9 @@ export async function generateMetadata(): Promise<Metadata> {
     title: 'acceptodds',
     description: 'A prediction market on the fate of research papers, traded in reputation.',
     applicationName: siteName(),
-    openGraph: { siteName: siteName(), type: 'website' },
-    twitter: { card: 'summary_large_image' },
+    // The default venue's card, for every page without a preview of its own.
+    openGraph: { siteName: siteName(), type: 'website', images: venuePreviewImages(null) },
+    twitter: { card: 'summary_large_image', images: venuePreviewImages(null) },
     // Agents find the machine-readable docs from any page.
     alternates: { types: { 'application/json': '/api/v1/openapi.json' } },
   };
