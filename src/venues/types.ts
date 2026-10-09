@@ -87,8 +87,8 @@ export interface Venue {
      * `reference` is JEV's own answers to a random sample of the venue's
      * listings, as sorted scores (`jev.jevScore`), one sample per way it reads
      * a listing, measured by `npm run jev:reference`, never the prior; its
-     * percentile there opens the market on a logit-normal round the
-     * `openingPrice`s' headline, `spread` wide in log-odds.
+     * percentile there opens the market on a logit-normal with JEV_TARGET_MEAN
+     * as its mean, `spread` wide in log-odds.
      */
     jev: {
       instructions: string;

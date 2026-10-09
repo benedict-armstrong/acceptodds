@@ -65,7 +65,7 @@ export const ICLR_2027: Venue = {
       // so only a paper's rank among these is used (`jev.ranked`). Re-measure when the question changes.
       reference: { fullText: reference.fullText, abstract: reference.abstract },
       // Narrow on purpose: JEV's rank is weak evidence, and the price is the traders' to find. Ten to ninety
-      // per cent of papers open between about 20% and 47%; nothing opens below about 8% or above about 70%.
+      // per cent of papers open between about 16% and 41% at the default JEV_TARGET_MEAN of 28%.
       spread: 0.5,
     },
   },

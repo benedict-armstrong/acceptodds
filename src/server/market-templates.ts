@@ -19,7 +19,7 @@ export interface MarketTemplate {
   fallbackPrices: number[];
   /**
    * What JEV is asked: one criterion per outcome, in outcome order; `null`: no model call. Its answer is
-   * ranked among `reference` and opens the market `spread` wide round the prior (`jev.ranked`).
+   * ranked among `reference` and opens the market `spread` wide with JEV_TARGET_MEAN as its target mean.
    */
   jev: Venue['market']['jev'];
   /** Opened when the listing is posted (`POST /listings`), not on demand. */

@@ -1,6 +1,6 @@
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
-import { floored, jevScore, normalQuantile, PRICE_FLOOR, ranked } from '@/server/jev';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { floored, jevScore, jevTargetMean, normalQuantile, PRICE_FLOOR, ranked } from '@/server/jev';
 
 describe('floored', () => {
   it('keeps every price at or above the floor, summing to 1', () => {
@@ -83,5 +83,33 @@ describe('ranked', () => {
 
   it('is null without a reference', () => {
     expect(ranked([0.5, 0.5], [], prior, 0.5)).toBeNull();
+  });
+});
+
+describe('JEV target mean', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('defaults to 28% and reads a configured decimal probability', () => {
+    vi.stubEnv('JEV_TARGET_MEAN', undefined);
+    expect(jevTargetMean()).toBe(0.28);
+    vi.stubEnv('JEV_TARGET_MEAN', '0.30');
+    expect(jevTargetMean()).toBe(0.3);
+  });
+
+  it.each(['', '28', 'NaN', '-0.1', '0', '1', 'Infinity'])('rejects invalid setting %s', (value) => {
+    vi.stubEnv('JEV_TARGET_MEAN', value);
+    expect(() => jevTargetMean()).toThrow('JEV_TARGET_MEAN');
+  });
+
+  it.each([0.28, 0.35])('targets a mean of %s, with a lower median and unchanged spread', (mean) => {
+    // An independent, evenly ranked population: check the arithmetic mean of the resulting prices.
+    const raw = Array.from({ length: 399 }, (_, i) => [0.1 + 0.8 * (i / 398), 0.9 - 0.8 * (i / 398)]);
+    const reference = raw.map(jevScore);
+    const prices = raw.map((answer) => ranked(answer, reference, [0.32, 0.68], 0.5, mean)![0]);
+    expect(Math.abs(prices.reduce((sum, p) => sum + p, 0) / prices.length - mean)).toBeLessThan(0.001);
+    expect(prices[199]).toBeLessThan(mean);
+    expect(prices.every((p, i) => i === 0 || p > prices[i - 1])).toBe(true);
+    const logit = (p: number) => Math.log(p / (1 - p));
+    expect(logit(prices[299]) - logit(prices[99])).toBeCloseTo(0.5 * (normalQuantile(0.75) - normalQuantile(0.25)), 8);
   });
 });

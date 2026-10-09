@@ -1378,9 +1378,11 @@ unpaginated, and 5 s for that search.
   `jev.reference`, per read: full text or abstract; measured by
   `npm run jev:reference`, read-only, and re-measured whenever the
   instructions, criteria or model change), and that percentile opens
-  the market on a logit-normal round the prior's headline, `spread`
-  wide in log-odds (ICLR: 0.5, so 10–90% of papers open between ~20%
-  and ~47%). Deterministic: the same answer always opens at the same
+  the market on a logit-normal with mean `JEV_TARGET_MEAN` (default
+  0.28), independently of the venue's prior/fallback, and `spread`
+  wide in log-odds (ICLR: 0.5, so 10–90% of papers open between ~16%
+  and ~41%). Its center is solved numerically for the mean; finite reference
+  samples, ties, flooring and the papers people choose can shift the realized mean. Deterministic: the same answer always opens at the same
   price. Floored if it ever falls below `PRICE_FLOOR` (0.05;
   `jev.floored`), so one market costs the house at most
   `b·ln(1/PRICE_FLOOR)` (§1.7). No `NANOGPT_API_KEY`, a timeout, an error

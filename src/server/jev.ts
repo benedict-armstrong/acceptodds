@@ -30,7 +30,13 @@ export async function jevPrices(
       .where(eq(listingTexts.listingId, listing.id));
     const answer = await askJev(listing, full?.body ?? null, template, key);
     await recordCost(answer.cost, database);
-    return ranked(answer.raw, template.jev.reference[answer.read], template.fallbackPrices, template.jev.spread);
+    return ranked(
+      answer.raw,
+      template.jev.reference[answer.read],
+      template.fallbackPrices,
+      template.jev.spread,
+      jevTargetMean(),
+    );
   } catch (err) {
     console.error('jev: no opening prices, using the fallback:', err);
     return null;
@@ -113,14 +119,22 @@ export function jevScore(raw: number[]): number {
  * model and with what it reads. So an answer is placed among JEV's own
  * answers to a random sample of the venue's listings, read the same way (`reference`, sorted scores), and
  * that percentile `u` becomes a headline drawn from a target distribution we choose: logit-normal, its median
- * at the prior's headline and its spread `spread` in log-odds, `logit(h) = logit(h_prior) + spread·Φ⁻¹(u)`.
+ * at the prior's headline unless a target mean is supplied, and its spread `spread` in log-odds.
+ * With a target mean, solve for the center of the logit-normal before applying the percentile.
+ * Finite reference samples, ties, the price floor and which papers people open can shift the realized mean.
  * A shift in JEV's level moves no opening price; how far JEV may move one is `spread`'s call alone.
  *
  * Ties (JEV's answers are coarse) take the middle of their run, and `u` stays inside `(0, 1)`, so the
  * extremes are bounded by the sample size. The other outcomes share the headline in proportion to JEV's
  * answer (to the prior's, if JEV gave them nothing); the last gets the rest. `null` without a reference.
  */
-export function ranked(raw: number[], reference: readonly number[], prior: number[], spread: number): number[] | null {
+export function ranked(
+  raw: number[],
+  reference: readonly number[],
+  prior: number[],
+  spread: number,
+  targetMean?: number,
+): number[] | null {
   if (reference.length === 0) return null;
   const s = jevScore(raw);
   let below = 0;
@@ -132,12 +146,40 @@ export function ranked(raw: number[], reference: readonly number[], prior: numbe
   const u = (below + equal / 2 + 0.5) / (reference.length + 1);
   const n = prior.length;
   const h0 = 1 - prior[n - 1];
-  const h = 1 / (1 + Math.exp(-(Math.log(h0 / (1 - h0)) + spread * normalQuantile(u))));
+  const center = targetMean === undefined ? Math.log(h0 / (1 - h0)) : meanCenter(targetMean, spread);
+  const h = 1 / (1 + Math.exp(-(center + spread * normalQuantile(u))));
   const head = raw.slice(0, n - 1);
   const shares = head.some((x) => x > 0) ? head : prior.slice(0, n - 1);
   const total = shares.reduce((a, x) => a + x, 0);
   const prices = [...shares.map((x) => (h * x) / total), 1 - h];
   return prices.every((x) => x >= PRICE_FLOOR) ? prices : floored(prices);
+}
+
+/**
+ * Desired mean headline for JEV seeds, independently of the venue's fallback/base rate.
+ * Decimal probability (0.28 = 28%). Reject invalid settings through jevPrices' fallback path.
+ */
+export function jevTargetMean(): number {
+  const value = process.env.JEV_TARGET_MEAN;
+  const mean = value === undefined ? 0.28 : Number(value);
+  if (!Number.isFinite(mean) || mean < PRICE_FLOOR || mean > 1 - PRICE_FLOOR) {
+    throw new Error('JEV_TARGET_MEAN must be a decimal probability between 0.05 and 0.95');
+  }
+  return mean;
+}
+
+/** Midpoint quadrature over normal quantiles; bisection preserves the configured log-odds spread. */
+function meanCenter(mean: number, spread: number): number {
+  const scores = Array.from({ length: 2048 }, (_, i) => spread * normalQuantile((i + 0.5) / 2048));
+  let low = -40 - 8 * Math.abs(spread);
+  let high = -low;
+  for (let i = 0; i < 48; i++) {
+    const center = (low + high) / 2;
+    const average = scores.reduce((sum, score) => sum + 1 / (1 + Math.exp(-(center + score))), 0) / scores.length;
+    if (average < mean) low = center;
+    else high = center;
+  }
+  return (low + high) / 2;
 }
 
 /** Φ⁻¹, the standard normal quantile (Acklam's rational approximation, relative error below 1.2e-9). */
