@@ -731,10 +731,10 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
 - **"Venue" is the market's `kind`.** The home page filters on it and opens
   on `DEFAULT_MARKET_KIND` (default `ICLR 2027`) when that venue has markets.
   The platform still knows nothing about venues: it is a string the creating
-  client chose. Sorts: activity (the default: last fill), acceptance (the
+  client chose. Sorts: activity (the default: last fill), odds (the
   `likelihood` sort: the main market's **headline** (#11, below), highest
   first, 1/0 once settled, void last), volume, newest. The
-  venue's `closing` sort is not offered. Status and "following" filters sit
+  venue's `closing` sort is not offered; volume and newest sit, with the status and "following" filters,
   in a `⋯` `Popover` menu, which shows the active one when not the default.
   A signed-in viewer sees a **Following** section above the list: the
   followed subset of that same list (venue, status, sort) the viewer holds
@@ -1201,7 +1201,7 @@ unpaginated, and 5 s for that search.
   `1 − P(last)`** (`lib/headline.ts`) — for a paper, accepted in any form.
   For a binary `[YES, NO]` market that is exactly P(YES), so binary markets
   mean what they always did. Everything that summarises a market in one
-  number reads it: likelihood colours, the acceptance sort (the engine's
+  number reads it: likelihood colours, the odds sort (the engine's
   `markets.headline` cache, #12; its backfill in `drizzle/0006` is the same
   formula in SQL, exponents clamped because Postgres raises on `exp` over-
   _and_ underflow), sparklines, follows, the digest,

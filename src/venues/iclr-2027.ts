@@ -16,7 +16,6 @@ export const ICLR_2027: Venue = {
   runningHead: 'Under review as a conference paper at ICLR 2027',
   headlineLabel: 'accept',
   chanceOf: 'this paper gets accepted at ICLR 2027',
-  headlineSort: 'acceptance',
   shareSuffix: ' @ ICLR 2027?',
 
   market: {

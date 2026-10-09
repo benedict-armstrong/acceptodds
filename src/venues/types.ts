@@ -56,8 +56,6 @@ export interface Venue {
   headlineLabel: string;
   /** What the headline is the chance of, on the paper page: "est. 42% chance <this paper gets accepted at ICLR 2027>.". */
   chanceOf: string;
-  /** The home page's name for the headline sort: "acceptance". */
-  headlineSort: string;
   /** The share line after the title (`lib/headline.ts` `shareTitleLine`): " @ ICLR 2027?". Latin only (OG image). */
   shareSuffix: string;
 

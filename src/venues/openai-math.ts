@@ -19,7 +19,6 @@ export const OPENAI_MATH: Venue = {
   runningHead: 'Preprint in the OpenAI Math release',
   headlineLabel: 'verified',
   chanceOf: 'this result is independently verified by the end of 2027',
-  headlineSort: 'verification',
   shareSuffix: ' verified by 2027?',
 
   market: {

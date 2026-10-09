@@ -149,6 +149,7 @@ function Row({
         <span className={showMarket ? 'block whitespace-nowrap text-muted' : undefined}>
           <OutcomeSwatch ordinal={h.outcomeOrdinal} outcomes={h.outcomeCount} />
           {h.outcomeLabel}
+          {showMarket && ` @${h.kind}`}
         </span>
       </td>
       <td className={`${ui.td} ${ui.num} pl-6 whitespace-nowrap`}>{rep(h.costBasisMicro)}</td>

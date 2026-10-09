@@ -107,11 +107,10 @@ const FOOTNOTE = (
 
 /** The home page's sorts, default first: activity. The venue's `closing` is not offered. */
 const SORTS: readonly BrowseSort[] = ['activity', ...MARKET_SORTS.filter((s) => s !== 'closing' && s !== 'activity')];
-/**
- * Sort keys shown under another name. `likelihood` is the headline
- * (`lib/headline.ts`), named by the venue ("acceptance").
- */
-const sortLabel = (s: BrowseSort, v: Venue | null) => (s === 'likelihood' ? (v?.headlineSort ?? 'odds') : s);
+/** Sorts kept out of the row, in the ⋯ menu (on a phone every sort is in the filter menu). */
+const MENU_SORTS: readonly BrowseSort[] = ['volume', 'newest'];
+/** Sort keys shown under another name: `likelihood` is the headline (`lib/headline.ts`). */
+const sortLabel = (s: BrowseSort) => (s === 'likelihood' ? 'odds' : s);
 
 /** The page's title after the wordmark: the venue's question, or one that fits any venue. */
 function homeTitle(kind: string | null): string {
@@ -269,6 +268,9 @@ export default async function Home({
   const activeFilters = [status !== 'open' && status, onlyFollowed && '★', showTldr && 'tldr']
     .filter(Boolean)
     .join(', ');
+  // The ⋯ trigger also names a sort picked from its menu, since the row doesn't show it.
+  const menuSort = MENU_SORTS.includes(sort) ? sortLabel(sort) : null;
+  const moreLabel = [menuSort, activeFilters].filter(Boolean).join(', ');
   // With one venue, "all venues" is the same list again.
   const allVenues = kinds.length > 1;
 
@@ -359,7 +361,7 @@ export default async function Home({
                 {sorts.map((s) => (
                   <PopoverClose key={s} asChild>
                     <Link href={href({ sort: s })} className={s === sort ? ON : ''}>
-                      {sortLabel(s, venue(kind))}
+                      {sortLabel(s)}
                     </Link>
                   </PopoverClose>
                 ))}
@@ -453,27 +455,39 @@ export default async function Home({
         <span className="flex-1" />
         <span className="flex flex-wrap gap-x-3 gap-y-1">
           sort:
-          {sorts.map((s) => (
-            <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
-              {sortLabel(s, venue(kind))}
-            </Link>
-          ))}
+          {sorts
+            .filter((s) => !MENU_SORTS.includes(s))
+            .map((s) => (
+              <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
+                {sortLabel(s)}
+              </Link>
+            ))}
         </span>
-        {/* Status and following, out of the way. */}
+        {/* The rarer sorts, status and following, out of the way. */}
         <Popover>
           {/* Not a flex box: an icon alone gives a flex item no text baseline, and the row aligns on
               baselines. Inline, `align-middle` centres the dots on the text's x-height. */}
           <PopoverTrigger
-            title="More filters: status, following, TLDRs"
+            title="More sorts and filters: status, following, TLDRs"
             className="-my-1 cursor-pointer px-1 py-1 text-ink hover:text-accent"
           >
-            {activeFilters}
-            <MoreIcon className={`inline-block size-5 align-middle ${activeFilters ? 'ml-1' : ''}`} />
+            {moreLabel}
+            <MoreIcon className={`inline-block size-5 align-middle ${moreLabel ? 'ml-1' : ''}`} />
           </PopoverTrigger>
           <PopoverContent menu align="end" className="text-[13px]">
-            {STATUSES.map((s) => (
+            {MENU_SORTS.map((s) => (
               <PopoverClose key={s} asChild>
-                <Link href={href({ status: s })} className={s === status ? ON : ''}>
+                <Link href={href({ sort: s })} className={s === sort ? ON : ''}>
+                  sort: {sortLabel(s)}
+                </Link>
+              </PopoverClose>
+            ))}
+            {STATUSES.map((s, i) => (
+              <PopoverClose key={s} asChild>
+                <Link
+                  href={href({ status: s })}
+                  className={`${i === 0 ? 'mt-1 border-t border-rule pt-1.5 ' : ''}${s === status ? ON : ''}`}
+                >
                   {s}
                 </Link>
               </PopoverClose>
