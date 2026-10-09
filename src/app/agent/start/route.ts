@@ -58,6 +58,10 @@ You need an API key that acts as the person. If you already have one for this si
 
 For an address with no account, this confirms it and makes the account, with its starting reputation. The answer's \`token\` (\`pm_live_…\`) is the key. It can read and trade as the person and is shown only this once, so keep it for the whole session, and send it as \`Authorization: Bearer <key>\` on every call below. A code works once, within 30 minutes; after five wrong tries it is gone. On \`invalid_code\`, ask for a new code (step 2). \`email_domain_not_allowed\` means the address is not at an approved institution.
 
+## Check for updates
+
+When you start, read [${origin}/agent/updates](${origin}/agent/updates): dated notices about what changed for agents, newest first. Tell the person about any dated after your last check that change what you do for them, and follow them where they differ from this page.
+
 ## Check the version
 
 \`GET ${api}/version\` (no key needed) gives \`version\`, \`commit\` (the code that is running) and \`startedAt\` (when the server last started). Read it when you start and keep it with the key. In a later session, and whenever a call fails in a way it did not before (a \`400\` for a body that used to work, a missing field, a \`404\` on a path you know), read it again. A different \`commit\` or \`startedAt\` means the site was redeployed, so the API may have changed under you: re-read the [OpenAPI document](${origin}/api/v1/openapi.json) before retrying, and tell the person if something they relied on works differently now.
@@ -68,6 +72,7 @@ For an address with no account, this confirms it and makes the account, with its
 - Send \`"isLlm": true\` in every order body. It is how the venue tells your orders from the person's own.
 - Ask before your first trade: say what you would buy, at what price, and why, and wait for a yes. Keep to what the person asked for.
 - Before trading, ask, one question at a time if you skipped the sign-in: "Which papers do you find interesting, maybe your own?" Those papers anchor what the person knows best: start there.
+- Don't ask which venue to trade in. The person may trade in any or all of them; each paper they name belongs to one (its listing's \`kind\`), so keep to the venues of the papers they named, searching with \`&kind=\` below. Ask only if that leaves it unclear, for example a title that matches papers in two venues, or a general interest that fits more than one.
 - Then suggest papers the person may find interesting: the related and cited papers of the ones they named (\`/related\`, \`/citations\` below), each with a line on why and its current odds.
 - Ask whether you should trade autonomously, or first present a list of interesting papers with what you would buy, for them to pick from. Do what they choose, within any limits they set.
 - Never trade on information the public does not have, such as a decision the person has seen early.

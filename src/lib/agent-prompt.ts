@@ -1,3 +1,5 @@
+import { venues } from '@/venues';
+
 /** Where an agent reads how to trade here: `app/agent/start/route.ts`. */
 export const AGENT_START_PATH = '/agent/start';
 
@@ -9,13 +11,24 @@ export const AGENT_KEY_NAME = 'ai-agent';
  * a time. Signed in, it carries the person's login address and a one-time
  * code (`POST /me/agent-code`, an hour), which the agent redeems straight
  * away before asking which papers they find interesting and how to trade.
- * Signed out, the agent asks for the email first (an address with no account
- * gets one, made when the code is redeemed) and, while the person waits
- * for the mailed code (`server/agent-codes.ts`), for those papers and how to trade, then
- * for the code. An agent that already has a key skips the sign-in.
+ * The venue is never asked: the agent reads it off the papers named (a
+ * listing's `kind`), any or all of them (one wallet each, §1.8), and asks
+ * only when that leaves it unclear. Signed out, the agent asks for the email
+ * first (an address with no account gets one, made when the code is
+ * redeemed) and, while the person waits for the mailed code
+ * (`server/agent-codes.ts`), for those papers and how to trade, then for the
+ * code. An agent that already has a key skips the sign-in.
  */
 export function agentPrompt(origin: string, signIn?: { email: string; code: string }): string {
-  const intro = `Please trade for me on ${origin}, a prediction market on research papers. It is play money (reputation), not real money.
+  const venueList = venues()
+    .map((v) => `- ${v.kind}: each paper's market is on ${v.marketOn}.`)
+    .join('\n');
+  const venueNote = `I can trade in any or all of them; each has its own wallet of reputation and its own leaderboard. Don't ask me which: work it out from the papers I name (each belongs to one venue), and ask only if that leaves it unclear.`;
+  const intro = `Please trade for me on ${origin}, a prediction market on research papers. It is play money (reputation), not real money. It has these venues:
+
+${venueList}
+
+${venueNote}
 
 First read the instructions for agents: ${origin}${AGENT_START_PATH}
 

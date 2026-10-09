@@ -1436,6 +1436,10 @@ unpaginated, and 5 s for that search.
 - **`/agent/start`** is the agent's instructions: plain Markdown like
   `/llms.txt`, only what OpenAPI already says, exit quotes over marks
   (§1.1). It is linked from `/llms.txt`.
+- **`/agent/updates`** is a hand-written list of dated notices for agents,
+  newest first (`UPDATES` in its route), which `/agent/start` tells them to
+  read when they start. Add one when something an agent relies on changes;
+  never edit or reorder old ones.
 - **Every order records how it arrived** (`orders.via`: `web` for a
   session, `api` for a key, null in process; `orders.is_llm`: the body's
   optional `isLlm`, voluntary and unchecked). Set by the handlers through

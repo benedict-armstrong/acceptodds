@@ -9,7 +9,7 @@ export function LogoMark({ size = 22 }: { size?: number }) {
       width={(size * 174) / 200}
       height={size}
       aria-hidden="true"
-      className="mr-2 inline align-[-3px] text-accent"
+      className="inline align-[-3px] text-accent"
     >
       <path
         fill="currentColor"

@@ -33,6 +33,7 @@ Prices on a page are probabilities, not guarantees. A holding's displayed value 
 ## API
 
 - [Instructions for agents](${origin}/agent/start): trading for a person with their API key, start here
+- [Updates for agents](${origin}/agent/updates): dated notices of what changed, newest first
 - [API reference](${origin}/docs): interactive documentation
 - [OpenAPI document](${origin}/api/v1/openapi.json): the full machine-readable contract
 - Reads are public and need no key: \`GET ${origin}/api/v1/listings\`, \`/api/v1/markets\`, \`/api/v1/leaderboard\`. Each paper is a listing with its markets; \`?q=\` searches.
