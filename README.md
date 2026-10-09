@@ -173,6 +173,27 @@ a pending bet stored within it. Run it weekly from the host's cron:
 0 4 * * 0  cd /srv/papermarket && docker compose -f docker-compose.prod.yml --env-file .env.production run --rm tools npm run users:prune
 ```
 
+## Backups
+
+`scripts/pg-backup.sh` dumps the production database (`pg_dump -Fc`, zstd,
+about 40 s) and keeps the newest 6 hourly dumps and 14 days of dailies in
+`~/backups/acceptodds`, mode 600. With `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`
+and the bucket's `AWS_*` keys in `~/.config/acceptodds/backup.env`, every run
+also goes to that restic repository: a second dump, uncompressed so restic
+uploads only the chunks that changed (a few MB), encrypted before it leaves
+the host; 24 hourly, 30 daily and 12 monthly snapshots are kept, pruned once a
+day. Production's is the R2 bucket `acceptodds-backups`. Keep a copy of
+`RESTIC_PASSWORD` off the host: without it the off-site copies cannot be read.
+Run it hourly:
+
+```cron
+17 * * * *  /srv/papermarket/scripts/pg-backup.sh >> ~/logs/acceptodds/backup.log 2>&1
+```
+
+Restore into an empty database with
+`pg_restore --no-owner -d <db> < acceptodds-<stamp>.dump` (about 3 minutes);
+`restic dump latest acceptodds.dump` fetches the newest off-site copy.
+
 ## Page analytics
 
 Umami, from the host-wide instance in `~/ops`. Set `UMAMI_URL` and
