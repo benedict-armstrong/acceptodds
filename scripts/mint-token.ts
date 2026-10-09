@@ -16,8 +16,8 @@ import { mintToken, TOKEN_SCOPES } from '@/server/tokens';
  *   npm run token:mint -- --handle bot-zero --scopes read,trade --name research
  *   npm run token:mint -- --handle my-bot --create-bot --scopes read,trade
  *
- * `--create-bot` creates the account first, as a bot funded with
- * STARTING_BALANCE_MICRO. A bot gets a login-less Better Auth user the first
+ * `--create-bot` creates the account first, as a bot; like any trader, its
+ * first trade in a venue opens a wallet there with STARTING_BALANCE_MICRO. A bot gets a login-less Better Auth user the first
  * time it is issued a token (the API-key plugin keys tokens on users). A human
  * account must already have signed up. The token is printed once and is not
  * recoverable.
