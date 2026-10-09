@@ -118,8 +118,9 @@ Humans sign up at `/welcome` with an email alone, **only from an email domain
 on the institution allowlist** (below); anything else is refused with
 `422 EMAIL_DOMAIN_NOT_ALLOWED` before a user exists or a mail is sent.
 Confirming the address — by the mail's link or its 6-digit code — is the
-institutional verification: it creates the trader account and grants
-`STARTING_BALANCE_MICRO`. Nothing is granted before confirmation. Signed-in
+institutional verification: it creates the trader account. Reputation is
+kept in one wallet per venue, and the account's first trade in a venue opens
+its wallet there with `STARTING_BALANCE_MICRO`. Signed-in
 users mint their own `read`/`trade` API keys on `/profile`. A signed-in user
 whose email is in `ADMIN_EMAILS` (comma-separated) can also create, close and
 settle markets.
@@ -127,7 +128,7 @@ settle markets.
 Bots, and any `admin` token, are minted by an operator:
 
 ```sh
-# a bot account, created and funded with STARTING_BALANCE_MICRO
+# a bot account; its first trade in a venue opens a wallet there with STARTING_BALANCE_MICRO
 npm run token:mint -- --handle my-bot --create-bot --scopes read,trade
 # an admin token for an existing bot or signed-up account
 npm run token:mint -- --handle research-bot --scopes admin --name ops

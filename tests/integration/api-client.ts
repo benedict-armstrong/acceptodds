@@ -37,6 +37,7 @@ import * as mapSearchRoute from '@/app/api/v1/map/search/route';
 import * as mapRelatedRoute from '@/app/api/v1/map/related/route';
 import * as mapTitlesRoute from '@/app/api/v1/map/titles/route';
 import * as transitionsRoute from '@/app/api/v1/transitions/route';
+import * as versionRoute from '@/app/api/v1/version/route';
 import * as myFollowsRoute from '@/app/api/v1/me/follows/route';
 import * as myMentionsRoute from '@/app/api/v1/me/mentions/route';
 import * as groupsRoute from '@/app/api/v1/groups/route';
@@ -105,6 +106,7 @@ const ROUTES: [pattern: string, mod: Mod][] = [
   ['/map/related', mapRelatedRoute],
   ['/map/titles', mapTitlesRoute],
   ['/transitions', transitionsRoute],
+  ['/version', versionRoute],
   ['/leaderboard', leaderboardRoute],
   ['/groups', groupsRoute],
   // A static segment wins over a dynamic one, as in Next.

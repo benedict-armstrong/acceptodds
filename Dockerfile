@@ -24,7 +24,11 @@ RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 FROM node:26-bookworm-slim AS app
 WORKDIR /app
-ENV NODE_ENV=production \
+# The commit `GET /api/v1/version` reports. The build context has no .git, so
+# the deploy passes it: GIT_COMMIT=$(git rev-parse HEAD) docker compose ... build
+ARG GIT_COMMIT=
+ENV GIT_COMMIT=$GIT_COMMIT \
+    NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0

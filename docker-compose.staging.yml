@@ -12,7 +12,7 @@
 # included: without a Resend key the app refuses to send any mail.
 # No cron runs against it.
 #
-#   docker compose -f docker-compose.staging.yml --env-file .env.staging build
+#   GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.staging.yml --env-file .env.staging build
 #   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d postgres
 #   # copy production's data (read-only on prod):
 #   docker exec acceptodds-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
@@ -53,6 +53,9 @@ services:
     build:
       context: .
       target: app
+      # Shown by GET /api/v1/version; set it when building (see the header).
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
     image: acceptodds-staging-app
     restart: unless-stopped
     logging: *logging

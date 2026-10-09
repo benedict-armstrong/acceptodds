@@ -10,6 +10,7 @@ import {
 } from '../auth';
 import { getPortfolio, setDisplayName, startingBalanceMicro } from '../accounts';
 import { walletsOf } from '../wallets';
+import { runningVersion } from '../version';
 import { defaultMarketKind } from '@/lib/venue';
 import * as engine from '../engine';
 import { buyOnListing, openListingMarket, openWithListing } from '../market-start';
@@ -214,6 +215,13 @@ export const postListingView = route(async (req, params) => {
   const fromId = S.Id.safeParse(from);
   if (fromId.success) await countTransition(fromId.data, listing.id, viewer);
   return respond(S.ViewState, { listingId: listing.id, views }, { principal });
+});
+
+/** What is running: package version, git commit and process start. Public. */
+export const getVersion = route(async (req) => {
+  const principal = await authenticate(req);
+  const { version, commit, startedAt } = runningVersion();
+  return respond(S.Version, { version, commit, startedAt: toIso(startedAt) }, { principal });
 });
 
 /** Totals of visitors who read one listing and then another, for the similarity service. */

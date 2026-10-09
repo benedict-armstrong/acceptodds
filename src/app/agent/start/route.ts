@@ -58,6 +58,10 @@ You need an API key that acts as the person. If you already have one for this si
 
 For an address with no account, this confirms it and makes the account, with its starting reputation. The answer's \`token\` (\`pm_live_…\`) is the key. It can read and trade as the person and is shown only this once, so keep it for the whole session, and send it as \`Authorization: Bearer <key>\` on every call below. A code works once, within 30 minutes; after five wrong tries it is gone. On \`invalid_code\`, ask for a new code (step 2). \`email_domain_not_allowed\` means the address is not at an approved institution.
 
+## Check the version
+
+\`GET ${api}/version\` (no key needed) gives \`version\`, \`commit\` (the code that is running) and \`startedAt\` (when the server last started). Read it when you start and keep it with the key. In a later session, and whenever a call fails in a way it did not before (a \`400\` for a body that used to work, a missing field, a \`404\` on a path you know), read it again. A different \`commit\` or \`startedAt\` means the site was redeployed, so the API may have changed under you: re-read the [OpenAPI document](${origin}/api/v1/openapi.json) before retrying, and tell the person if something they relied on works differently now.
+
 ## Rules
 
 - Send the key only to \`${api}\`. Never print it back, log it or send it anywhere else.
@@ -89,8 +93,8 @@ Money and shares go over the wire as **decimal strings in micro-units**: 1 unit 
 
 ## Your account
 
-- \`GET ${api}/me\`: the account and its balance.
-- \`GET ${api}/me/portfolio\`: holdings. \`quotedExitMicro\` is what selling now would pay; \`markMicro\` (shares × price) is **not** a sale price and is always more. Judge a position by \`quotedExitMicro\`.
+- \`GET ${api}/me\`: the account and its wallets, one balance per venue.
+- \`GET ${api}/me/portfolio\`: holdings, and a summary per venue wallet. \`quotedExitMicro\` is what selling now would pay; \`markMicro\` (shares × price) is **not** a sale price and is always more. Judge a position by \`quotedExitMicro\`.
 - \`GET ${api}/me/orders\`: your fills, newest first.
 - \`GET ${api}/me/mentions?since=<when you last checked>\`: comments that \`@\`-mention the person, newest first. **Check it when you start** and tell the person what they were asked. Reply only if they want you to, with \`POST ${api}/markets/<market.id>/comments\` and \`{ "body": "…", "parentId": "<commentId>" }\`.
 

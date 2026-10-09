@@ -356,6 +356,18 @@ export function buildRegistry(): OpenAPIRegistry {
   r.registerPath(
     op({
       method: 'get',
+      path: '/version',
+      tags: ['meta'],
+      summary: 'Running version',
+      description:
+        'The package version, the git commit the server was built from, and when its process started. Compare it between sessions: a new `commit` or `startedAt` means a new deploy, and request or response shapes may have changed.',
+      ok: { status: 200, schema: S.Version, description: 'What is running.' },
+    }),
+  );
+
+  r.registerPath(
+    op({
+      method: 'get',
       path: '/leaderboard',
       tags: ['accounts'],
       summary: 'Leaderboard',
@@ -1186,6 +1198,7 @@ export function openApiDocument() {
       },
       { name: 'onboarding', description: 'Signing up: plainly, or by choosing a first bet.' },
       { name: 'admin', description: 'Requires the `admin` scope.' },
+      { name: 'meta', description: 'About the server itself.' },
     ],
   });
   return cached;

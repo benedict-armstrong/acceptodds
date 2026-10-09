@@ -12,6 +12,7 @@ import { reconcileBalances } from '@/server/wallets';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { revokeToken } from '@/server/tokens';
+import pkg from '../../package.json';
 import { api, ROUTE_PATTERNS, trader } from './api-client';
 import { balanceOf, closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -858,6 +859,24 @@ describe('leaderboard (§1.2)', () => {
 // ---------------------------------------------------------------------------
 // admin
 // ---------------------------------------------------------------------------
+
+describe('version', () => {
+  it('says what is running, with no credential', async () => {
+    const res = await api('GET', '/version');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      version: pkg.version,
+      commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+      startedAt: expect.any(String),
+    });
+    process.env.GIT_COMMIT = 'stamped-at-build';
+    try {
+      expect((await api('GET', '/version')).body.commit).toBe('stamped-at-build');
+    } finally {
+      delete process.env.GIT_COMMIT;
+    }
+  });
+});
 
 describe('admin', () => {
   it('creates a market with b computed once from the field size, and debits the house', async () => {

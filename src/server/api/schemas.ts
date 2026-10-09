@@ -394,6 +394,18 @@ export const TransitionsQuery = z.object({
   min: z.coerce.number().int().min(1).default(1).meta({ description: 'Leave out pairs counted fewer times.' }),
 });
 
+export const Version = z
+  .object({
+    version: z.string().meta({ description: 'The platform’s package version.', example: '0.1.0' }),
+    commit: z.string().nullable().meta({
+      description: 'The git commit the server was built from; null when the build did not record one.',
+    }),
+    startedAt: Timestamp.meta({
+      description: 'When the server process started. A deploy restarts it, so this changes with every deploy.',
+    }),
+  })
+  .meta({ id: 'Version' });
+
 export const Transitions = z
   .object({
     transitions: z.array(

@@ -311,6 +311,11 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   `admin` scope has a larger bucket of its own (`API_ADMIN_RATE_LIMIT_*`,
   600 and 50/s by default), for `../research`'s bulk writes; only an
   operator can mint one.
+- **`GET /version` reports `GIT_COMMIT`**, stamped into the image at build:
+  the Docker context has no `.git`, so a build without
+  `GIT_COMMIT=$(git rev-parse HEAD)` reports `commit: null` (outside
+  production it falls back to the checkout). `/agent/start` tells agents to
+  compare it between sessions to notice a redeploy.
 - **Client IP is read only by `clientIp()`** in `server/api/http.ts`, from
   `Cf-Connecting-Ip`. An ESLint rule rejects the header names anywhere else.
   Nothing is keyed on it yet.
