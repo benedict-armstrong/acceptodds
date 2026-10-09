@@ -230,7 +230,6 @@ export function Welcome({
       return card(
         `Pick ${article(kind)} ${kind} paper`,
         <>
-          <p className="-mt-2 mb-3 text-muted">Maybe you have a feeling about your own submission?</p>
           <PaperSearch
             kind={kind}
             suggestions={suggestions}
