@@ -54,7 +54,7 @@
   --animate-caret-blink: caret-blink 1.2s ease-out infinite;
   /* A `SheetContent` on a phone: slides up from the bottom edge. */
   --animate-sheet-up: sheet-up 0.25s ease-out;
-  /* `InstitutionStrip`: the doubled row slides by one copy, then repeats. */
+  /* `InstitutionStrip`: the doubled row slides by one copy, then repeats. Its duration is set per name there. */
   --animate-marquee: marquee 60s linear infinite;
   @keyframes marquee {
     to {

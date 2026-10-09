@@ -23,10 +23,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 FROM node:26-bookworm-slim AS app
+# The commit this image was built from (docker-compose.prod.yml passes it): `docker inspect` shows it, and
+# `GET /api/v1/version` reports it. The build context has no .git, so it can only come from the build.
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
 WORKDIR /app
-# The commit `GET /api/v1/version` reports. The build context has no .git, so
-# the deploy passes it: GIT_COMMIT=$(git rev-parse HEAD) docker compose ... build
-ARG GIT_COMMIT=
 ENV GIT_COMMIT=$GIT_COMMIT \
     NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

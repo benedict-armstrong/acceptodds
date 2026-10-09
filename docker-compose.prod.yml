@@ -7,8 +7,10 @@
 #
 # One-time: scripts/init-env-production.sh https://acceptodds.com
 #
-# Deploy:
-#   GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.prod.yml --env-file .env.production --profile tools build
+# Deploy (commit first: the image is tagged with HEAD's commit, so a dirty tree
+# would ship code no commit names):
+#   test -z "$(git status --porcelain)" && export GIT_COMMIT=$(git rev-parse --short HEAD)
+#   docker compose -f docker-compose.prod.yml --env-file .env.production --profile tools build
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d postgres
 #   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm tools
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d app
@@ -53,10 +55,11 @@ services:
     build:
       context: .
       target: app
-      # Shown by GET /api/v1/version; set it when building (see the header).
+      # Also what GET /api/v1/version reports as `commit`.
       args:
-        GIT_COMMIT: ${GIT_COMMIT:-}
-    image: acceptodds-app
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    # One tag per commit (`docker ps` shows which is live); an older tag is the rollback.
+    image: acceptodds-app:${GIT_COMMIT:-latest}
     restart: unless-stopped
     logging: *logging
     env_file: .env.production
@@ -79,6 +82,7 @@ services:
       retries: 3
       start_period: 20s
     labels:
+      - acceptodds.commit=${GIT_COMMIT:-unknown}
       - traefik.enable=true
       - traefik.docker.network=web
       - traefik.http.routers.acceptodds.rule=Host(`acceptodds.com`) || Host(`www.acceptodds.com`)
