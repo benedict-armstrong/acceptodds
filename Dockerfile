@@ -23,6 +23,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 FROM node:26-bookworm-slim AS app
+# The commit this image was built from (docker-compose.prod.yml passes it); `docker inspect` shows it.
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
