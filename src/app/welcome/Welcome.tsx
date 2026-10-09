@@ -184,9 +184,9 @@ export function Welcome({
           <button className={ui.btn()} onClick={() => go(TOUR[0])}>
             Get started
           </button>
-          <p className={`${ui.fine} mt-3 text-center`}>
-            Already have an account? <Link href={authHref('/signin', next)}>Sign in</Link>
-          </p>
+          <Link href={authHref('/signin', next)} className={ui.btn({ ghost: true })}>
+            I already have an account
+          </Link>
         </>,
       );
 

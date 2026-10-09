@@ -9,7 +9,7 @@ type Payload = { url?: string; referrer?: string; [key: string]: unknown };
 
 /**
  * The Umami tracker (shared ops instance, `analytics.<zone>`), which counts
- * page views, client-side navigations included. Cookieless; it never learns
+ * page views, client-side navigations included, and their load performance. Cookieless; it never learns
  * who the viewer is.
  *
  * Every hit passes through `analyticsUrl` first (`lib/analytics.ts`). The
@@ -38,6 +38,10 @@ export function Analytics({ src, websiteId, domain }: { src: string; websiteId: 
     // settings loads the script and records nothing.
     script.dataset.domains = domain;
     script.dataset.excludeHash = 'true';
+    // Core Web Vitals (LCP, INP, CLS, FCP, TTFB), one hit per page view. They
+    // go out as type 'performance' through the same before-send hook, so their
+    // URLs are filtered like a page view's. Needs Umami 3.1 or later.
+    script.dataset.performance = 'true';
     document.head.appendChild(script);
   }, [src, websiteId, domain]);
   return null;

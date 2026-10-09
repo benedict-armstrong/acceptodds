@@ -521,7 +521,8 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   cache is bumped); the handle never changes.
 - **Choosing or resetting a password is its own flow**, apart from the
   above: an account with no password (onboarding makes them) that asks for
-  a reset (`requestPasswordReset`, from `/set-password`'s "send a new
+  a reset (`requestPasswordReset`, from `/signin`'s "Forgot your
+  password?", under the password field, or `/set-password`'s "send a new
   link") gets a Better Auth reset link — one use, an hour, to
   `/set-password` (`lib/links.ts` `setPasswordPath`), which sets the
   password with the token (Better Auth creates the missing credential) and
@@ -1184,7 +1185,8 @@ unpaginated, and 5 s for that search.
     reads the same SWR key as `MarketLive`, so it adds no polling.
 - **Page analytics are Umami** (`components/Analytics`, host-wide
   instance in `~/ops`), on only when `UMAMI_URL` and `UMAMI_WEBSITE_ID` are
-  set, counting only `APP_URL`'s host. Every hit's URL and referrer pass
+  set, counting only `APP_URL`'s host, with Web Vitals on (`data-performance`,
+  Umami ≥ 3.1). Every hit's URL and referrer, performance ones included, pass
   `lib/analytics.ts`: same-site URLs keep an **allowlist** of query
   parameters (browsing state), never a hash; other sites keep origin and
   path. `/verify-email?email=` is why. A page that puts anything personal in its
