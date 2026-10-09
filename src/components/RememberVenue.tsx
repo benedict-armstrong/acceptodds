@@ -20,3 +20,19 @@ export function RememberVenue({ kind, stale }: { kind: string; stale: boolean })
   }, [kind, stale, router]);
   return null;
 }
+
+/**
+ * The home page reached with no `?kind=` shows the navbar's venue (the
+ * cookie's); this writes it into the address bar, without a navigation or
+ * a history entry, so a link copied from there opens the same venue for
+ * whoever it is sent to rather than the one their browser last picked.
+ */
+export function VenueInUrl({ kind }: { kind: string }) {
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (url.searchParams.has('kind')) return;
+    url.searchParams.set('kind', kind);
+    history.replaceState(history.state, '', url);
+  }, [kind]);
+  return null;
+}

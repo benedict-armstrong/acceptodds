@@ -7,7 +7,7 @@ import { Pager } from '@/components/Pager';
 import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { PaperRow } from '@/components/PaperRow';
-import { RememberVenue } from '@/components/RememberVenue';
+import { RememberVenue, VenueInUrl } from '@/components/RememberVenue';
 import { RememberHomeSearch } from '@/components/HomeLink';
 import { TitleBlock } from '@/components/TitleBlock';
 import { OnboardAgent } from '@/components/OnboardAgent';
@@ -251,10 +251,11 @@ export default async function Home({
 
   // Filter links keep the search; `q: ''` drops it (and its relevance sort).
   // They go back to page 1: pages are kept only by the pagers' own links.
-  // The venue is the navbar's, so links carry it only when it is every venue.
+  // Every link names the venue, so a copied URL opens the same list for anyone,
+  // whatever venue their own browser last picked.
   const href = (patch: Record<string, string>) => {
     const params = new URLSearchParams({
-      ...(kind === null ? { kind: 'all' } : {}),
+      kind: kind ?? 'all',
       status,
       sort,
       ...(q ? { q } : {}),
@@ -289,6 +290,8 @@ export default async function Home({
     <main className={ui.page}>
       {/* A venue named in the URL (a link from elsewhere) becomes the navbar's, and the one `/welcome` searches first. */}
       {wanted && kinds.some((k) => k.kind === wanted) && <RememberVenue kind={wanted} stale={wanted !== navVenue} />}
+      {/* A venue taken from the cookie is written into the address bar, so sharing it shares the venue. */}
+      {wanted === undefined && <VenueInUrl kind={kind ?? 'all'} />}
       {/* The logo, from any other page, comes back to this list as it is now. */}
       <RememberHomeSearch />
       <TitleBlock
@@ -318,7 +321,7 @@ export default async function Home({
       <InstitutionStrip institutions={institutions} />
       {/* A plain GET form, so search works without JavaScript. */}
       <form action="/" method="get" role="search" className="mt-5 flex gap-2">
-        {kind === null && <input type="hidden" name="kind" value="all" />}
+        <input type="hidden" name="kind" value={kind ?? 'all'} />
         <input type="hidden" name="status" value={status} />
         {onlyFollowed && <input type="hidden" name="following" value="1" />}
         {showTldr && <input type="hidden" name="tldr" value="1" />}
