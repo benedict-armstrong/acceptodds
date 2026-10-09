@@ -69,28 +69,38 @@ function orList(items: readonly string[]): string {
 
 /**
  * What the site is, above the search, in the selected venue's words
- * (`venues/`); with no venue, words that fit them all. Hidden while searching.
+ * (`venues/`): its own `abstract` when it has one, else one built from its
+ * pieces; with no venue, words that fit them all. Hidden while searching.
  */
-const abstract = (v: Venue | null) => (
-  <>
-    {v?.lede ?? 'A prediction market on research papers'}. Each paper has a market on{' '}
-    {v?.marketOn ?? 'what becomes of it'}, priced by researchers who stake $rep, an in app currency, on what they
-    expect. Everyone who signs up receives {rep(startingBalanceMicro(), 0)} {REP} to trade with in each venue. Prices
-    are probabilities, and every market settles when {v?.settlesWhen ?? 'its outcome is known'}. It is a game made for
-    fun, and has no connection to{' '}
-    {orList([...new Set((v ? [v] : venues()).flatMap((x) => x.unaffiliated)), 'any other organisation'])}. acceptodds is
-    an open source project, open to contributions, at{' '}
-    <a href={REPO_URL} className={ui.hyperref}>
-      {REPO_URL.replace(/^https:\/\//, '')}
-    </a>
-    .
-    <sup>
-      <a href="#footnote-1" id="footnote-1-ref" className="text-accent">
-        1
+const abstract = (v: Venue | null) => {
+  const balance = `${rep(startingBalanceMicro(), 0)} ${REP}`;
+  return (
+    <>
+      {v?.abstract ? (
+        v.abstract.replaceAll('{balance}', balance)
+      ) : (
+        <>
+          {v?.lede ?? 'A prediction market on research papers'}. Each paper has a market on{' '}
+          {v?.marketOn ?? 'what becomes of it'}, priced by researchers who stake $rep, an in app currency, on what they
+          expect. Everyone who signs up receives {balance} to trade with in each venue. Prices are probabilities, and
+          every market settles when {v?.settlesWhen ?? 'its outcome is known'}. It is a game made for fun, and has no
+          connection to{' '}
+          {orList([...new Set((v ? [v] : venues()).flatMap((x) => x.unaffiliated)), 'any other organisation'])}.
+        </>
+      )}{' '}
+      acceptodds is an open source project, open to contributions, at{' '}
+      <a href={REPO_URL} className={ui.hyperref}>
+        {REPO_URL.replace(/^https:\/\//, '')}
       </a>
-    </sup>
-  </>
-);
+      .
+      <sup>
+        <a href="#footnote-1" id="footnote-1-ref" className="text-accent">
+          1
+        </a>
+      </sup>
+    </>
+  );
+};
 
 /** The abstract's footnote, set at the foot of the page as a paper's is. */
 const FOOTNOTE = (

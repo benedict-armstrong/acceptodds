@@ -45,6 +45,13 @@ export interface Venue {
   settlesWhen: string;
   /** Who the site has no connection to, named in the home abstract. */
   unaffiliated: string[];
+  /**
+   * The home abstract, written whole, in place of the one built from `lede`,
+   * `marketOn`, `settlesWhen` and `unaffiliated` (which the agent prompt and
+   * `/about` still read). `{balance}` becomes the starting balance, e.g.
+   * "1,000 $rep". The page adds the open-source sentence and its footnote.
+   */
+  abstract?: string;
   /** The card's example question around the hidden title: "Will ▒▒ be accepted @ ICLR 2027?". */
   cardQuestion: { predicate: string; suffix: string };
 
