@@ -5,6 +5,7 @@ import { PaperMapView } from '@/components/map/PaperMapView';
 import { RememberVenue, VenueInUrl } from '@/components/RememberVenue';
 import { viewerFromHeaders } from '@/server/auth';
 import { currentVenue } from '@/server/current-venue';
+import { siteName, venuePreviewImages } from '@/server/share';
 import { listingVenue, mapKinds, resolveListing } from '@/server/views';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -26,10 +27,16 @@ async function mapVenue(sp: Awaited<SearchParams>): Promise<string> {
 
 export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
   const kind = await mapVenue(await searchParams);
+  const title = 'Map of papers | acceptodds';
+  const description = `Every ${kind} paper on one map, placed near the papers most like it, coloured by topic or by its odds.`;
+  const url = `/map?${new URLSearchParams({ kind })}`;
+  const images = venuePreviewImages(kind);
   return {
-    title: 'Map of papers | acceptodds',
-    description: `Every ${kind} paper on one map, placed near the papers most like it, coloured by topic or by its odds.`,
-    alternates: { canonical: `/map?${new URLSearchParams({ kind })}` },
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: { title, description, url, type: 'website', siteName: siteName(), images },
+    twitter: { card: 'summary_large_image', title, description, images },
   };
 }
 

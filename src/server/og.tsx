@@ -211,8 +211,8 @@ function HiddenTitle({ width, height }: { width: number; height: number }) {
   );
 }
 
-/** A handwritten "your paper?" with a pen-drawn arrow up to the hidden title, its tip at (`left` + 40, `top` + 8). */
-function YourPaper({ left, top }: { left: number; top: number }) {
+/** A handwritten note ("your paper?") with a pen-drawn arrow up to the hidden title, its tip at (`left` + 40, `top` + 8). */
+function CardNote({ note, left, top }: { note: string; left: number; top: number }) {
   return (
     <div style={{ display: 'flex', position: 'absolute', left, top, alignItems: 'flex-start' }}>
       <svg width={150} height={70} viewBox="0 0 150 70">
@@ -235,7 +235,7 @@ function YourPaper({ left, top }: { left: number; top: number }) {
           transform: 'rotate(-3deg)',
         }}
       >
-        your paper?
+        {note}
       </div>
     </div>
   );
@@ -260,7 +260,7 @@ export async function homeImage(v: Venue): Promise<ImageResponse> {
       <div style={{ display: 'flex', flex: 1 }} />
 
       <div style={{ display: 'flex', position: 'relative', alignItems: 'center', fontSize: 40, marginBottom: 8 }}>
-        <YourPaper left={330} top={48} />
+        {v.cardNote && <CardNote note={v.cardNote} left={330} top={48} />}
         <div style={{ display: 'flex' }}>Will</div>
         <div style={{ display: 'flex', margin: '-10px 0' }}>
           <HiddenTitle width={360} height={80} />

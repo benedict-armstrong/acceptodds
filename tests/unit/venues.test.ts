@@ -1,12 +1,27 @@
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { headlineLabel, MAX_BAR_OUTCOMES, paletteSlot, shareTitleLine } from '@/lib/headline';
 import { marketTemplate, openMarketTemplate } from '@/server/market-templates';
-import { COLOR_SLOT, runningHead, shareSuffix, venue, venues } from '@/venues';
+import { COLOR_SLOT, runningHead, shareSuffix, venue, venueBySlug, venues, venueSlug } from '@/venues';
 
 describe('venues', () => {
   it('has one venue per kind', () => {
     const kinds = venues().map((v) => v.kind);
     expect(new Set(kinds).size).toBe(kinds.length);
+  });
+
+  it('gives each venue its own short path, `/<slug>`, that no page shadows', () => {
+    const slugs = venues().map((v) => venueSlug(v).toLowerCase());
+    expect(new Set(slugs).size).toBe(slugs.length);
+    const pages = readdirSync(join(__dirname, '../../src/app')).map((f) => f.toLowerCase());
+    for (const v of venues()) {
+      expect(venueSlug(v)).toMatch(/^[A-Za-z0-9]+$/);
+      expect(pages).not.toContain(venueSlug(v).toLowerCase());
+      expect(venueBySlug(venueSlug(v).toUpperCase())).toBe(v);
+    }
+    expect(venueSlug(venue('OpenAI Math')!)).toBe('OpenAIMath');
+    expect(venueBySlug('nope')).toBeNull();
   });
 
   describe.each(venues().map((v) => [v.kind, v] as const))('%s', (kind, v) => {

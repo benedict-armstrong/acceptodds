@@ -54,6 +54,8 @@ export interface Venue {
   abstract?: string;
   /** The card's example question around the hidden title: "Will ▒▒ be accepted @ ICLR 2027?". */
   cardQuestion: { predicate: string; suffix: string };
+  /** The handwritten note pointing at the hidden title ("your paper?"); none when left out. */
+  cardNote?: string;
 
   // --- a listing's page and its shares ------------------------------------
 

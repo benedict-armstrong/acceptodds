@@ -2,6 +2,9 @@ import type { MetadataRoute } from 'next';
 import { PRIVATE_PAGES } from '@/lib/private-paths';
 import { siteUrl } from '@/server/share';
 
+// `APP_URL` is read at request time: prerendered at build, the host was localhost.
+export const dynamic = 'force-dynamic';
+
 /**
  * Public pages and the read API's documentation are open to everyone,
  * crawlers and AI agents alike. Closed: the private pages

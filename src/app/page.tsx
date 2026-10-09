@@ -25,6 +25,7 @@ import { parseSearch, peopleText } from '@/lib/query';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { viewerFromHeaders } from '@/server/auth';
 import { currentVenue } from '@/server/current-venue';
+import { siteName, venuePreviewImages } from '@/server/share';
 import { startingBalanceMicro } from '@/server/accounts';
 import * as events from '@/server/events';
 import {
@@ -163,7 +164,22 @@ export async function generateMetadata({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const kind = selectedKind(one((await searchParams).kind), await marketKinds(), await currentVenue());
-  return { title: `acceptodds: ${homeTitle(kind)}` };
+  const title = `acceptodds: ${homeTitle(kind)}`;
+  const description = 'A prediction market on the fate of research papers, traded in reputation.';
+  // A shared home link names its venue (`VenueInUrl`), and its preview is that venue's card.
+  const images = venuePreviewImages(kind);
+  return {
+    title,
+    openGraph: {
+      title,
+      description,
+      url: kind ? `/?${new URLSearchParams({ kind })}` : '/',
+      type: 'website',
+      siteName: siteName(),
+      images,
+    },
+    twitter: { card: 'summary_large_image', title, description, images },
+  };
 }
 
 export default async function Home({

@@ -50,3 +50,14 @@ export function pricedBeforeTradeKinds(): string[] {
 
 /** Palette slots (`lib/headline.ts` `TIER_*`, 0 = red) by colour. */
 export const COLOR_SLOT: Record<OutcomeColor, number> = { red: 0, amber: 1, green: 2, blue: 3 };
+
+/** A venue's short path, `/<slug>`: its kind without spaces or punctuation, e.g. `ICLR2027`, `OpenAIMath`. */
+export function venueSlug(v: Venue): string {
+  return v.kind.replace(/[^A-Za-z0-9]/g, '');
+}
+
+/** The venue a `/<slug>` names, matched case-insensitively, or `null`. */
+export function venueBySlug(slug: string): Venue | null {
+  const s = slug.toLowerCase();
+  return VENUES.find((v) => venueSlug(v).toLowerCase() === s) ?? null;
+}
