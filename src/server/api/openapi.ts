@@ -215,7 +215,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'A listing’s piece of the paper map',
       description:
-        'The listing, the papers nearest it on the map (by the supplied vectors when it has one) and its related papers wherever they lie, with their vectors and the related pairs between them. Public, cached for five minutes.',
+        'The listing, the papers nearest it on its venue’s map (by the supplied vectors when it has one) and its related papers wherever they lie, with their vectors and the related pairs between them. Public, cached for five minutes.',
       request: { params: z.object({ id: S.ListingRef }) },
       ok: { status: 200, schema: S.Minimap, description: 'The piece of the map.' },
       errors: { 404: 'not_found' },
@@ -280,7 +280,8 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'The paper map',
       description:
-        'Every listing on the supplied 2D layout, by column: its slug, groupings, primary area and main market’s headline price. Titles are `GET /map/titles`. Laid out by a separate service; the venue computes no layout. Public, cached for five minutes.',
+        'Every listing on a venue’s supplied 2D layout, by column: its slug, groupings, primary area and main market’s headline price. Each venue has its own map, or none (then empty). Titles are `GET /map/titles`. Laid out by a separate service; the platform computes no layout. Public, cached for five minutes.',
+      request: { query: S.MapQuery },
       ok: { status: 200, schema: S.PaperMap, description: 'The whole map.' },
     }),
   );
@@ -292,7 +293,8 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'Titles of the papers on the map',
       description:
-        'The title of every listing on the map, by slug: what `GET /map` leaves out, so a client can draw the map before they arrive. Public, cached for five minutes.',
+        'The title of every listing on a venue’s map, by slug: what `GET /map` leaves out, so a client can draw the map before they arrive. Public, cached for five minutes.',
+      request: { query: S.MapQuery },
       ok: { status: 200, schema: S.MapTitles, description: 'The titles.' },
     }),
   );
@@ -304,7 +306,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'Search the paper map',
       description:
-        'The home page’s search syntax over every listing: words (titles, authors, abstracts), `key:value` filters (`title author keyword area venue status accept volume trades`), `OR`, parentheses and `-`. Returns every match’s slug, most relevant first.',
+        'The home page’s search syntax over a venue’s listings: words (titles, authors, abstracts), `key:value` filters (`title author keyword area venue status accept volume trades`), `OR`, parentheses and `-`. Returns every match’s slug, most relevant first.',
       request: { query: S.MapSearchQuery },
       ok: { status: 200, schema: S.MapSearch, description: 'The matching slugs.' },
       errors: { 400: 'validation_error' },
@@ -318,7 +320,8 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'Related lists between papers on the map',
       description:
-        'Every listing on the map with its best related entries that are also on the map, as index pairs into a slug list. For a client that re-lays out a subset of the map. Public, cached for five minutes.',
+        'Every listing on a venue’s map with its best related entries that are also on it, as index pairs into a slug list. For a client that re-lays out a subset of the map. Public, cached for five minutes.',
+      request: { query: S.MapQuery },
       ok: { status: 200, schema: S.MapRelated, description: 'The edges.' },
     }),
   );
@@ -345,7 +348,7 @@ export function buildRegistry(): OpenAPIRegistry {
       tags: ['listings'],
       summary: 'Set the paper map',
       description:
-        'Replaces the whole map and its grouping names in one transaction; empty clears it. Slugs are matched when read, so one need not be listed yet.',
+        'Replaces one venue’s whole map (`kind`) and its grouping names in one transaction; empty clears it, and the venue then has no map. Other venues’ maps are kept. Slugs are matched when read, so one need not be listed yet.',
       scope: 'admin',
       request: { body: { content: { 'application/json': { schema: S.SetMapRequest } } } },
       ok: { status: 200, schema: S.SetMapResult, description: 'How many points were kept.' },

@@ -18,7 +18,7 @@ import { currentVenue } from '@/server/current-venue';
 import { startingBalanceMicro } from '@/server/wallets';
 import { siteName, siteUrl } from '@/server/share';
 import { valuation } from '@/server/valuation';
-import { marketKinds } from '@/server/views';
+import { mapKinds, marketKinds } from '@/server/views';
 import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
 import { VenueSwitcher } from '@/components/VenueSwitcher';
 import { Wordmark } from '@/components/Wordmark';
@@ -71,7 +71,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const viewer = await viewerFromHeaders(await headers());
   // Liquidation value, not a mark (§1.1, §1.2): what the viewer would hold if they sold everything now,
   // in the venue they are browsing — each venue is a wallet of its own.
-  const [kind, kinds] = await Promise.all([currentVenue(), marketKinds()]);
+  const [kind, kinds, mapped] = await Promise.all([currentVenue(), marketKinds(), mapKinds()]);
+  // Each venue has its own map, or none: no link to a map that is not there.
+  const hasMap = mapped.includes(kind);
   const [worth, memberships] = viewer
     ? await Promise.all([valuation(viewer.account.id, kind), groupsOf(viewer.account.id)])
     : [null, []];
@@ -106,7 +108,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             className={`flex flex-wrap items-baseline gap-x-4.5 gap-y-1 text-sm ${viewer ? 'narrow:items-center narrow:gap-x-1' : 'narrow:gap-x-3.5'}`}
           >
             <div className={`flex items-baseline gap-x-4.5 ${viewer ? 'narrow:hidden' : 'narrow:gap-x-3.5'}`}>
-              <Link href="/map">map</Link>
+              {hasMap && <Link href="/map">map</Link>}
               <Link href="/leaderboard">leaderboard</Link>
               {viewer && <Link href="/portfolio">portfolio</Link>}
               <NavGroups groups={readingGroups} />
@@ -120,6 +122,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   cash={`${rep(worth?.cashMicro ?? startingBalanceMicro())} ${REP}`}
                   pnlMicro={((worth?.unrealizedPnlMicro ?? 0n) + (worth?.realizedPnlMicro ?? 0n)).toString()}
                   standing={standing}
+                  hasMap={hasMap}
                 />
                 <Link href="/profile" className="narrow:hidden">
                   profile

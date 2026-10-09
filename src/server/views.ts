@@ -33,6 +33,7 @@ import { ApiError } from './api/errors';
 import { standingsGeneration, standingsChangesSince } from './standings-cache';
 import { valuations } from './valuation';
 import { browseReads, BROWSE_READ_TTL_MS, marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
+import { mapCached } from './map-cache';
 import { pricedBeforeTradeKinds } from '@/venues';
 import { recommendationScores, scoresTable } from './recommendations';
 
@@ -629,6 +630,8 @@ export interface MapPointView {
  * from before the titles arrive.
  */
 export interface PaperMap {
+  /** The venue the map is of. */
+  kind: string;
   slugs: string[];
   x: number[];
   y: number[];
@@ -644,42 +647,51 @@ export interface PaperMap {
   clusters: { number: number; label: string }[];
 }
 
-/** Map points joined to their listing (an unlisted slug is skipped) and its main market's headline. */
-function mapPointRows(database: Database) {
-  return database
-    .select({
-      slug: listings.slug,
-      title: listings.title,
-      primaryArea: listings.primaryArea,
-      x: mapPoints.x,
-      y: mapPoints.y,
-      region: mapPoints.region,
-      cluster: mapPoints.cluster,
-      headline: sql<
-        number | null
-      >`case when ${markets.status} = 'void' or (${markets.orderCount} = 0 and not ${kindIn(sql`${markets.kind}`, pricedBeforeTradeKinds())}) then null else round(${markets.headline}::numeric, 4)::float8 end`,
-    })
-    .from(mapPoints)
-    .innerJoin(listings, eq(listings.slug, mapPoints.slug))
-    .leftJoin(markets, and(eq(markets.listingId, listings.id), eq(markets.isMain, true)))
-    .$dynamic();
+/** A venue's map points joined to their listing (an unlisted slug is skipped) and its main market's headline. */
+function mapPointRows(kind: string, database: Database) {
+  return (
+    database
+      .select({
+        slug: listings.slug,
+        title: listings.title,
+        primaryArea: listings.primaryArea,
+        x: mapPoints.x,
+        y: mapPoints.y,
+        region: mapPoints.region,
+        cluster: mapPoints.cluster,
+        headline: sql<
+          number | null
+        >`case when ${markets.status} = 'void' or (${markets.orderCount} = 0 and not ${kindIn(sql`${markets.kind}`, pricedBeforeTradeKinds())}) then null else round(${markets.headline}::numeric, 4)::float8 end`,
+      })
+      .from(mapPoints)
+      // The venue in the join, so a caller's own `where` does not replace it.
+      .innerJoin(listings, and(eq(listings.slug, mapPoints.slug), eq(mapPoints.kind, kind)))
+      .leftJoin(markets, and(eq(markets.listingId, listings.id), eq(markets.isMain, true)))
+      .$dynamic()
+  );
 }
 
 /**
- * The supplied paper map, each point joined to its listing by slug (a point
- * with no listing here is skipped) and to its main market's headline. One
- * pass over the whole map: it is drawn whole.
+ * A venue's supplied paper map, each point joined to its listing by slug (a
+ * point with no listing here is skipped) and to its main market's headline.
+ * One pass over the whole map: it is drawn whole. Empty when the venue has
+ * no map (`mapKinds`).
  */
-export async function paperMap(database: Database = getDb()): Promise<PaperMap> {
+export async function paperMap(kind: string, database: Database = getDb()): Promise<PaperMap> {
   const [rows, topics] = await Promise.all([
-    mapPointRows(database).orderBy(asc(mapPoints.slug)),
-    database.select().from(mapTopics).orderBy(asc(mapTopics.level), asc(mapTopics.number)),
+    mapPointRows(kind, database).orderBy(asc(mapPoints.slug)),
+    database
+      .select()
+      .from(mapTopics)
+      .where(eq(mapTopics.kind, kind))
+      .orderBy(asc(mapTopics.level), asc(mapTopics.number)),
   ]);
   const topic = (level: string) =>
     topics.filter((t) => t.level === level).map(({ number, label }) => ({ number, label }));
   const areas = [...new Set(rows.flatMap((r) => (r.primaryArea === null ? [] : [r.primaryArea])))].sort();
   const areaIndex = new Map(areas.map((a, i) => [a, i]));
   return {
+    kind,
     slugs: rows.map((r) => r.slug),
     x: rows.map((r) => r.x),
     y: rows.map((r) => r.y),
@@ -693,12 +705,13 @@ export async function paperMap(database: Database = getDb()): Promise<PaperMap> 
   };
 }
 
-/** The title of every paper on the map, by slug: what `paperMap` leaves out, for a second, later request. */
-export async function mapTitles(database: Database = getDb()): Promise<Record<string, string>> {
+/** The title of every paper on a venue's map, by slug: what `paperMap` leaves out, for a second, later request. */
+export async function mapTitles(kind: string, database: Database = getDb()): Promise<Record<string, string>> {
   const rows = await database
     .select({ slug: listings.slug, title: listings.title })
     .from(mapPoints)
-    .innerJoin(listings, eq(listings.slug, mapPoints.slug));
+    .innerJoin(listings, eq(listings.slug, mapPoints.slug))
+    .where(eq(mapPoints.kind, kind));
   return Object.fromEntries(rows.map((r) => [r.slug, r.title]));
 }
 
@@ -730,15 +743,20 @@ export interface Minimap {
  * map, the `MINIMAP_NEAREST` with the smallest cosine distance, since the 2D
  * map has flattened what the vectors still hold. Positions, vectors and
  * relatedness are all other services'; nothing is computed from the papers
- * here. `null` when the paper is not on the map. `related` is
- * `listingRelatedTo(listing, { all: true })`.
+ * here. The map is the paper's venue's (`listingVenue`); `null` when the
+ * paper is not on it. `related` is `listingRelatedTo(listing, { all: true })`.
  */
 export async function listingMinimap(
   listing: Listing,
   related: CitedListing[],
   database: Database = getDb(),
 ): Promise<Minimap | null> {
-  const [centre] = await database.select().from(mapPoints).where(eq(mapPoints.slug, listing.slug));
+  const kind = await listingVenue(listing, database);
+  if (kind === null) return null;
+  const [centre] = await database
+    .select()
+    .from(mapPoints)
+    .where(and(eq(mapPoints.kind, kind), eq(mapPoints.slug, listing.slug)));
   if (!centre) return null;
   const relatedSlugs = related.map((r) => r.listing.slug);
   // The nearest first, by `map_points_xy_idx` (GiST, k-nearest): no pass over the whole map.
@@ -748,13 +766,13 @@ export async function listingMinimap(
       .select({ slug: mapPoints.slug, vector: mapPoints.vector })
       .from(mapPoints)
       .innerJoin(listings, eq(listings.slug, mapPoints.slug))
-      .where(ne(mapPoints.slug, listing.slug))
+      .where(and(eq(mapPoints.kind, kind), ne(mapPoints.slug, listing.slug)))
       .orderBy(d2)
       .limit(centre.vector ? MINIMAP_CANDIDATES : MINIMAP_NEAREST),
     database
       .select({ number: mapTopics.number, label: mapTopics.label })
       .from(mapTopics)
-      .where(eq(mapTopics.level, 'cluster'))
+      .where(and(eq(mapTopics.kind, kind), eq(mapTopics.level, 'cluster')))
       .orderBy(asc(mapTopics.number)),
   ]);
   const nearest = centre.vector
@@ -766,11 +784,11 @@ export async function listingMinimap(
     : candidates;
   const wanted = [...new Set([listing.slug, ...nearest.map((r) => r.slug), ...relatedSlugs])];
   const [points, vectorRows, pairs] = await Promise.all([
-    mapPointRows(database).where(inArray(mapPoints.slug, wanted)).orderBy(asc(mapPoints.slug)),
+    mapPointRows(kind, database).where(inArray(mapPoints.slug, wanted)).orderBy(asc(mapPoints.slug)),
     database
       .select({ slug: mapPoints.slug, vector: mapPoints.vector })
       .from(mapPoints)
-      .where(inArray(mapPoints.slug, wanted)),
+      .where(and(eq(mapPoints.kind, kind), inArray(mapPoints.slug, wanted))),
     database
       .select({ from: listings.slug, to: listingRelated.relatedSlug })
       .from(listingRelated)
@@ -804,28 +822,66 @@ export async function listingMinimap(
   };
 }
 
-/** Whether the paper is on the supplied map: the paper page's cheap check before the browser asks for its minimap. */
-export async function onMap(listing: Listing, database: Database = getDb()): Promise<boolean> {
-  const [row] = await database.select({ slug: mapPoints.slug }).from(mapPoints).where(eq(mapPoints.slug, listing.slug));
+/** A listing's venue: its own `kind`, else its main market's; `null` while it has neither. */
+export async function listingVenue(listing: Listing, database: Database = getDb()): Promise<string | null> {
+  if (listing.kind !== null) return listing.kind;
+  const [main] = await database
+    .select({ kind: markets.kind })
+    .from(markets)
+    .where(and(eq(markets.listingId, listing.id), eq(markets.isMain, true)));
+  return main?.kind ?? null;
+}
+
+/**
+ * Whether the paper is on its venue's map: the paper page's cheap check
+ * before the browser asks for its minimap. `venue` is `listingVenue`'s, when
+ * the caller already has it.
+ */
+export async function onMap(listing: Listing, venue?: string | null, database: Database = getDb()): Promise<boolean> {
+  const kind = venue === undefined ? await listingVenue(listing, database) : venue;
+  if (kind === null) return false;
+  const [row] = await database
+    .select({ slug: mapPoints.slug })
+    .from(mapPoints)
+    .where(and(eq(mapPoints.kind, kind), eq(mapPoints.slug, listing.slug)));
   return row !== undefined;
 }
+
+/**
+ * Every venue with a map, in byte order: only these have a `/map`. Cached
+ * like the maps themselves (`map-cache.ts`), since the navbar asks on every
+ * page, and dropped by `setMap`.
+ */
+export function mapKinds(database: Database = getDb()): Promise<string[]> {
+  const compute = async () => {
+    const result = await database.execute<{ kind: string }>(
+      sql`select kind from map_points group by kind order by kind COLLATE "C"`,
+    );
+    return result.rows.map((r) => r.kind);
+  };
+  return database === getDb() ? mapCached('kinds', MAP_KINDS_TTL_MS, compute) : compute();
+}
+
+/** Writers in another process are seen after this; `setMap` here drops it at once. */
+const MAP_KINDS_TTL_MS = 5 * 60_000;
 
 /** How many of each listing's related entries the map draws on: the best few carry the structure. */
 export const MAP_RELATED_DEPTH = 10;
 
 /**
- * The related lists between papers on the map, for the browser to re-lay out
- * a subset (`components/map`). Only pairs where both ends are on the map and
- * listed, each listing's best `MAP_RELATED_DEPTH`, as slug pairs in the
- * supplier's order. The similarity is the service's; nothing is computed here.
+ * The related lists between papers on a venue's map, for the browser to
+ * re-lay out a subset (`components/map`). Only pairs where both ends are on
+ * the map and listed, each listing's best `MAP_RELATED_DEPTH`, as slug pairs
+ * in the supplier's order. The similarity is the service's; nothing is
+ * computed here.
  */
-export async function mapRelated(database: Database = getDb()): Promise<{ from: string; to: string }[]> {
+export async function mapRelated(kind: string, database: Database = getDb()): Promise<{ from: string; to: string }[]> {
   const result = await database.execute<{ from: string; to: string }>(sql`
     select l.slug as "from", lr.related_slug as "to"
       from listing_related lr
       join listings l on l.id = lr.listing_id
-      join map_points a on a.slug = l.slug
-      join map_points b on b.slug = lr.related_slug
+      join map_points a on a.kind = ${kind} and a.slug = l.slug
+      join map_points b on b.kind = ${kind} and b.slug = lr.related_slug
       join listings lb on lb.slug = lr.related_slug
      where lr.position < ${MAP_RELATED_DEPTH}
      order by l.slug, lr.position
@@ -1694,12 +1750,13 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
 
 /**
  * Every listing the home page's search (`lib/query.ts` syntax: words,
- * filters, `OR`, groups) finds, in relevance order, for the map to light up.
- * Every status unless the query says `status:`. Slugs only: the map already
- * holds the rest. `errors` are the terms the parser dropped.
+ * filters, `OR`, groups) finds in a venue, in relevance order, for its map
+ * to light up. Every status unless the query says `status:`. Slugs only: the
+ * map already holds the rest. `errors` are the terms the parser dropped.
  */
 export async function mapSearch(
   q: string | null | undefined,
+  kind: string,
   database: Database = getDb(),
 ): Promise<{ slugs: string[]; errors: string[] }> {
   const text = normalizeSearch(q);
@@ -1707,7 +1764,7 @@ export async function mapSearch(
   // Nothing usable ("(", "author:", "-"): no terms, so no match — not every paper.
   const { node, errors } = parseSearch(text);
   if (node === null) return { slugs: [], errors };
-  const { from, order } = browseQuery({ q: text, status: 'all', sort: 'relevance' });
+  const { from, order } = browseQuery({ q: text, kind, status: 'all', sort: 'relevance' });
   const result = await database.execute<{ slug: string }>(sql`
     select l.slug ${from} and l.slug is not null
      order by ${sql.join([...order, sql`l.id desc`], sql`, `)}

@@ -34,8 +34,8 @@ export function VenueSwitcher({ current, kinds }: { current: string; kinds: stri
     } else if (search.has('kind')) {
       const params = new URLSearchParams(search);
       params.set('kind', kind);
-      // A page number or a trader to centre on belongs to the old venue's list.
-      for (const key of ['page', 'fpage', 'hpage', 'around']) params.delete(key);
+      // A page number, a trader to centre on or a paper on the map belongs to the old venue's.
+      for (const key of ['page', 'fpage', 'hpage', 'around', 'paper']) params.delete(key);
       router.push(`${pathname}?${params}`);
     } else {
       rememberVenue(kind);

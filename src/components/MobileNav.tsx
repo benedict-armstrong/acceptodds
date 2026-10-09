@@ -5,11 +5,20 @@ import { NavGroups, type NavGroup } from './NavGroups';
 import { PopoverClose } from './Popover';
 
 /** Navigation inside the shared account popover on narrow screens. */
-export function MobileNav({ groups, onNavigate }: { groups: NavGroup[]; onNavigate: () => void }) {
+export function MobileNav({
+  groups,
+  hasMap,
+  onNavigate,
+}: {
+  groups: NavGroup[];
+  /** Whether the navbar's venue has a map: only then is there one to link to. */
+  hasMap: boolean;
+  onNavigate: () => void;
+}) {
   const links = [
     ['/profile', 'profile'],
     ['/portfolio', 'portfolio'],
-    ['/map', 'map'],
+    ...(hasMap ? [['/map', 'map']] : []),
     ['/leaderboard', 'leaderboard'],
   ];
 

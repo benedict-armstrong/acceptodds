@@ -95,7 +95,7 @@ const MapFilters = z.object({
 
 /**
  * `/map`, full screen: every listed paper on the layout a separate similarity service
- * supplied (`GET /api/v1/map`), fetched once, anonymously, and drawn as soon
+ * supplied for the venue `kind` (`GET /api/v1/map?kind=`; each venue has its own), fetched once, anonymously, and drawn as soon
  * as it arrives; the titles, most of the bytes, follow (`/map/titles`). Colour by its
  * groupings, the primary area or the main market's headline (a price, never
  * a value). Selecting a paper draws lines to the papers the same service
@@ -106,9 +106,18 @@ const MapFilters = z.object({
  * selection is then kept in the URL, so it can be shared and survives a
  * reload.
  */
-export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; initialPaper: string | null }) {
+export function PaperMapView({
+  kind,
+  signedIn,
+  initialPaper,
+}: {
+  kind: string;
+  signedIn: boolean;
+  initialPaper: string | null;
+}) {
   const router = useRouter();
-  const { data, error } = useSWR<PaperMap>('/api/v1/map', publicJson, { revalidateOnFocus: false });
+  const venue = `kind=${encodeURIComponent(kind)}`;
+  const { data, error } = useSWR<PaperMap>(`/api/v1/map?${venue}`, publicJson, { revalidateOnFocus: false });
   const [colourBy, setColourBy] = useState<ColourBy>('region');
   const [labelMode, setLabelMode] = useState<LabelMode>('auto');
   const [selected, setSelected] = useState<number | null>(null);
@@ -158,7 +167,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
   const derived = useMemo(() => (data ? derive(data) : null), [data]);
   const points = derived?.points;
   // Asked for only once the map is drawable, so the two never compete for the line.
-  const { data: titles } = useSWR<MapTitles>(data ? '/api/v1/map/titles' : null, publicJson, {
+  const { data: titles } = useSWR<MapTitles>(data ? `/api/v1/map/titles?${venue}` : null, publicJson, {
     revalidateOnFocus: false,
   });
   const titleOf = (i: number): ReactNode => titles?.titles[points![i].slug] ?? <span className="italic">…</span>;
@@ -218,7 +227,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
     data: found,
     error: searchFailed,
     isLoading: searching,
-  } = useSWR<MapSearch>(asked ? `/api/v1/map/search?q=${encodeURIComponent(asked)}` : null, publicJson, {
+  } = useSWR<MapSearch>(asked ? `/api/v1/map/search?${venue}&q=${encodeURIComponent(asked)}` : null, publicJson, {
     revalidateOnFocus: false,
     keepPreviousData: true,
   });
@@ -245,7 +254,7 @@ export function PaperMapView({ signedIn, initialPaper }: { signedIn: boolean; in
   // Redrawn, the rest is hidden and the matches are laid out again among themselves, in a worker, and drawn as they settle.
   const relaySubset = onlyMatches && matches && matches.length <= MAX_RELAYOUT ? matches : null;
   // Fetched only once a search needs it: most visits never search.
-  const { data: relatedEdges } = useSWR<MapRelated>(relaySubset ? '/api/v1/map/related' : null, publicJson, {
+  const { data: relatedEdges } = useSWR<MapRelated>(relaySubset ? `/api/v1/map/related?${venue}` : null, publicJson, {
     revalidateOnFocus: false,
   });
   const [layout, setLayout] = useState<{ of: number[]; positions: Float32Array; settled: boolean } | null>(null);

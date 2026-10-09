@@ -257,6 +257,8 @@ export const SetRelatedResult = z
   .object({ listingId: Id, count: z.number().int().min(0) })
   .meta({ id: 'SetRelatedResult' });
 
+const Kind = z.string().min(1).max(200);
+
 const MapTopic = z.object({ number: z.number().int(), label: z.string() }).meta({ id: 'MapTopic' });
 
 const MapPoint = z
@@ -277,8 +279,18 @@ const MapPoint = z
 
 const column = <T extends z.ZodType>(item: T, description: string) => z.array(item).meta({ description });
 
+/** Which venue's map: every map read but the minimap, which is its listing's venue's. */
+export const MapQuery = z.object({
+  kind: Kind.optional().meta({
+    description:
+      'The venue (a market `kind`) whose map to read. Each venue has its own map, or none. Defaults to the site’s default venue.',
+    example: 'ICLR 2027',
+  }),
+});
+
 export const PaperMap = z
   .object({
+    kind: Kind.meta({ description: 'The venue the map is of.' }),
     slugs: column(
       z.string(),
       'Every listing on the map, by slug, sorted. Index `i` of every other column is this listing.',
@@ -299,7 +311,7 @@ export const PaperMap = z
   .meta({
     id: 'PaperMap',
     description:
-      'A 2D layout of the listings, supplied by a separate service, by column, without titles (`GET /map/titles`). Coordinates are in its own units; the venue computes no layout.',
+      'A venue’s 2D layout of its listings, supplied by a separate service, by column, without titles (`GET /map/titles`). Coordinates are in its own units; the platform computes no layout. Empty when the venue has no map.',
   });
 
 export const MapTitles = z
@@ -330,7 +342,7 @@ export const Minimap = z
       'A listing’s piece of the paper map, with what a client needs to lay it out again round the listing. All supplied by other services.',
   });
 
-export const MapSearchQuery = z.object({
+export const MapSearchQuery = MapQuery.extend({
   q: SearchQuery.meta({ description: 'The home page’s search syntax (see `/map/search`). Blank finds nothing.' }),
 });
 
@@ -342,7 +354,7 @@ export const MapSearch = z
   .meta({
     id: 'MapSearch',
     description:
-      'The home page’s search syntax (words, `key:value` filters, `OR`, groups, `-` negation) over every listing, for the map to highlight. Every status unless the query names one.',
+      'The home page’s search syntax (words, `key:value` filters, `OR`, groups, `-` negation) over one venue’s listings, for its map to highlight. Every status unless the query names one.',
   });
 
 export const MapRelated = z
@@ -622,8 +634,6 @@ const Institutions = z.array(z.string()).meta({
   description:
     'Every institution the trader has a confirmed email address at, the one they signed up with first. Empty for a bot or an unverified account.',
 });
-
-const Kind = z.string().min(1).max(200);
 
 export const SettledRecord = z
   .object({
@@ -1221,6 +1231,11 @@ const MapTopicInput = z.object({ number: z.number().int().min(0), label: z.strin
 
 export const SetMapRequest = z
   .object({
+    kind: Kind.meta({
+      description:
+        'The venue (a market `kind`) this is the map of. Only its map is replaced; every other venue’s is kept.',
+      example: 'ICLR 2027',
+    }),
     points: z
       .array(
         z.object({

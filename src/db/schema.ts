@@ -297,9 +297,10 @@ export const listingRelated = pgTable(
 );
 
 /**
- * The paper map (`/map`): a 2D position per listing, laid out by a separate
- * service and supplied whole through `PUT /map`, never computed here. Written
- * only by `server/map.ts`, in one transaction that replaces every row. Like
+ * The paper maps (`/map`), one per venue (`kind`, as on `markets`): a 2D
+ * position per listing, laid out by a separate service and supplied whole
+ * through `PUT /map`, never computed here. Written only by `server/map.ts`,
+ * in one transaction that replaces every row of that venue. Like
  * `listing_related`, `slug` is matched against `listings.slug` when read,
  * never by a foreign key. `x`/`y` are in the service's own units (the client
  * scales them); `region` and `cluster` are its coarse and fine groupings,
@@ -311,7 +312,8 @@ export const listingRelated = pgTable(
 export const mapPoints = pgTable(
   'map_points',
   {
-    slug: text('slug').primaryKey(),
+    kind: text('kind').notNull(),
+    slug: text('slug').notNull(),
     x: doublePrecision('x').notNull(),
     y: doublePrecision('y').notNull(),
     region: integer('region'),
@@ -319,19 +321,23 @@ export const mapPoints = pgTable(
     vector: real('vector').array(),
   },
   // A paper's nearest on the map (`views.listingMinimap`), by `<->`: the expression must match the query's.
-  (t) => [index('map_points_xy_idx').using('gist', sql`point(${t.x}, ${t.y})`)],
+  (t) => [
+    primaryKey({ columns: [t.kind, t.slug] }),
+    index('map_points_xy_idx').using('gist', sql`point(${t.x}, ${t.y})`),
+  ],
 );
 
-/** The names of the map's groupings, replaced with `map_points`. `level` is `region` or `cluster`. */
+/** The names of a map's groupings, replaced with its `map_points`. `level` is `region` or `cluster`. */
 export const mapTopics = pgTable(
   'map_topics',
   {
+    kind: text('kind').notNull(),
     level: text('level').notNull(),
     number: integer('number').notNull(),
     label: text('label').notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.level, t.number] }),
+    primaryKey({ columns: [t.kind, t.level, t.number] }),
     check('map_topics_level', sql`${t.level} in ('region', 'cluster')`),
   ],
 );

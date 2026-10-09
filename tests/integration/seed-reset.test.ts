@@ -18,6 +18,7 @@ beforeEach(async () => {
   });
   await setRelated(listing, [{ slug: 'another-paper', score: 0.9 }]);
   await setMap({
+    kind: 'ICLR 2027',
     points: [{ slug: listing.slug, x: 1, y: 2, region: 0, vector: [1, -2, 3] }],
     regions: [{ number: 0, label: 'Region' }],
     clusters: [],

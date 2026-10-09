@@ -290,18 +290,20 @@ const MAP_TTL_MS = 60 * 60_000;
 /** Public, and the same for everyone; a browser past `max-age` revalidates by ETag, and may show what it holds meanwhile. */
 const MAP_CACHE_CONTROL = 'public, max-age=300, stale-while-revalidate=3600';
 
-/** The supplied paper map, drawn whole by `/map`, without its titles. Public, cached in process and by the browser. */
+/** A venue's supplied paper map, drawn whole by `/map`, without its titles. Public, cached in process and by the browser. */
 export const getMap = route(async (req) => {
   const principal = await authenticate(req);
-  const prepared = await mapCached('map', MAP_TTL_MS, async () => prepare(S.PaperMap, await paperMap()));
+  const kind = parseQuery(req, S.MapQuery).kind ?? defaultMarketKind();
+  const prepared = await mapCached(`map:${kind}`, MAP_TTL_MS, async () => prepare(S.PaperMap, await paperMap(kind)));
   return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
 });
 
 /** The titles `getMap` leaves out, most of the map's bytes, fetched once it is drawn. Public, cached like the map. */
 export const getMapTitles = route(async (req) => {
   const principal = await authenticate(req);
-  const prepared = await mapCached('map/titles', MAP_TTL_MS, async () =>
-    prepare(S.MapTitles, { titles: await mapTitles() }),
+  const kind = parseQuery(req, S.MapQuery).kind ?? defaultMarketKind();
+  const prepared = await mapCached(`map/titles:${kind}`, MAP_TTL_MS, async () =>
+    prepare(S.MapTitles, { titles: await mapTitles(kind) }),
   );
   return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
 });
@@ -309,14 +311,18 @@ export const getMapTitles = route(async (req) => {
 /** The listings the home page's search finds, for the map to light up. Public: a browser may keep it a minute. */
 export const getMapSearch = route(async (req) => {
   const principal = await authenticate(req);
-  const { q } = parseQuery(req, S.MapSearchQuery);
-  return respond(S.MapSearch, await mapSearch(q), { principal, headers: { 'Cache-Control': 'public, max-age=60' } });
+  const { q, kind } = parseQuery(req, S.MapSearchQuery);
+  return respond(S.MapSearch, await mapSearch(q, kind ?? defaultMarketKind()), {
+    principal,
+    headers: { 'Cache-Control': 'public, max-age=60' },
+  });
 });
 
 /** The related lists between papers on the map, compactly. Public, and cached like the map. */
 export const getMapRelated = route(async (req) => {
   const principal = await authenticate(req);
-  const prepared = await mapCached('map/related', MAP_TTL_MS, async () => {
+  const kind = parseQuery(req, S.MapQuery).kind ?? defaultMarketKind();
+  const prepared = await mapCached(`map/related:${kind}`, MAP_TTL_MS, async () => {
     const slugs: string[] = [];
     const index = new Map<string, number>();
     const at = (slug: string) => {
@@ -324,7 +330,7 @@ export const getMapRelated = route(async (req) => {
       if (i === undefined) index.set(slug, (i = slugs.push(slug) - 1));
       return i;
     };
-    const edges = (await mapRelated()).flatMap((e) => [at(e.from), at(e.to)]);
+    const edges = (await mapRelated(kind)).flatMap((e) => [at(e.from), at(e.to)]);
     return prepare(S.MapRelated, { slugs, edges });
   });
   return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
@@ -346,7 +352,7 @@ export const getListingMinimap = route(async (req, params) => {
   return preparedResponse(req, prepared, { principal, headers: { 'Cache-Control': MAP_CACHE_CONTROL } });
 });
 
-/** Replace the paper map. Written by `map.ts`; not market state. */
+/** Replace one venue's paper map. Written by `map.ts`; not market state. */
 export const putMap = route(async (req) => {
   const principal = await requireAuth(req, 'admin');
   const body = await parseBody(req, S.SetMapRequest);

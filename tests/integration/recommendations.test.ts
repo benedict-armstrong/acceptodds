@@ -5,6 +5,8 @@ import { listings, type Listing } from '@/db/schema';
 import { createMarket } from '@/server/engine';
 import { follow } from '@/server/follows';
 import { setRelated, upsertListing } from '@/server/listings';
+import { setMap } from '@/server/map';
+import { invalidateMap } from '@/server/map-cache';
 import { canRecommend, recommendationScores } from '@/server/recommendations';
 import { browseListings } from '@/server/views';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
@@ -63,6 +65,33 @@ describe('recommended sort', () => {
     // `c` has no market and still leads; `a` is the viewer's own, listed below.
     expect(order.slice(0, 2)).toEqual(['c', 'b']);
     expect(order.indexOf('a')).toBeGreaterThan(1);
+  });
+
+  it('takes nearest papers by vector on each venue’s map alone', async () => {
+    const [me] = fx.traderIds;
+    await follow(me, papers.a.id);
+    // On one map `b` is beside `a`; on another, `c` points the same way but is not on `a`'s map.
+    await setMap({
+      kind: 'One',
+      points: [
+        { slug: 'a', x: 0, y: 0, vector: [1, 0] },
+        { slug: 'b', x: 1, y: 0, vector: [1, 0.1] },
+      ],
+      regions: [],
+      clusters: [],
+    });
+    await setMap({
+      kind: 'Two',
+      points: [
+        { slug: 'c', x: 0, y: 0, vector: [1, 0, 0] },
+        { slug: 'd', x: 1, y: 0, vector: [0, 1, 0] },
+      ],
+      regions: [],
+      clusters: [],
+    });
+    invalidateMap();
+    const scores = await recommendationScores(me);
+    expect(await Promise.all([...scores.keys()].map(slugOf))).toEqual(['b']);
   });
 
   it('falls back to activity for a viewer with nothing to go on', async () => {

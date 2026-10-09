@@ -970,7 +970,19 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   separate service lays the papers out in 2D and names its coarse
   `regions` and fine `clusters`, then sends the whole map with
   `PUT /map` (`admin`), replaced in one transaction (`server/map.ts`,
-  `map_points` + `map_topics`). Coordinates are in its own units and
+  `map_points` + `map_topics`).
+- **One map per venue, or none** (`kind` on both tables, as on
+  `markets`). `PUT /map` names its `kind` and replaces only that venue's
+  map; empty removes it. Every read takes `?kind=` (default
+  `DEFAULT_MARKET_KIND`); a paper's minimap is its own venue's
+  (`views.listingVenue`: the listing's kind, else its main market's).
+  `/map` is a venue's (`?kind=`, else `?paper=`'s venue, else the
+  navbar's), set as the navbar's like any page naming a venue, and only
+  exists for a venue in `views.mapKinds`: otherwise it redirects to that
+  venue's home page, which is also where the venue switcher lands from
+  it, and the navbar has no `map` link. Vectors are compared only within
+  one map: each venue's are its own service run's (`recommendations.ts`
+  keeps an index per map). Coordinates are in its own units and
   nothing here interprets them or the groupings. Slugs are matched when
   read; an unlisted one is skipped until it is listed. The research side's
   build and push scripts are in `../scraping/tags/map/`.

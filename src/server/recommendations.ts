@@ -44,7 +44,11 @@ const SCORES_TTL_MS = 60_000;
 /** How long the vectors stay in memory; `setMap` drops them sooner (`map-cache.ts`). */
 const VECTORS_TTL_MS = 3_600_000;
 
-/** Every listed paper on the map with a vector, unit length, packed `dims` floats apiece. */
+/**
+ * Every listed paper on one venue's map with a vector, unit length, packed
+ * `dims` floats apiece. One per map: each venue's vectors are its own
+ * service run's, and a distance between two maps' means nothing.
+ */
 interface VectorIndex {
   ids: string[];
   row: Map<string, number>;
@@ -52,28 +56,37 @@ interface VectorIndex {
   data: Float32Array;
 }
 
-function vectorIndex(database: Database): Promise<VectorIndex> {
-  const compute = async (): Promise<VectorIndex> => {
-    const result = await database.execute<{ id: string; vector: number[] }>(sql`
-      select l.id, p.vector from map_points p join listings l on l.slug = p.slug where p.vector is not null
+function vectorIndexes(database: Database): Promise<VectorIndex[]> {
+  const compute = async (): Promise<VectorIndex[]> => {
+    const result = await database.execute<{ kind: string; id: string; vector: number[] }>(sql`
+      select p.kind, l.id, p.vector from map_points p join listings l on l.slug = p.slug where p.vector is not null
     `);
-    const rows = result.rows.filter((r) => r.vector.length > 0);
-    const dims = rows[0]?.vector.length ?? 0;
-    const usable = rows.filter((r) => r.vector.length === dims);
-    const data = new Float32Array(usable.length * dims);
-    usable.forEach((r, i) => {
-      let norm = 0;
-      for (const x of r.vector) norm += x * x;
-      const scale = norm > 0 ? 1 / Math.sqrt(norm) : 0;
-      for (let k = 0; k < dims; k++) data[i * dims + k] = r.vector[k] * scale;
+    const byKind = Map.groupBy(
+      result.rows.filter((r) => r.vector.length > 0),
+      (r) => r.kind,
+    );
+    return [...byKind.values()].map((rows) => {
+      const dims = rows[0].vector.length;
+      const usable = rows.filter((r) => r.vector.length === dims);
+      const data = new Float32Array(usable.length * dims);
+      usable.forEach((r, i) => {
+        let norm = 0;
+        for (const x of r.vector) norm += x * x;
+        const scale = norm > 0 ? 1 / Math.sqrt(norm) : 0;
+        for (let k = 0; k < dims; k++) data[i * dims + k] = r.vector[k] * scale;
+      });
+      return { ids: usable.map((r) => r.id), row: new Map(usable.map((r, i) => [r.id, i])), dims, data };
     });
-    return { ids: usable.map((r) => r.id), row: new Map(usable.map((r, i) => [r.id, i])), dims, data };
   };
   return database === getDb() ? mapCached('recommend:vectors', VECTORS_TTL_MS, compute) : compute();
 }
 
-/** `source`'s nearest papers by cosine, nearest first, at most `NEAREST`, never itself. */
-function nearest(index: VectorIndex, source: string): string[] {
+/** `source`'s nearest papers by cosine on each map it is on, nearest first, at most `NEAREST` a map, never itself. */
+function nearest(indexes: VectorIndex[], source: string): string[] {
+  return indexes.flatMap((index) => nearestIn(index, source));
+}
+
+function nearestIn(index: VectorIndex, source: string): string[] {
   const i = index.row.get(source);
   if (i === undefined) return [];
   const { data, dims } = index;
@@ -135,7 +148,7 @@ async function computeScores(accountId: string, database: Database): Promise<Map
   if (sources.length === 0) return new Map();
   const ids = sql`${pgArray(sources)}::uuid[]`;
 
-  const [related, cited, index] = await Promise.all([
+  const [related, cited, indexes] = await Promise.all([
     database.execute<{ source: string; target: string; score: number }>(sql`
       select r.listing_id as source, l.id as target, r.score
         from listing_related r join listings l on l.slug = r.related_slug
@@ -151,13 +164,13 @@ async function computeScores(accountId: string, database: Database): Promise<Map
         from listings s join listing_references r on r.cited_slug = s.slug
        where s.id = any(${ids})
     `),
-    vectorIndex(database),
+    vectorIndexes(database),
   ]);
 
   const votes: Vote[] = [
     ...relatedVotes(related.rows),
     ...cited.rows.map((r) => ({ ...r, strength: 1, via: 'citation' as const })),
-    ...sources.flatMap((s) => vectorVotes(s, nearest(index, s))),
+    ...sources.flatMap((s) => vectorVotes(s, nearest(indexes, s))),
   ];
   // Only the top sources vote, but every acted-on paper is left out of the scores.
   const voting = new Set(sources);

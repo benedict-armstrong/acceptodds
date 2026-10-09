@@ -7,6 +7,7 @@ import { markets } from '@/db/schema';
 import { marketHeadline } from '@/lib/headline';
 import * as mapTitlesRoute from '@/app/api/v1/map/titles/route';
 import { MINIMAP_NEAREST } from '@/lib/map';
+import { defaultMarketKind } from '@/lib/venue';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { invalidateMap } from '@/server/map-cache';
@@ -14,7 +15,9 @@ import {
   browseListings,
   listingMinimap,
   listingRelatedTo,
+  mapKinds,
   marketKinds,
+  onMap,
   resolveListing,
   sparklines,
 } from '@/server/views';
@@ -429,8 +432,10 @@ describe('related listings', () => {
 
 describe('the paper map', () => {
   const post = (body: Record<string, unknown>) => api('POST', '/listings', { token: admin.token, body });
-  const put = (body: unknown, token = admin.token) => api('PUT', '/map', { token, body });
-  const getMap = () => api('GET', '/map');
+  // The default venue's map unless the body names another.
+  const put = (body: object, token = admin.token) =>
+    api('PUT', '/map', { token, body: { kind: defaultMarketKind(), ...body } });
+  const getMap = (kind?: string) => api('GET', kind ? `/map?kind=${encodeURIComponent(kind)}` : '/map');
 
   it('matches slugs when read, skips unlisted ones and carries the main market’s headline', async () => {
     for (const slug of ['a', 'b']) await post({ slug, title: `Paper ${slug}`, primaryArea: 'area' });
@@ -548,6 +553,33 @@ describe('the paper map', () => {
     const reader = await trader('reader', ['read']);
     expect((await put({ points: [] }, reader.token)).status).toBe(403);
     expect((await put({ points: [{ slug: 'a', x: 'far', y: 0 }] })).status).toBe(400);
+    expect((await api('PUT', '/map', { token: admin.token, body: { points: [] } })).status).toBe(400);
+  });
+
+  it('is one per venue: each is read, replaced and cleared alone, and only venues with one have a map', async () => {
+    for (const slug of ['a', 'b']) await post({ slug, title: slug });
+    await put({ points: [{ slug: 'a', x: 0, y: 0 }], regions: [{ number: 0, label: 'mine' }] });
+    await put({ kind: 'Other', points: [{ slug: 'b', x: 1, y: 1 }], regions: [{ number: 0, label: 'theirs' }] });
+    expect(await mapKinds()).toEqual([defaultMarketKind(), 'Other'].sort());
+
+    const [own, other] = [await getMap(), await getMap('Other')];
+    expect([own.body.kind, own.body.slugs, own.body.regions]).toEqual([
+      defaultMarketKind(),
+      ['a'],
+      [{ number: 0, label: 'mine' }],
+    ]);
+    expect([other.body.kind, other.body.slugs, other.body.regions]).toEqual([
+      'Other',
+      ['b'],
+      [{ number: 0, label: 'theirs' }],
+    ]);
+    expect((await api('GET', '/map/titles?kind=Other')).body.titles).toEqual({ b: 'b' });
+
+    // Replacing one venue's map keeps the other's; emptying it leaves that venue with none.
+    await put({ points: [] });
+    expect((await getMap('Other')).body.slugs).toEqual(['b']);
+    expect((await getMap()).body.slugs).toEqual([]);
+    expect(await mapKinds()).toEqual(['Other']);
   });
 
   it('refuses vectors of different lengths', async () => {
@@ -561,14 +593,18 @@ describe('the paper map', () => {
 });
 
 describe('a paper’s minimap', () => {
-  const post = (body: Record<string, unknown>) => api('POST', '/listings', { token: admin.token, body });
+  // In the default venue, whose map `putMap` writes, unless the body names another.
+  const post = (body: Record<string, unknown>) =>
+    api('POST', '/listings', { token: admin.token, body: { kind: defaultMarketKind(), ...body } });
   const putRelated = (ref: string, slugs: string[]) =>
     api('PUT', `/listings/${ref}/related`, {
       token: admin.token,
       body: { related: slugs.map((slug) => ({ slug, score: 1 })) },
     });
-  const putMap = (points: { slug: string; x: number; y: number; cluster?: number; vector?: number[] }[]) =>
-    api('PUT', '/map', { token: admin.token, body: { points, clusters: [{ number: 1, label: 'near' }] } });
+  const putMap = (
+    points: { slug: string; x: number; y: number; cluster?: number; vector?: number[] }[],
+    kind = defaultMarketKind(),
+  ) => api('PUT', '/map', { token: admin.token, body: { kind, points, clusters: [{ number: 1, label: 'near' }] } });
   const minimap = async (slug: string) => {
     const listing = await resolveListing(slug);
     return listingMinimap(listing, (await listingRelatedTo(listing, { all: true })).related);
@@ -578,6 +614,21 @@ describe('a paper’s minimap', () => {
     await post({ slug: 'c', title: 'c' });
     expect(await minimap('c')).toBeNull();
     expect((await api('GET', '/listings/c/minimap')).status).toBe(404);
+  });
+
+  it('is drawn from the paper’s own venue’s map, never another’s', async () => {
+    await post({ slug: 'c', title: 'c', kind: 'Other' });
+    await post({ slug: 'd', title: 'd', kind: 'Other' });
+    await putMap([
+      { slug: 'c', x: 0, y: 0 },
+      { slug: 'd', x: 1, y: 0 },
+    ]);
+    expect(await minimap('c')).toBeNull();
+    expect(await onMap(await resolveListing('c'))).toBe(false);
+    await putMap([{ slug: 'c', x: 5, y: 5 }], 'Other');
+    const m = (await minimap('c'))!;
+    expect(m.points.map((p) => p.slug)).toEqual(['c']);
+    expect(await onMap(await resolveListing('c'))).toBe(true);
   });
 
   it('is served by the API, public and cached, and follows a change to the related list', async () => {

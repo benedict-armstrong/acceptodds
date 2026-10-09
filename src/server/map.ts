@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { mapPoints, mapTopics } from '@/db/schema';
 import { invalidateMap } from './map-cache';
@@ -26,31 +27,37 @@ export interface MapTopicInput {
 }
 
 export interface MapInput {
+  /** The venue (a market `kind`) the map is of: each venue has its own, or none. */
+  kind: string;
   points: MapPointInput[];
   regions: MapTopicInput[];
   clusters: MapTopicInput[];
 }
 
-/** Rows per insert: six parameters a row, well under Postgres's 65,535. */
+/** Rows per insert: seven parameters a row, well under Postgres's 65,535. */
 const CHUNK = 5000;
 
 /**
- * Replace the whole map, in one transaction, so a reader sees the old map or
- * the new one and never half of each. A repeated slug keeps its first point.
+ * Replace a venue's whole map, in one transaction, so a reader sees the old
+ * map or the new one and never half of each. Other venues' maps are
+ * untouched; an empty map removes the venue's. A repeated slug keeps its
+ * first point.
  */
 export async function setMap(input: MapInput, database: Database = getDb()): Promise<number> {
   const seen = new Set<string>();
   const points = input.points.filter((p) => !seen.has(p.slug) && seen.add(p.slug));
+  const { kind } = input;
   const topics = [
-    ...input.regions.map((t) => ({ level: 'region', ...t })),
-    ...input.clusters.map((t) => ({ level: 'cluster', ...t })),
+    ...input.regions.map((t) => ({ kind, level: 'region', ...t })),
+    ...input.clusters.map((t) => ({ kind, level: 'cluster', ...t })),
   ];
   await database.transaction(async (tx) => {
-    await tx.delete(mapPoints);
-    await tx.delete(mapTopics);
+    await tx.delete(mapPoints).where(eq(mapPoints.kind, kind));
+    await tx.delete(mapTopics).where(eq(mapTopics.kind, kind));
     for (let i = 0; i < points.length; i += CHUNK) {
       await tx.insert(mapPoints).values(
         points.slice(i, i + CHUNK).map((p) => ({
+          kind,
           slug: p.slug,
           x: p.x,
           y: p.y,

@@ -37,6 +37,7 @@ export function NavWorth({
   pnlMicro,
   standing,
   groups,
+  hasMap,
 }: {
   handle: string;
   worth: string;
@@ -45,6 +46,8 @@ export function NavWorth({
   pnlMicro: string;
   standing: NavStanding | null;
   groups: NavGroup[];
+  /** Whether the navbar's venue has a map, and so a `map` link. */
+  hasMap: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<'hover' | 'pinned' | null>(null);
@@ -116,7 +119,7 @@ export function NavWorth({
               lifetime P&L <Amount micro={pnlMicro} signed />
             </div>
           </div>
-          <MobileNav groups={groups} onNavigate={() => setOpen(null)} />
+          <MobileNav groups={groups} hasMap={hasMap} onNavigate={() => setOpen(null)} />
         </div>
       </PopoverContent>
     </Popover>
