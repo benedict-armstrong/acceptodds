@@ -9,7 +9,7 @@ import { headlinePrice } from '@/lib/headline';
 import { leaderboardStandings, marketTape, marketView, priceHistory, resolveMarket, sparklines } from '@/server/views';
 import { valuation } from '@/server/valuation';
 import { api, trader } from './api-client';
-import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
+import { closePool, resetDatabase, seedMarket, STARTING_MICRO, TEST_KIND, type Fixture } from './helpers';
 
 const db = getDb();
 let fx: Fixture;
@@ -55,7 +55,8 @@ describe('read workload and correctness', () => {
     let portfolio;
     try {
       portfolio = await getPortfolio(fx.traderIds[0]);
-      expect(selectCount(spy)).toBe(6);
+      // Holdings (3), fills, public positions, wallets, ledger flows.
+      expect(selectCount(spy)).toBe(7);
     } finally {
       spy.mockRestore();
     }
@@ -64,12 +65,10 @@ describe('read workload and correctness', () => {
       const q = await quote(h.marketId, h.outcomeId, -h.sharesMicro);
       expect(h.quotedExitMicro).toBe(-q.costMicro);
     }
-    expect((await valuation(fx.traderIds[0]))!.netWorthMicro).toBe(portfolio.liquidationValueMicro);
+    expect((await valuation(fx.traderIds[0], TEST_KIND))!.netWorthMicro).toBe(portfolio.wallets[0].netWorthMicro);
     const filtered = await getPortfolio(fx.traderIds[0], db, created[0].marketId);
     expect(filtered.holdings).toEqual(portfolio.holdings.filter((h) => h.marketId === created[0].marketId));
-    expect(filtered.summary).toEqual(portfolio.summary);
-    expect(filtered.markedNetWorthMicro).toBe(portfolio.markedNetWorthMicro);
-    expect(filtered.liquidationValueMicro).toBe(portfolio.liquidationValueMicro);
+    expect(filtered.wallets).toEqual(portfolio.wallets);
   });
 
   it('filters the authenticated portfolio on the wire without exposing another account', async () => {
@@ -82,8 +81,7 @@ describe('read workload and correctness', () => {
     expect(filtered.status).toBe(200);
     expect(filtered.body.holdings).toHaveLength(1);
     expect(filtered.body.holdings[0].marketId).toBe(fx.marketId);
-    expect(filtered.body.summary).toEqual(all.body.summary);
-    expect(filtered.body.unsettledValuation).toEqual(all.body.unsettledValuation);
+    expect(filtered.body.wallets).toEqual(all.body.wallets);
     expect((await api('GET', '/me/portfolio?marketId=bad', { token: bot.token })).status).toBe(400);
     expect((await api('GET', `/me/portfolio?marketId=${fx.marketId}`)).status).toBe(401);
   });
@@ -142,13 +140,13 @@ describe('read workload and correctness', () => {
     await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 10_000_000n, STARTING_MICRO);
     await trade(fx.traderIds[1], fx.marketId, fx.outcomeIds[1], 12_000_000n, STARTING_MICRO);
     await trade(fx.traderIds[2], other.marketId, other.outcomeIds[0], 5_000_000n, STARTING_MICRO);
-    const before = await leaderboardStandings({ basis: 'net_worth' });
+    const before = await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth' });
     const unrelated = before.find((r) => r.accountId === fx.traderIds[2])!;
     for (const shares of [1_000_001n, -11_000_001n]) {
       await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], shares, STARTING_MICRO);
-      const incremental = await leaderboardStandings({ basis: 'net_worth' });
+      const incremental = await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth' });
       const full = await db.transaction((tx) =>
-        leaderboardStandings({ basis: 'net_worth' }, tx as unknown as Database),
+        leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth' }, tx as unknown as Database),
       );
       expect(incremental).toEqual(full);
       expect(incremental.find((r) => r.accountId === unrelated.accountId)).toEqual({
@@ -158,24 +156,24 @@ describe('read workload and correctness', () => {
     }
     await settle(fx.marketId, fx.outcomeIds[1]);
     for (const basis of ['net_worth', 'settled_pnl'] as const) {
-      expect(await leaderboardStandings({ basis })).toEqual(
-        await db.transaction((tx) => leaderboardStandings({ basis }, tx as unknown as Database)),
+      expect(await leaderboardStandings({ kind: TEST_KIND, basis })).toEqual(
+        await db.transaction((tx) => leaderboardStandings({ kind: TEST_KIND, basis }, tx as unknown as Database)),
       );
     }
   });
 
   it('does not extend the full-field expiry with incremental trades', async () => {
-    await leaderboardStandings({ basis: 'net_worth' });
+    await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth' });
     const start = Date.now();
     const clock = vi.spyOn(Date, 'now');
     try {
       clock.mockReturnValue(start + 29_000);
       await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 1_000_000n, STARTING_MICRO);
-      await leaderboardStandings({ basis: 'net_worth' });
+      await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth' });
       // A writer outside this process cannot invalidate its caches.
       await db.update(accounts).set({ displayName: 'External rename' }).where(eq(accounts.id, fx.traderIds[2]));
       clock.mockReturnValue(start + 35_000);
-      const field = await leaderboardStandings({ basis: 'net_worth' });
+      const field = await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth' });
       expect(field.find((r) => r.accountId === fx.traderIds[2])!.displayName).toBe('External rename');
     } finally {
       clock.mockRestore();
@@ -183,11 +181,11 @@ describe('read workload and correctness', () => {
   });
 
   it('shares snapshot reads in memory', async () => {
-    await fieldSnapshot();
-    await fieldSnapshot();
+    await fieldSnapshot(TEST_KIND);
+    await fieldSnapshot(TEST_KIND);
     const spy = vi.spyOn(getPool(), 'query');
     try {
-      await Promise.all([fieldSnapshot(), fieldSnapshot()]);
+      await Promise.all([fieldSnapshot(TEST_KIND), fieldSnapshot(TEST_KIND)]);
       expect(selectCount(spy)).toBe(0);
     } finally {
       spy.mockRestore();

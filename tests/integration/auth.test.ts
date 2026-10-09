@@ -7,6 +7,7 @@ import { getDb } from '@/db';
 import { account as authAccount, user } from '@/db/auth-schema';
 import { accounts, ledgerEntries, orders } from '@/db/schema';
 import { ensureAccountForUser } from '@/server/accounts';
+import { walletsOf } from '@/server/wallets';
 import { getAuth, missingFromUser } from '@/server/better-auth';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { api, authCall, authPathOf, cookieFrom, ORIGIN, signUp, trader } from './api-client';
@@ -83,7 +84,7 @@ const order = (outcomeId: string) => ({ outcomeId, sharesMicro: '1000000', maxCo
 // ---------------------------------------------------------------------------
 
 describe('sign-up', () => {
-  it('confirming the email creates a verified trader with the starting balance, and a session', async () => {
+  it('confirming the email creates a verified trader, with no wallet yet, and a session', async () => {
     const cookie = await signUp('ada@example.org', 'Ada Lovelace');
 
     const me = await api('GET', '/me', { cookie });
@@ -95,31 +96,31 @@ describe('sign-up', () => {
       institutions: ['Example University'],
       verifiedAt: expect.any(String),
       canTrade: true,
-      balanceMicro: STARTING_MICRO.toString(),
+      wallets: [],
       auth: { method: 'session', scopes: ['read', 'trade'] },
     });
 
-    const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, me.body.id));
-    expect(entries).toEqual([expect.objectContaining({ reason: 'signup', deltaMicro: STARTING_MICRO })]);
+    expect(await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, me.body.id))).toEqual([]);
 
-    // Verified by construction, so it can trade straight away.
+    // Verified by construction, so it can trade straight away; the trade opens its venue's wallet with the grant.
     const trade = await api('POST', `/markets/${fx.marketId}/orders`, { cookie, body: order(fx.outcomeIds[0]) });
     expect(trade.status).toBe(201);
+    const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, me.body.id));
+    expect(entries).toContainEqual(expect.objectContaining({ reason: 'signup', deltaMicro: STARTING_MICRO }));
     // A session's order is the UI's, and nothing claimed a model placed it.
     const [placed] = await db.select().from(orders).where(eq(orders.id, trade.body.orderId));
     expect(placed).toMatchObject({ via: 'web', isLlm: false });
   });
 
-  it('grants nothing, and creates no trader, until the email is confirmed', async () => {
+  it('grants nothing, and creates no trader, until the email is confirmed; then a trader with no wallet', async () => {
     expect((await signUpUnconfirmed('later@example.org')).status).toBe(200);
     expect(await accountsFor('later@example.org')).toEqual([]);
     const [{ total }] = await db
       .select({ total: sql<string>`coalesce(sum(${ledgerEntries.deltaMicro}), 0)::text` })
       .from(ledgerEntries)
       .where(eq(ledgerEntries.reason, 'signup'));
-    // Only the fixture's house grant, which createHouse records as a signup.
-    const [house] = await db.select().from(accounts).where(eq(accounts.handle, 'house'));
-    expect(BigInt(total)).toBe(house.balanceMicro + fx.subsidyMicro);
+    // Only the fixture's grants: the house's, which createHouse records as a signup, and its traders'.
+    expect(BigInt(total)).toBe(fx.grantedMicro);
 
     // The mail links to the landing page, never the route a mail scanner's GET would confirm with.
     const mail = devOutbox().find((m) => m.to === 'later@example.org')!;
@@ -129,16 +130,18 @@ describe('sign-up', () => {
     expect(link.pathname).toBe('/signin/link');
     expect(link.searchParams.get('to')).toBe('confirm');
 
-    // Clicking it now creates the account, with exactly one grant.
+    // Clicking it now creates the account, verified, with no money yet: its
+    // first trade in a venue opens a wallet there with the grant.
     await authCall('GET', `${authPathOf(link)}${link.search}`);
     const [row] = await accountsFor('later@example.org');
-    expect(row.account.balanceMicro).toBe(STARTING_MICRO);
     expect(row.account.verifiedAt).not.toBeNull();
+    expect(await walletsOf(row.account.id)).toEqual([]);
 
-    // A second click grants nothing more.
+    // A second click makes nothing more.
     await authCall('GET', `${authPathOf(link)}${link.search}`);
+    expect(await accountsFor('later@example.org')).toHaveLength(1);
     const grants = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, row.account.id));
-    expect(grants).toHaveLength(1);
+    expect(grants).toHaveLength(0);
   });
 
   it("takes no password: Better Auth's own sign-up is off, and nothing signs in before confirming", async () => {
@@ -237,8 +240,9 @@ describe('sign-up', () => {
     expect(new Set(results.map((r) => r.id)).size).toBe(1);
     const rows = await db.select().from(accounts).where(eq(accounts.userId, id));
     expect(rows).toHaveLength(1);
+    // No money before a first trade: that opens a wallet in its venue.
     const grants = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, rows[0].id));
-    expect(grants).toHaveLength(1);
+    expect(grants).toHaveLength(0);
   });
 
   it('ends the session on sign-out', async () => {
@@ -254,7 +258,7 @@ describe('sign-up', () => {
 // ---------------------------------------------------------------------------
 
 describe('confirming with the code from the mail', () => {
-  it('the code confirms the address, creates the trader with one grant, and signs in', async () => {
+  it('the code confirms the address, creates the trader with no wallet yet, and signs in', async () => {
     await signUpUnconfirmed('code@example.org');
     const code = codeFrom(devOutbox().find((m) => m.to === 'code@example.org')!.text);
 
@@ -264,9 +268,9 @@ describe('confirming with the code from the mail', () => {
     expect(cookie).toContain('session_token=');
 
     const me = await api('GET', '/me', { cookie });
-    expect(me.body).toMatchObject({ canTrade: true, balanceMicro: STARTING_MICRO.toString() });
+    expect(me.body).toMatchObject({ canTrade: true, wallets: [] });
     const grants = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, me.body.id));
-    expect(grants).toHaveLength(1);
+    expect(grants).toHaveLength(0);
 
     // The code is spent; the link still confirms, and grants nothing more.
     expect((await confirmWithCode('code@example.org', code)).status).toBe(400);

@@ -57,9 +57,9 @@ export default function AboutPage() {
             the outcome they believe in. Shares can be bought and sold at any time and when a market is settled users
             who are holding the winning outcome are paid out 1 {`${REP}`} for each of their shares. Prices are set by an
             automated logarithmic market maker so there is always enough liquidity in the market. Trading is in
-            reputation, which cannot be bought: everyone starts with {`${start}`}. It is a game made for fun, and has no
-            connection to {[...new Set(venues().flatMap((v) => v.unaffiliated))].join(', ')} or any other organization
-            and the code is available at:{' '}
+            reputation, which cannot be bought: everyone starts with {`${start}`} in each venue. It is a game made for
+            fun, and has no connection to {[...new Set(venues().flatMap((v) => v.unaffiliated))].join(', ')} or any
+            other organization and the code is available at:{' '}
             <a href={REPO_URL} className={ui.hyperref}>
               {REPO_URL.replace(/^https:\/\//, '')}
             </a>
@@ -132,9 +132,10 @@ export default function AboutPage() {
       </h2>
       <div className={prose}>
         <p>
-          Trading is in reputation, <span className="font-mono">{REP}</span>, not money. Everyone starts with{' '}
-          <span className="font-mono">{start}</span> once they have confirmed an institutional email address. There is
-          no way to buy more: the only way to gain is to be right before everyone else is.
+          Trading is in reputation, <span className="font-mono">{REP}</span>, not money. Each venue is a wallet of its
+          own: your first trade in a venue gives you <span className="font-mono">{start}</span> to trade with there,
+          once you have confirmed an institutional email address, and what you win in one venue cannot be spent or
+          ranked in another. There is no way to buy more: the only way to gain is to be right before everyone else is.
         </p>
       </div>
 

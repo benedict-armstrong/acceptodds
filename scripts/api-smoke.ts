@@ -33,7 +33,8 @@ async function call(method: string, path: string, body?: unknown, headers: Recor
 
 async function main() {
   const me = await call('GET', '/me');
-  console.log(`  me: ${me.handle}, balance ${me.balanceMicro} micro, scopes ${me.auth.scopes.join(',')}`);
+  const wallets = me.wallets.map((w: { kind: string; balanceMicro: string }) => `${w.kind} ${w.balanceMicro}`);
+  console.log(`  me: ${me.handle}, wallets [${wallets.join(', ')}] micro, scopes ${me.auth.scopes.join(',')}`);
 
   const { markets } = await call('GET', '/markets?status=open&limit=10');
   if (markets.length === 0) throw new Error('no open markets to trade on');
@@ -64,9 +65,9 @@ async function main() {
       `  holding: ${h.sharesMicro} ${h.outcomeLabel} on ${h.marketSlug}: mark ${h.markMicro}, quoted exit ${h.quotedExitMicro}`,
     );
   }
-  console.log(
-    `  balance ${portfolio.balanceMicro}; liquidation value ${portfolio.unsettledValuation.liquidationValueMicro}`,
-  );
+  for (const w of portfolio.wallets) {
+    console.log(`  ${w.kind}: cash ${w.cashMicro}; liquidation value ${w.netWorthMicro}`);
+  }
 
   const exit = await call('POST', `/markets/${market.id}/quote`, {
     outcomeId: outcome.id,

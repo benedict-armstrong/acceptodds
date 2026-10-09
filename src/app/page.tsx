@@ -74,9 +74,9 @@ const abstract = (v: Venue | null) => (
   <>
     {v?.lede ?? 'A prediction market on research papers'}. Each paper has a market on{' '}
     {v?.marketOn ?? 'what becomes of it'}, priced by researchers who stake $rep, an in app currency, on what they
-    expect. Everyone who signs up receives {rep(startingBalanceMicro(), 0)} {REP} to trade with. Prices are
-    probabilities, and every market settles when {v?.settlesWhen ?? 'its outcome is known'}. It is a game made for fun,
-    and has no connection to{' '}
+    expect. Everyone who signs up receives {rep(startingBalanceMicro(), 0)} {REP} to trade with in each venue. Prices
+    are probabilities, and every market settles when {v?.settlesWhen ?? 'its outcome is known'}. It is a game made for
+    fun, and has no connection to{' '}
     {orList([...new Set((v ? [v] : venues()).flatMap((x) => x.unaffiliated)), 'any other organisation'])}. acceptodds is
     an open source project, open to contributions, at{' '}
     <a href={REPO_URL} className={ui.hyperref}>

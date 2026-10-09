@@ -1,7 +1,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { HOUSE_HANDLE } from '@/server/engine';
+import { walletFor } from '@/server/wallets';
 import type { Database } from './index';
-import { accounts, ledgerEntries, markets } from './schema';
+import { accounts, ledgerEntries, markets, wallets } from './schema';
 
 /**
  * Deletes the markets the first trade would make (`server/market-start.ts`),
@@ -54,23 +55,24 @@ export async function dropUntradedMarkets(
         const ids = rows.map((r) => r.id);
         const makers = rows.map((r) => r.maker);
 
-        const [treasury] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
-        if (!treasury) throw new Error(`no house account "${HOUSE_HANDLE}"`);
+        const [house] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
+        const treasury = house ? await walletFor(tx, house.id, null, true) : null;
+        if (!house || !treasury) throw new Error(`no house account "${HOUSE_HANDLE}"`);
 
         // The only ledger rows these markets and makers have: subsidy, treasury −s and maker +s, per market.
         const { rows: bad } = await tx.execute<{ market_id: string | null }>(sql`
           select e.market_id from ledger_entries e
            where (e.market_id in ${ids} or e.account_id in ${makers})
              and not (e.reason = 'subsidy' and e.market_id in ${ids}
-                      and e.account_id in (${treasury.id}, (select maker_account_id from markets where id = e.market_id)))
+                      and e.account_id in (${house.id}, (select maker_account_id from markets where id = e.market_id)))
            limit 1
         `);
         if (bad.length > 0) throw new Error(`market ${bad[0].market_id}: ledger has more than its subsidy; aborting`);
         const { rows: unbalanced } = await tx.execute<{ id: string }>(sql`
-          select m.id from markets m join accounts a on a.id = m.maker_account_id
+          select m.id from markets m join wallets w on w.account_id = m.maker_account_id
            where m.id in ${ids}
-             and (a.balance_micro <> coalesce((select sum(delta_micro) from ledger_entries
-                                                where account_id = a.id), 0)
+             and (w.balance_micro <> coalesce((select sum(delta_micro) from ledger_entries
+                                                where wallet_id = w.id), 0)
                   or coalesce((select sum(delta_micro) from ledger_entries where market_id = m.id), 0) <> 0)
            limit 1
         `);
@@ -79,13 +81,13 @@ export async function dropUntradedMarkets(
         const removed = await tx
           .delete(ledgerEntries)
           .where(inArray(ledgerEntries.marketId, ids))
-          .returning({ accountId: ledgerEntries.accountId, deltaMicro: ledgerEntries.deltaMicro });
+          .returning({ walletId: ledgerEntries.walletId, deltaMicro: ledgerEntries.deltaMicro });
         // The treasury's rows are its debits: minus them is what it gets back.
-        const refund = -removed.filter((e) => e.accountId === treasury.id).reduce((a, e) => a + e.deltaMicro, 0n);
+        const refund = -removed.filter((e) => e.walletId === treasury.id).reduce((a, e) => a + e.deltaMicro, 0n);
         await tx
-          .update(accounts)
-          .set({ balanceMicro: sql`${accounts.balanceMicro} + ${refund}` })
-          .where(eq(accounts.id, treasury.id));
+          .update(wallets)
+          .set({ balanceMicro: sql`${wallets.balanceMicro} + ${refund}` })
+          .where(eq(wallets.id, treasury.id));
         await tx.delete(markets).where(inArray(markets.id, ids));
         await tx.delete(accounts).where(and(inArray(accounts.id, makers), eq(accounts.isHouse, true)));
 

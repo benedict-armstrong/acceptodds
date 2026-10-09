@@ -3,11 +3,11 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import { user as authUser } from '@/db/auth-schema';
 import * as schema from '@/db/schema';
-import { accounts, affiliations, ledgerEntries, orders, positions } from '@/db/schema';
+import { accounts, affiliations, orders, positions } from '@/db/schema';
 import { costBasis, type Fill } from '@/lib/cost-basis';
 import { prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
-import { creditAccount, HOUSE_HANDLE } from './engine';
+import { HOUSE_HANDLE } from './engine';
 import { isUniqueViolation } from '@/db/errors';
 import { EngineError } from './errors';
 import { normalizeEmail, syncAccount } from './affiliations';
@@ -16,12 +16,11 @@ import { invalidateStandings } from './standings-cache';
 import { publicPositionIds } from './public-positions';
 import { accountTradeFlows, quotedExitMicro } from './valuation';
 import { accountHoldings } from './account-read';
+import { openWallet, startingBalanceMicro, walletsOf } from './wallets';
+
+export { startingBalanceMicro };
 
 type Db = NodePgDatabase<typeof schema>;
-
-export function startingBalanceMicro(): bigint {
-  return BigInt(process.env.STARTING_BALANCE_MICRO ?? 1_000_000_000);
-}
 
 export interface CreateAccountInput {
   handle: string;
@@ -38,22 +37,23 @@ export interface CreateAccountInput {
   /** Set directly, without an affiliation row: seeds and tests only. */
   institutions?: string[];
   verifiedAt?: Date | null;
-  /** Defaults to `STARTING_BALANCE_MICRO`. Pass `0n` for an unfunded account. */
-  grantMicro?: bigint;
+  /**
+   * Wallets to open now, each with its grant (`kind` null: the treasury's).
+   * Seeds and tests only: a trader's wallet in a venue otherwise opens, with
+   * the starting grant, on their first trade there (`engine.trade`).
+   */
+  wallets?: { kind: string | null; grantMicro: bigint }[];
 }
 
 /**
- * The **only** place reputation is created.
- *
- * Every other movement in this app is a balanced pair between two accounts, so
- * `sum(ledger_entries.delta_micro)` over the whole table equals the total
- * granted here, forever. That is what the conservation test asserts.
+ * A new account, with no money: reputation lives in its wallets, one per
+ * venue, which open on its first trade in each (`server/wallets.ts`, the only
+ * place reputation is created).
  */
 export async function createAccount(
   input: CreateAccountInput,
   database: Db = getDb(),
 ): Promise<typeof accounts.$inferSelect> {
-  const grant = input.grantMicro ?? startingBalanceMicro();
   const created = await database.transaction(async (tx) => {
     const [account] = await tx
       .insert(accounts)
@@ -65,7 +65,6 @@ export async function createAccount(
         isHouse: input.isHouse ?? false,
         institutions: input.institutions ?? [],
         verifiedAt: input.verifiedAt ?? null,
-        balanceMicro: 0n,
       })
       .returning();
 
@@ -85,25 +84,26 @@ export async function createAccount(
       if (primary) await syncAccount(tx, account.id);
     }
 
-    if (grant !== 0n) {
-      await creditAccount(tx, account.id, grant, 'signup');
+    for (const w of input.wallets ?? []) {
+      await openWallet(tx, account.id, w.kind, w.grantMicro);
     }
-    const [funded] = await tx.select().from(accounts).where(eq(accounts.id, account.id));
-    return funded;
+    // Read again: the affiliation's sync wrote the verification caches.
+    const [created] = await tx.select().from(accounts).where(eq(accounts.id, account.id));
+    return created;
   });
   // After the commit: a new trader is on the leaderboard's field.
   invalidateStandings();
   return created;
 }
 
-/** The house treasury. Markets are subsidised out of it (invariant §1.7). */
+/** The house treasury, with its one venue-less wallet. Every venue's markets are subsidised out of it (invariant §1.7). */
 export async function createHouse(grantMicro: bigint, database: Db = getDb()): Promise<typeof accounts.$inferSelect> {
   return createAccount(
     {
       handle: HOUSE_HANDLE,
       displayName: 'House',
       isHouse: true,
-      grantMicro,
+      wallets: [{ kind: null, grantMicro }],
     },
     database,
   );
@@ -125,6 +125,8 @@ export interface Holding {
   /** That listing's title: what the UI names the row by. */
   listingTitle: string | null;
   question: string;
+  /** The market's venue: the wallet this holding was bought from and is valued in. */
+  kind: string;
   marketStatus: (typeof schema.marketStatus.enumValues)[number];
   outcomeId: string;
   outcomeLabel: string;
@@ -160,10 +162,26 @@ export interface Holding {
 
 export interface Portfolio {
   accountId: string;
-  balanceMicro: bigint;
   holdings: Holding[];
+  /** One per wallet the account has, venues by name: what it holds in each, never summed across them. */
+  wallets: WalletSummary[];
+}
+
+/** The numbers above the holdings table, for one venue's wallet. Same definitions as `valuation.ts`. */
+export interface WalletSummary {
+  kind: string;
+  cashMicro: bigint;
+  /** Σ quoted exit over the venue's holdings. */
+  holdingsValueMicro: bigint;
   /**
-   * `balance + Σ mark`. **Mid-market net worth is noise** (invariant §1.2): a
+   * `cash + holdings value`: liquidation value, the honest one. A trader
+   * cannot mark their own price impact into it, because the quote walks back
+   * down the same curve. This is the net worth the navbar and the
+   * leaderboard show.
+   */
+  netWorthMicro: bigint;
+  /**
+   * `cash + Σ mark`. **Mid-market net worth is noise** (invariant §1.2): a
    * trader marking their own price impact can show a profit while holding only
    * losing positions — a real run produced 1351 from a starting 1000, all of
    * it self-inflicted. It is correct at settlement and meaningless before it.
@@ -172,32 +190,16 @@ export interface Portfolio {
    * UI can show it *labelled*, not so that anything can score on it.
    */
   markedNetWorthMicro: bigint;
-  /**
-   * `balance + Σ quoted exit`. The honest one: a trader cannot mark their own
-   * price impact into it, because the quote walks back down the same curve.
-   * This is the net worth the navbar and the leaderboard show.
-   */
-  liquidationValueMicro: bigint;
-  summary: PortfolioSummary;
-}
-
-/** The numbers above the holdings table. Same definitions as `valuation.ts`. */
-export interface PortfolioSummary {
-  cashMicro: bigint;
-  /** Σ quoted exit. */
-  holdingsValueMicro: bigint;
-  /** `cash + holdings value` = `liquidationValueMicro`. */
-  netWorthMicro: bigint;
-  /** `holdings value + Σ trade ledger rows on markets not yet settled`. */
+  /** `holdings value + Σ trade ledger rows on the venue's markets not yet settled`. */
   unrealizedPnlMicro: bigint;
-  /** Σ `trade` + `settlement` ledger rows on settled markets. */
+  /** Σ `trade` + `settlement` ledger rows on the venue's settled markets. */
   realizedPnlMicro: bigint;
 }
 
 export async function getPortfolio(accountId: string, database: Db = getDb(), marketId?: string): Promise<Portfolio> {
   const snapshot = await accountHoldings(accountId, database);
   if (!snapshot) throw new EngineError('not_found', `no account ${accountId}`);
-  const { account, rows, boards } = snapshot;
+  const { rows, boards } = snapshot;
 
   // Every fill on an outcome still held, in the order they filled, for the
   // cost basis. One query for the whole portfolio.
@@ -220,10 +222,27 @@ export async function getPortfolio(accountId: string, database: Db = getDb(), ma
     fillsByOutcome.set(f.outcomeId, list);
   }
 
-  const published = await publicPositionIds(accountId, database);
+  const [published, walletRows, flows] = await Promise.all([
+    publicPositionIds(accountId, database),
+    walletsOf(accountId, database),
+    accountTradeFlows(accountId, database),
+  ]);
+  const summaries = new Map<string, WalletSummary>();
+  for (const w of walletRows) {
+    if (w.kind === null) continue;
+    const flow = flows?.get(w.kind);
+    summaries.set(w.kind, {
+      kind: w.kind,
+      cashMicro: w.balanceMicro,
+      holdingsValueMicro: 0n,
+      netWorthMicro: w.balanceMicro,
+      markedNetWorthMicro: w.balanceMicro,
+      unrealizedPnlMicro: flow?.openTradeMicro ?? 0n,
+      realizedPnlMicro: flow?.realizedMicro ?? 0n,
+    });
+  }
+
   const holdings: Holding[] = [];
-  let mark = account.balanceMicro;
-  let liquid = account.balanceMicro;
   for (const row of rows) {
     const board = boards.get(row.market.id)!;
     const index = board.rows.findIndex((o) => o.id === row.outcome.id);
@@ -232,8 +251,14 @@ export async function getPortfolio(accountId: string, database: Db = getDb(), ma
     // The same full-size exit maths and single rounding as engine.quote().
     const exitMicro = quotedExitMicro({ q: board.q, b: row.market.b }, index, row.position.sharesMicro);
 
-    mark += markMicro;
-    liquid += exitMicro;
+    // A holding was bought from its venue's wallet, so the wallet exists.
+    const summary = summaries.get(row.market.kind);
+    if (summary) {
+      summary.holdingsValueMicro += exitMicro;
+      summary.netWorthMicro += exitMicro;
+      summary.markedNetWorthMicro += markMicro;
+      summary.unrealizedPnlMicro += exitMicro;
+    }
     if (marketId && row.market.id !== marketId) continue;
     holdings.push({
       marketId: row.market.id,
@@ -241,6 +266,7 @@ export async function getPortfolio(accountId: string, database: Db = getDb(), ma
       listingSlug: row.listingSlug,
       listingTitle: row.listingTitle,
       question: row.market.question,
+      kind: row.market.kind,
       marketStatus: row.market.status,
       outcomeId: row.outcome.id,
       outcomeLabel: row.outcome.label,
@@ -255,22 +281,23 @@ export async function getPortfolio(accountId: string, database: Db = getDb(), ma
     });
   }
 
-  const flows = await accountTradeFlows(accountId, database);
-  const holdingsValue = liquid - account.balanceMicro;
-  return {
-    accountId,
-    balanceMicro: account.balanceMicro,
-    holdings,
-    markedNetWorthMicro: mark,
-    liquidationValueMicro: liquid,
-    summary: {
-      cashMicro: account.balanceMicro,
-      holdingsValueMicro: holdingsValue,
-      netWorthMicro: liquid,
-      unrealizedPnlMicro: holdingsValue + (flows?.openTradeMicro ?? 0n),
-      realizedPnlMicro: flows?.realizedMicro ?? 0n,
-    },
-  };
+  return { accountId, holdings, wallets: [...summaries.values()] };
+}
+
+/** A portfolio's wallet in `kind`, or what a first trade there would open: the starting grant and nothing else. */
+export function walletSummaryIn(portfolio: Pick<Portfolio, 'wallets'>, kind: string): WalletSummary {
+  const cash = startingBalanceMicro();
+  return (
+    portfolio.wallets.find((w) => w.kind === kind) ?? {
+      kind,
+      cashMicro: cash,
+      holdingsValueMicro: 0n,
+      netWorthMicro: cash,
+      markedNetWorthMicro: cash,
+      unrealizedPnlMicro: 0n,
+      realizedPnlMicro: 0n,
+    }
+  );
 }
 
 export interface ClosedPosition {
@@ -381,33 +408,6 @@ export async function closedPositions(
   return { rows, total: result.rows[0]?.total ?? 0 };
 }
 
-/**
- * `accounts.balance_micro` is a cache of `sum(ledger_entries.delta_micro)`.
- * This is the reconciliation: it returns every account where the two disagree,
- * and the answer must always be an empty array.
- */
-export async function reconcileBalances(
-  database: Db = getDb(),
-): Promise<{ accountId: string; balanceMicro: bigint; ledgerMicro: bigint }[]> {
-  const rows = await database
-    .select({
-      accountId: accounts.id,
-      balanceMicro: accounts.balanceMicro,
-      ledgerMicro: sql<string>`coalesce(sum(${ledgerEntries.deltaMicro}), 0)`,
-    })
-    .from(accounts)
-    .leftJoin(ledgerEntries, eq(ledgerEntries.accountId, accounts.id))
-    .groupBy(accounts.id, accounts.balanceMicro);
-
-  return rows
-    .map((r) => ({
-      accountId: r.accountId,
-      balanceMicro: r.balanceMicro,
-      ledgerMicro: BigInt(r.ledgerMicro),
-    }))
-    .filter((r) => r.balanceMicro !== r.ledgerMicro);
-}
-
 // ---------------------------------------------------------------------------
 // accounts for Better Auth users
 // ---------------------------------------------------------------------------
@@ -436,15 +436,17 @@ export function handleFrom(name: string | null | undefined): string {
 
 /**
  * The trader row for a Better Auth user whose email is **confirmed**,
- * creating it if it does not exist yet — with the signup grant, and verified
- * against the institution allowlist. **Idempotent**, and safe to race: the
+ * creating it if it does not exist yet, verified against the institution
+ * allowlist. It holds no money until its first trade in a venue opens a
+ * wallet there with the starting grant. **Idempotent**, and safe to race: the
  * unique index on `accounts.user_id` decides, and the loser reads the winner's
  * row.
  *
  * Called from Better Auth's `afterEmailVerification` and again, lazily, by
  * `server/auth.ts` for every session (a session implies a confirmed email), so
  * a user can never be signed in without an account. Never call it for an
- * unconfirmed user: the starting balance is granted on confirmation only.
+ * unconfirmed user: there is no account, and so no reputation, before
+ * confirmation.
  */
 export async function ensureAccountForUser(
   user: { id: string; name?: string | null; email: string },

@@ -1,10 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { accounts } from '@/db/schema';
 import { closedPositions, getPortfolio } from '@/server/accounts';
 import { quote, settle, trade } from '@/server/engine';
-import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
+import { balanceOf, closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
 const UNIT = 1_000_000n;
@@ -25,8 +23,7 @@ async function fill(accountId: string, outcomeId: string, sharesMicro: bigint) {
 }
 
 async function gain(accountId: string): Promise<bigint> {
-  const [a] = await db.select().from(accounts).where(eq(accounts.id, accountId));
-  return a.balanceMicro - STARTING_MICRO;
+  return (await balanceOf(accountId)) - STARTING_MICRO;
 }
 
 describe('closed positions', () => {

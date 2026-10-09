@@ -5,7 +5,7 @@ import { PAPER_SEARCH_LIMIT, parseChosenBet } from '@/lib/onboarding';
 import { safeReturnTo } from '@/lib/return-to';
 import { defaultMarketKind, VENUE_COOKIE } from '@/lib/venue';
 import { venues } from '@/venues';
-import { startingBalanceMicro } from '@/server/accounts';
+import { cashIn, startingBalanceMicro } from '@/server/wallets';
 import { openMarketTemplate } from '@/server/market-templates';
 import { presentListing, presentMarket } from '@/server/api/present';
 import type * as S from '@/server/api/schemas';
@@ -79,7 +79,7 @@ export default async function WelcomePage({
           ? {
               signedIn: true,
               canTrade: viewer.account.isBot || viewer.account.verifiedAt !== null,
-              cashMicro: viewer.account.balanceMicro.toString(),
+              cashMicro: (await cashIn(viewer.account.id, kind)).toString(),
             }
           : { signedIn: false, canTrade: false, cashMicro: startingBalanceMicro().toString() }
       }

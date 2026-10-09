@@ -8,7 +8,8 @@ import { accounts, affiliations } from '@/db/schema';
 import { clearDevOutbox, devOutbox } from '@/server/mail';
 import { leaderboardStandings } from '@/server/views';
 import { api, signUp, trader } from './api-client';
-import { closePool, resetDatabase, seedMarket, type Fixture } from './helpers';
+import { closePool, resetDatabase, seedMarket, STARTING_MICRO, TEST_KIND, type Fixture } from './helpers';
+import { openWallet } from '@/server/wallets';
 
 /**
  * More than one affiliation per account (`server/affiliations.ts`): each
@@ -105,9 +106,12 @@ describe('affiliations', () => {
     const cookie = await signUp('ada@example.org', 'Ada');
     const added = await add(cookie, 'ada@ethz.ch');
     await verify(cookie, added.body.id, codeFor('ada@ethz.ch')!);
+    // A board is a venue's: Ada is on it once she has a wallet there.
+    const me = await api('GET', '/me', { cookie });
+    await openWallet(db, me.body.id, TEST_KIND, STARTING_MICRO);
 
-    const eth = await leaderboardStandings({ basis: 'net_worth', institution: 'ETH Zurich' });
-    const home = await leaderboardStandings({ basis: 'net_worth', institution: 'Example University' });
+    const eth = await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth', institution: 'ETH Zurich' });
+    const home = await leaderboardStandings({ kind: TEST_KIND, basis: 'net_worth', institution: 'Example University' });
     expect(eth.map((r) => r.displayName)).toEqual(['Ada']);
     expect(home.map((r) => r.displayName)).toEqual(['Ada']);
   });

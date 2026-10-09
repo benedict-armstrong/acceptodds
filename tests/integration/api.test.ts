@@ -5,15 +5,15 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { validate } from '@readme/openapi-parser';
 import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { accounts, events, ledgerEntries, markets, orders } from '@/db/schema';
+import { events, ledgerEntries, markets, orders } from '@/db/schema';
 import { liquidityFor } from '@/lib/lmsr';
 import { microToFloat } from '@/lib/money';
-import { reconcileBalances } from '@/server/accounts';
+import { reconcileBalances } from '@/server/wallets';
 import { createMarket } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
 import { revokeToken } from '@/server/tokens';
 import { api, ROUTE_PATTERNS, trader } from './api-client';
-import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
+import { balanceOf, closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
 const db = getDb();
 
@@ -533,8 +533,7 @@ describe('Idempotency-Key over HTTP', () => {
     expect(second.body.costMicro).toBe(first.body.costMicro);
 
     expect(await db.select().from(orders)).toHaveLength(1);
-    const [acct] = await db.select().from(accounts).where(eq(accounts.id, t.id));
-    expect(acct.balanceMicro).toBe(STARTING_MICRO - BigInt(first.body.costMicro));
+    expect(await balanceOf(t.id)).toBe(STARTING_MICRO - BigInt(first.body.costMicro));
   });
 
   it('racing retries still trade once', async () => {
@@ -623,17 +622,10 @@ describe('portfolio (§1.1)', () => {
 
     // Mid-market net worth is present only labelled, next to a caveat, and
     // nowhere at the top level where it could be read as a score.
-    expect(Object.keys(res.body).sort()).toEqual([
-      'accountId',
-      'balanceMicro',
-      'holdings',
-      'summary',
-      'unsettledValuation',
-    ]);
-    expect(res.body.unsettledValuation.caveat).toMatch(/not a score/i);
-    expect(BigInt(res.body.unsettledValuation.liquidationValueMicro)).toBeLessThan(
-      BigInt(res.body.unsettledValuation.midMarketNetWorthMicro),
-    );
+    expect(Object.keys(res.body).sort()).toEqual(['accountId', 'holdings', 'midMarketCaveat', 'wallets']);
+    expect(res.body.midMarketCaveat).toMatch(/not a score/i);
+    const [w] = res.body.wallets;
+    expect(BigInt(w.netWorthMicro)).toBeLessThan(BigInt(w.midMarketNetWorthMicro));
   });
 
   it('summarises cash, liquidation net worth and P&L, with no gain from the trader’s own impact', async () => {
@@ -641,15 +633,16 @@ describe('portfolio (§1.1)', () => {
     await buy(t.token, fx.outcomeIds[0], 200_000_000n);
     const res = await api('GET', '/me/portfolio', { token: t.token });
     expect(res.status).toBe(200);
-    const s = res.body.summary;
+    // One wallet: the venue of the market traded, opened by the trade.
+    expect(res.body.wallets).toHaveLength(1);
+    const [s] = res.body.wallets;
     const [h] = res.body.holdings;
     expect(h.listingSlug).toBeNull();
-    expect(s.cashMicro).toBe(res.body.balanceMicro);
+    expect(s.kind).toBe(h.kind);
     expect(s.holdingsValueMicro).toBe(h.quotedExitMicro);
-    expect(s.netWorthMicro).toBe(res.body.unsettledValuation.liquidationValueMicro);
     expect(BigInt(s.netWorthMicro)).toBe(BigInt(s.cashMicro) + BigInt(s.holdingsValueMicro));
     // The buy moved the price; marking it would show a profit. Liquidation does not.
-    expect(BigInt(res.body.unsettledValuation.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);
+    expect(BigInt(s.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);
     expect(BigInt(s.netWorthMicro)).toBeLessThanOrEqual(STARTING_MICRO);
     // Nothing settled: all of the change is unrealized.
     expect(s.realizedPnlMicro).toBe('0');
@@ -680,16 +673,21 @@ describe('portfolio (§1.1)', () => {
     expect(res.body.orders[0]).toMatchObject({ marketId: fx.marketId, idempotencyKey: 'k1' });
   });
 
-  it('/me returns the account and balance', async () => {
-    const t = await trader('me-me', ['read'], { isBot: true });
+  it('/me returns the account and a wallet per venue traded in', async () => {
+    const t = await trader('me-me', ['read', 'trade'], { isBot: true });
     const res = await api('GET', '/me', { token: t.token });
     expect(res.body).toMatchObject({
       id: t.id,
       handle: 'me-me',
       isBot: true,
-      balanceMicro: STARTING_MICRO.toString(),
-      auth: { method: 'token', scopes: ['read'] },
+      wallets: [],
+      auth: { method: 'token', scopes: ['read', 'trade'] },
     });
+    const fill = await buy(t.token, fx.outcomeIds[0], 1_000_000n);
+    const after = await api('GET', '/me', { token: t.token });
+    expect(after.body.wallets).toEqual([
+      { kind: 'binary', balanceMicro: (STARTING_MICRO - BigInt(fill.body.costMicro)).toString() },
+    ]);
   });
 });
 
@@ -705,7 +703,7 @@ describe('leaderboard (§1.2)', () => {
     const pf = await api('GET', '/me/portfolio', { token: pumper.token });
     expect(BigInt(pf.body.holdings[0].markMicro)).toBeGreaterThan(0n);
 
-    const board = await api('GET', '/leaderboard');
+    const board = await api('GET', '/leaderboard?kind=binary');
     expect(board.status).toBe(200);
     expect(board.body.basis).toBe('settled_pnl');
     expect(board.body.entries).toEqual([]);
@@ -738,7 +736,7 @@ describe('leaderboard (§1.2)', () => {
     });
     expect(settled.status).toBe(200);
 
-    const res = await api('GET', '/leaderboard');
+    const res = await api('GET', '/leaderboard?kind=binary');
     const entries = res.body.entries;
     expect(entries.map((e: any) => e.handle)).toEqual(['winner', 'loser']);
     expect(entries.map((e: any) => e.rank)).toEqual([1, 2]);
@@ -755,22 +753,23 @@ describe('leaderboard (§1.2)', () => {
     expect(entries[0].settledPnlMicro).toBe((20_000_000n - cost).toString());
 
     // Pagination walks the same order.
-    const p1 = await api('GET', '/leaderboard?limit=1');
-    const p2 = await api('GET', `/leaderboard?limit=1&cursor=${p1.body.nextCursor}`);
+    const p1 = await api('GET', '/leaderboard?kind=binary&limit=1');
+    const p2 = await api('GET', `/leaderboard?kind=binary&limit=1&cursor=${p1.body.nextCursor}`);
     expect([p1.body.entries[0].handle, p2.body.entries[0].handle]).toEqual(['winner', 'loser']);
     expect(p2.body.nextCursor).toBeNull();
   });
 
   it('basis=net_worth ranks every trader on liquidation value, which own price impact cannot inflate', async () => {
     const pumper = await trader('pumper');
-    const idle = await trader('idle', ['read'], { isBot: true });
+    // A wallet in the venue and no trade yet: on the board at its grant.
+    const idle = await trader('idle', ['read'], { isBot: true, grantMicro: STARTING_MICRO });
     await buy(pumper.token, fx.outcomeIds[0], 400_000_000n);
 
-    const res = await api('GET', '/leaderboard?basis=net_worth');
+    const res = await api('GET', '/leaderboard?kind=binary&basis=net_worth');
     expect(res.status).toBe(200);
     expect(res.body.basis).toBe('net_worth');
     const byHandle = Object.fromEntries(res.body.entries.map((e: any) => [e.handle, e]));
-    // Everyone who is not the house, settled markets or not.
+    // Everyone with a wallet in the venue who is not the house, settled markets or not.
     expect(Object.keys(byHandle).sort()).toEqual(['idle', 'pumper']);
     expect(byHandle.idle).toMatchObject({
       netWorthMicro: STARTING_MICRO.toString(),
@@ -780,18 +779,19 @@ describe('leaderboard (§1.2)', () => {
     });
     // The pumper's mark says profit; the leaderboard does not.
     const pf = await api('GET', '/me/portfolio', { token: pumper.token });
-    expect(BigInt(pf.body.unsettledValuation.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);
+    const [wallet] = pf.body.wallets;
+    expect(BigInt(wallet.midMarketNetWorthMicro)).toBeGreaterThan(STARTING_MICRO);
     expect(BigInt(byHandle.pumper.netWorthMicro)).toBeLessThanOrEqual(STARTING_MICRO);
-    expect(byHandle.pumper.netWorthMicro).toBe(pf.body.summary.netWorthMicro);
-    expect(byHandle.pumper.unrealizedPnlMicro).toBe(pf.body.summary.unrealizedPnlMicro);
+    expect(byHandle.pumper.netWorthMicro).toBe(wallet.netWorthMicro);
+    expect(byHandle.pumper.unrealizedPnlMicro).toBe(wallet.unrealizedPnlMicro);
     expect(res.body.entries.map((e: any) => e.handle)).toEqual(['idle', 'pumper']);
     expect(idle.id).toBeTruthy();
 
     // The default basis is still settled P&L, for bots written against it.
-    const dflt = await api('GET', '/leaderboard');
+    const dflt = await api('GET', '/leaderboard?kind=binary');
     expect(dflt.body.basis).toBe('settled_pnl');
     expect(dflt.body.entries).toEqual([]);
-    expect((await api('GET', '/leaderboard?basis=mark')).status).toBe(400);
+    expect((await api('GET', '/leaderboard?kind=binary&basis=mark')).status).toBe(400);
   });
 
   it('basis=net_worth carries realized P&L after settlement and pages with its own cursor', async () => {
@@ -806,11 +806,11 @@ describe('leaderboard (§1.2)', () => {
       body: { winningOutcomeId: fx.outcomeIds[0], evidenceUrl: 'https://example.org/decision' },
     });
 
-    const res = await api('GET', '/leaderboard?basis=net_worth');
+    const res = await api('GET', '/leaderboard?kind=binary&basis=net_worth');
     const handles = res.body.entries.map((e: any) => e.handle);
     expect(handles[0]).toBe('winner');
     expect(handles[handles.length - 1]).toBe('loser');
-    const settledBoard = await api('GET', '/leaderboard');
+    const settledBoard = await api('GET', '/leaderboard?kind=binary');
     for (const e of settledBoard.body.entries) {
       const same = res.body.entries.find((x: any) => x.handle === e.handle);
       expect(same.settledPnlMicro).toBe(e.settledPnlMicro);
@@ -824,7 +824,10 @@ describe('leaderboard (§1.2)', () => {
     const seen: string[] = [];
     let cursor: string | null = null;
     do {
-      const page: any = await api('GET', `/leaderboard?basis=net_worth&limit=2${cursor ? `&cursor=${cursor}` : ''}`);
+      const page: any = await api(
+        'GET',
+        `/leaderboard?kind=binary&basis=net_worth&limit=2${cursor ? `&cursor=${cursor}` : ''}`,
+      );
       expect(page.status).toBe(200);
       seen.push(...page.body.entries.map((e: any) => e.handle));
       cursor = page.body.nextCursor;
@@ -832,8 +835,8 @@ describe('leaderboard (§1.2)', () => {
     expect(seen).toEqual(handles);
 
     // A cursor belongs to its basis.
-    const p1 = await api('GET', '/leaderboard?basis=net_worth&limit=1');
-    expect((await api('GET', `/leaderboard?cursor=${p1.body.nextCursor}`)).status).toBe(400);
+    const p1 = await api('GET', '/leaderboard?kind=binary&basis=net_worth&limit=1');
+    expect((await api('GET', `/leaderboard?kind=binary&cursor=${p1.body.nextCursor}`)).status).toBe(400);
   });
 
   it('public profiles show the settled record and no balance', async () => {
@@ -843,7 +846,8 @@ describe('leaderboard (§1.2)', () => {
     expect(res.body).toMatchObject({
       handle: 'someone',
       isBot: true,
-      settledRecord: { settledPnlMicro: '0', settledMarkets: 0 },
+      // No wallet, so no venue to have a record in.
+      settledRecords: [],
     });
     expect(JSON.stringify(res.body)).not.toMatch(/balance/i);
     expect((await api('GET', '/accounts/house')).status).toBe(404);
@@ -858,7 +862,7 @@ describe('leaderboard (§1.2)', () => {
 describe('admin', () => {
   it('creates a market with b computed once from the field size, and debits the house', async () => {
     const admin = await trader('creator', ['admin']);
-    const [houseBefore] = await db.select().from(accounts).where(eq(accounts.handle, 'house'));
+    const houseBefore = await balanceOf(fx.houseId, null);
     const res = await api('POST', '/markets', {
       token: admin.token,
       body: {
@@ -876,8 +880,7 @@ describe('admin', () => {
     expect(res.body.market.kind).toBe('opaque-kind');
     expect(res.body.market.outcomes.map((o: any) => o.label)).toEqual(['A', 'B', 'C']);
 
-    const [houseAfter] = await db.select().from(accounts).where(eq(accounts.handle, 'house'));
-    expect(houseBefore.balanceMicro - houseAfter.balanceMicro).toBe(BigInt(res.body.subsidyMicro));
+    expect(houseBefore - (await balanceOf(fx.houseId, null))).toBe(BigInt(res.body.subsidyMicro));
     const [row] = await db.select().from(markets).where(eq(markets.slug, 'new-market'));
     expect(row.createdBy).toBe(admin.id);
   });

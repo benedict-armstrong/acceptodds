@@ -3,7 +3,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import { isUniqueViolation } from '@/db/errors';
 import * as schema from '@/db/schema';
-import { accounts, commentBackings, ledgerEntries, markets, orders, outcomes, positions } from '@/db/schema';
+import { accounts, commentBackings, markets, orders, outcomes, positions } from '@/db/schema';
 import { lifoTrim } from '@/lib/backing';
 import { cost, costToTrade, liquidityFor, openingShares, prices } from '@/lib/lmsr';
 import { headlinePrice } from '@/lib/headline';
@@ -12,6 +12,7 @@ import { EngineError } from './errors';
 import * as events from './events';
 import { invalidateStandings } from './standings-cache';
 import { invalidateMarketReads } from './market-cache';
+import { creditWallet, openWallet, startingBalanceMicro, walletFor } from './wallets';
 
 /**
  * The engine. **The only module that writes market state.**
@@ -36,9 +37,17 @@ import { invalidateMarketReads } from './market-cache';
  *     `q_winner ≤ C(q)`, and its residual is swept back to the treasury.
  *
  * Every movement is therefore a **balanced pair** of ledger rows. The sum of
- * all balances is exactly the reputation granted at signup and never moves,
- * and the maker can never go negative — which is `b · ln(n)` holding in the
- * integers rather than merely in the reals.
+ * all balances is exactly the reputation granted (`wallets.openWallet`) and
+ * never moves, and the maker can never go negative — which is `b · ln(n)`
+ * holding in the integers rather than merely in the reals.
+ *
+ * ## Wallets: one per venue
+ *
+ * Money lives in `wallets`, one per account per venue (`markets.kind`). A
+ * trade moves money between the trader's and the maker's wallets **of the
+ * market's kind**, and a trader's first trade in a venue opens their wallet
+ * there with the starting grant. The treasury has one venue-less wallet; a
+ * maker one wallet, its market's kind.
  */
 
 type Db = NodePgDatabase<typeof schema>;
@@ -203,10 +212,12 @@ export async function createMarket(
       }
     }
 
-    const [treasury] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
+    const [house] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
+    const treasury = house ? await walletFor(tx, house.id, null, true) : null;
     if (!treasury) {
       throw new EngineError('not_found', `no house account with handle "${HOUSE_HANDLE}"`);
     }
+    const kind = input.kind ?? 'binary';
 
     /**
      * Invariant §1.3: `b` is computed **here, once**, and then frozen. It is
@@ -265,9 +276,9 @@ export async function createMarket(
         handle: `market:${input.slug}`,
         displayName: `Maker — ${input.question}`,
         isHouse: true,
-        balanceMicro: 0n,
       })
       .returning();
+    const makerWallet = await openWallet(tx, maker.id, kind, 0n);
 
     const [market] = await tx
       .insert(markets)
@@ -276,7 +287,7 @@ export async function createMarket(
         question: input.question,
         description: input.description ?? null,
         contract: input.contract ?? null,
-        kind: input.kind ?? 'binary',
+        kind,
         status,
         b,
         makerAccountId: maker.id,
@@ -309,8 +320,8 @@ export async function createMarket(
       .returning();
 
     // The subsidy, as a balanced pair. Reputation moves; none is created.
-    await creditAccount(tx, treasury.id, -subsidyMicro, 'subsidy', { marketId: market.id });
-    await creditAccount(tx, maker.id, subsidyMicro, 'subsidy', { marketId: market.id });
+    await creditWallet(tx, treasury, -subsidyMicro, 'subsidy', { marketId: market.id });
+    await creditWallet(tx, makerWallet, subsidyMicro, 'subsidy', { marketId: market.id });
 
     return {
       marketId: market.id,
@@ -480,9 +491,15 @@ async function runTrade(
 
     // Locked in a fixed order — market, then trader — so that concurrent
     // trades cannot deadlock. The trader's row is locked because the balance
-    // check below must not race a trade of theirs on another market.
+    // check below must not race a trade of theirs on another market, and so
+    // that two first trades in a venue cannot both open its wallet.
     const [account] = await tx.select().from(accounts).where(eq(accounts.id, accountId)).for('update');
     if (!account) throw new EngineError('not_found', `no account ${accountId}`);
+    // The trader's wallet in this market's venue; their first trade there
+    // opens it with the starting grant.
+    const wallet =
+      (await walletFor(tx, accountId, market.kind, true)) ??
+      (await openWallet(tx, accountId, market.kind, account.isHouse ? 0n : startingBalanceMicro()));
 
     // Read the share vector INSIDE the lock, and re-price against it. The
     // caller's quote is advisory and is never trusted.
@@ -505,10 +522,10 @@ async function runTrade(
       });
     }
 
-    if (account.balanceMicro < priced.costMicro) {
+    if (wallet.balanceMicro < priced.costMicro) {
       throw new EngineError('insufficient_balance', 'not enough reputation', {
         costMicro: priced.costMicro.toString(),
-        balanceMicro: account.balanceMicro.toString(),
+        balanceMicro: wallet.balanceMicro.toString(),
       });
     }
 
@@ -571,12 +588,15 @@ async function runTrade(
       })
       .where(eq(markets.id, marketId));
 
-    // The balanced pair: what the trader pays, the maker receives.
-    const balanceAfterMicro = await creditAccount(tx, accountId, -priced.costMicro, 'trade', {
+    // The balanced pair: what the trader pays, the maker receives, both in
+    // this market's venue.
+    const makerWallet = await walletFor(tx, market.makerAccountId, market.kind);
+    if (!makerWallet) throw new EngineError('invalid_market', `market ${marketId} has no maker wallet`);
+    const balanceAfterMicro = await creditWallet(tx, wallet, -priced.costMicro, 'trade', {
       orderId: order.id,
       marketId,
     });
-    await creditAccount(tx, market.makerAccountId, priced.costMicro, 'trade', {
+    await creditWallet(tx, makerWallet, priced.costMicro, 'trade', {
       orderId: order.id,
       marketId,
     });
@@ -649,7 +669,8 @@ export async function findFillByIdempotencyKey(
     .where(and(eq(orders.accountId, accountId), eq(orders.idempotencyKey, idempotencyKey)));
   if (!existing) return null;
 
-  const [account] = await ex.select().from(accounts).where(eq(accounts.id, accountId));
+  const [market] = await ex.select({ kind: markets.kind }).from(markets).where(eq(markets.id, existing.marketId));
+  const wallet = market ? await walletFor(ex, accountId, market.kind) : null;
   const [position] = await ex
     .select()
     .from(positions)
@@ -664,7 +685,7 @@ export async function findFillByIdempotencyKey(
     costMicro: existing.costMicro,
     priceBefore: existing.priceBefore,
     priceAfter: existing.priceAfter,
-    balanceAfterMicro: account?.balanceMicro ?? 0n,
+    balanceAfterMicro: wallet?.balanceMicro ?? 0n,
     positionAfterMicro: position?.sharesMicro ?? 0n,
     createdAt: existing.createdAt,
     replayed: true,
@@ -717,12 +738,18 @@ export async function settle(
       .orderBy(asc(positions.accountId))
       .for('update');
 
+    const maker = await walletFor(tx, market.makerAccountId, market.kind, true);
+    if (!maker) throw new EngineError('invalid_market', `market ${marketId} has no maker wallet`);
     for (const position of held) {
       if (position.outcomeId === winningOutcomeId && position.sharesMicro !== 0n) {
-        // 1 unit per share: in micro-units the payout is the share count.
+        // 1 unit per share: in micro-units the payout is the share count,
+        // paid into the holder's wallet in this market's venue (opened by
+        // the trade that bought it).
         const payoutMicro = position.sharesMicro;
-        await creditAccount(tx, position.accountId, payoutMicro, 'settlement', { marketId });
-        await creditAccount(tx, market.makerAccountId, -payoutMicro, 'settlement', { marketId });
+        const wallet = await walletFor(tx, position.accountId, market.kind);
+        if (!wallet) throw new EngineError('not_found', `account ${position.accountId} has no ${market.kind} wallet`);
+        await creditWallet(tx, wallet, payoutMicro, 'settlement', { marketId });
+        await creditWallet(tx, maker, -payoutMicro, 'settlement', { marketId });
       }
     }
 
@@ -731,12 +758,12 @@ export async function settle(
     // Whatever the maker has left is the venue's P&L on this market. Sweep it
     // back to the treasury so the maker account closes at zero and the sum of
     // all balances is untouched.
-    const [maker] = await tx.select().from(accounts).where(eq(accounts.id, market.makerAccountId)).for('update');
-    const [treasury] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)).for('update');
-    if (maker && treasury && maker.balanceMicro !== 0n) {
-      const residual = maker.balanceMicro;
-      await creditAccount(tx, maker.id, -residual, 'settlement', { marketId });
-      await creditAccount(tx, treasury.id, residual, 'settlement', { marketId });
+    const [house] = await tx.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE));
+    const treasury = house ? await walletFor(tx, house.id, null, true) : null;
+    const residual = await creditWallet(tx, maker, 0n, 'settlement');
+    if (treasury && residual !== 0n) {
+      await creditWallet(tx, maker, -residual, 'settlement', { marketId });
+      await creditWallet(tx, treasury, residual, 'settlement', { marketId });
     }
 
     await tx
@@ -768,50 +795,6 @@ export async function closeMarket(marketId: string, database: Db = getDb()): Pro
 
   invalidateMarketReads(marketId);
   events.log('market.closed', { marketId });
-}
-
-// ---------------------------------------------------------------------------
-// the ledger
-// ---------------------------------------------------------------------------
-
-/**
- * Move reputation and record why, in one place.
- *
- * `accounts.balance_micro` is a **cache** of `sum(ledger_entries.delta_micro)`.
- * Both are written here, in the caller's transaction, always — which is what
- * makes the reconciliation test able to assert they agree.
- *
- * The update is `balance = balance + delta` in SQL rather than a read-modify-
- * write in JS, so it stays correct under the row lock rather than because of
- * it.
- */
-export async function creditAccount(
-  tx: Executor,
-  accountId: string,
-  deltaMicro: bigint,
-  reason: (typeof schema.ledgerReason.enumValues)[number],
-  refs: { orderId?: string | null; marketId?: string | null } = {},
-): Promise<bigint> {
-  if (deltaMicro === 0n) {
-    const [row] = await tx.select().from(accounts).where(eq(accounts.id, accountId));
-    return row?.balanceMicro ?? 0n;
-  }
-
-  await tx.insert(ledgerEntries).values({
-    accountId,
-    deltaMicro,
-    reason,
-    orderId: refs.orderId ?? null,
-    marketId: refs.marketId ?? null,
-  });
-
-  const [updated] = await tx
-    .update(accounts)
-    .set({ balanceMicro: sql`${accounts.balanceMicro} + ${deltaMicro}` })
-    .where(eq(accounts.id, accountId))
-    .returning();
-
-  return updated.balanceMicro;
 }
 
 /** `C(q)` for a market, in micro-units. The maker's balance should equal it. */

@@ -1,14 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { accounts, markets, outcomes } from '@/db/schema';
+import { markets, outcomes } from '@/db/schema';
 import { cost, liquidityFor, prices } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
-import { createHouse, createAccount, reconcileBalances } from '@/server/accounts';
+import { createHouse, createAccount } from '@/server/accounts';
+import { reconcileBalances } from '@/server/wallets';
 import { createMarket, makerValueMicro, quote, settle, trade } from '@/server/engine';
 import { EngineError } from '@/server/errors';
 import { priceHistory } from '@/server/views';
-import { closePool, HOUSE_MICRO, resetDatabase, STARTING_MICRO } from './helpers';
+import { balanceOf, closePool, HOUSE_MICRO, resetDatabase, STARTING_MICRO, totalBalance } from './helpers';
 
 const db = getDb();
 afterAll(closePool);
@@ -24,7 +25,8 @@ let makerId: string;
 beforeEach(async () => {
   await resetDatabase();
   await createHouse(HOUSE_MICRO, db);
-  traderId = (await createAccount({ handle: 'trader', displayName: 'T', grantMicro: STARTING_MICRO }, db)).id;
+  // No wallet yet: the first trade opens one with the starting grant.
+  traderId = (await createAccount({ handle: 'trader', displayName: 'T' }, db)).id;
   const m = await createMarket(
     {
       slug: 'prior',
@@ -56,9 +58,9 @@ describe('a market opened at a prior', () => {
 
     const b = liquidityFor(microToFloat(STARTING_MICRO), 10, 4);
     expect(market.b).toBe(b);
-    const [maker] = await db.select().from(accounts).where(eq(accounts.id, makerId));
-    expect(maker.balanceMicro).toBe(costToMicro(b * Math.log(1 / 0.012)));
-    expect(await makerValueMicro(marketId, db)).toBe(maker.balanceMicro);
+    const maker = await balanceOf(makerId);
+    expect(maker).toBe(costToMicro(b * Math.log(1 / 0.012)));
+    expect(await makerValueMicro(marketId, db)).toBe(maker);
     expect((await reconcileBalances(db)).length).toBe(0);
   });
 
@@ -88,8 +90,7 @@ describe('a market opened at a prior', () => {
     expect(fill.costMicro).toBeGreaterThan(0n);
     const [market] = await db.select().from(markets).where(eq(markets.id, marketId));
     const rows = await db.select().from(outcomes).where(eq(outcomes.marketId, marketId));
-    const [maker] = await db.select().from(accounts).where(eq(accounts.id, makerId));
-    expect(maker.balanceMicro).toBeGreaterThanOrEqual(
+    expect(await balanceOf(makerId)).toBeGreaterThanOrEqual(
       costToMicro(
         cost(
           rows.map((r) => microToFloat(r.sharesMicro)),
@@ -99,11 +100,10 @@ describe('a market opened at a prior', () => {
     );
 
     await settle(marketId, outcomeIds[0], {}, db);
-    const [after] = await db.select().from(accounts).where(eq(accounts.id, makerId));
-    expect(after.balanceMicro).toBe(0n);
+    expect(await balanceOf(makerId)).toBe(0n);
     expect((await reconcileBalances(db)).length).toBe(0);
-    const all = await db.select().from(accounts);
-    expect(all.reduce((s, a) => s + a.balanceMicro, 0n)).toBe(HOUSE_MICRO + STARTING_MICRO);
+    // The house's grant and the trader's, opened by their first trade.
+    expect(await totalBalance()).toBe(HOUSE_MICRO + STARTING_MICRO);
   });
 
   it('refuses a prior that is not one positive price per outcome summing to 1', async () => {

@@ -30,7 +30,7 @@ You are trading for a researcher who pasted you a prompt asking you to. ${siteNa
 
 ${venueList}
 
-The market's \`contract\` says exactly how it settles; read it before trading. Always take outcome labels from the market itself (\`outcomes[].label\`), never from this list. A share pays 1 if its outcome happens and 0 if not, so an outcome's price is the crowd's probability. Money is reputation, play money with no cash value; every account starts with ${rep(startingBalanceMicro(), 0)} reputation.
+The market's \`contract\` says exactly how it settles; read it before trading. Always take outcome labels from the market itself (\`outcomes[].label\`), never from this list. A share pays 1 if its outcome happens and 0 if not, so an outcome's price is the crowd's probability. Money is reputation, play money with no cash value, kept in one wallet per venue (\`GET /me\` lists them): the account's first trade in a venue opens its wallet there with ${rep(startingBalanceMicro(), 0)} reputation, and a venue's markets trade only against its own wallet, so winnings in one venue cannot be spent in another. Each venue has its own leaderboard (\`GET /leaderboard?kind=\`).
 
 ## First, sign in
 

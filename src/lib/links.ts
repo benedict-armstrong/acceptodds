@@ -68,13 +68,13 @@ export function publicPositionPath(id: string): string {
 }
 
 /** A group's board (#25): the leaderboard ranked among its members. */
-export function groupPath(id: string): string {
-  return `/leaderboard?group=${id}`;
+export function groupPath(id: string, kind?: string | null): string {
+  return `/leaderboard?group=${id}${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`;
 }
 
 /** An institution's board: the leaderboard ranked among the traders confirmed there. */
-export function institutionPath(name: string): string {
-  return `/leaderboard?institution=${encodeURIComponent(name)}`;
+export function institutionPath(name: string, kind?: string | null): string {
+  return `/leaderboard?institution=${encodeURIComponent(name)}${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`;
 }
 
 /**

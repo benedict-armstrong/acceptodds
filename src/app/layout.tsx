@@ -14,6 +14,8 @@ import { PendingGroupJoin } from '@/components/PendingGroupJoin';
 import { rep, REP } from '@/lib/format';
 import { microToFloat } from '@/lib/money';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
+import { startingBalanceMicro } from '@/server/wallets';
 import { siteName, siteUrl } from '@/server/share';
 import { valuation } from '@/server/valuation';
 import { fieldSnapshot, type FieldSnapshot } from '@/server/field-snapshot';
@@ -65,14 +67,14 @@ function navStanding(field: FieldSnapshot, mine: bigint): NavStanding | null {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const viewer = await viewerFromHeaders(await headers());
-  // Liquidation value, not a mark (§1.1, §1.2): what the viewer would hold if they sold everything now.
+  // Liquidation value, not a mark (§1.1, §1.2): what the viewer would hold if they sold everything now,
+  // in the venue they are browsing — each venue is a wallet of its own.
+  const kind = await currentVenue();
   const [worth, memberships] = viewer
-    ? await Promise.all([valuation(viewer.account.id), groupsOf(viewer.account.id)])
+    ? await Promise.all([valuation(viewer.account.id, kind), groupsOf(viewer.account.id)])
     : [null, []];
   const readingGroups = memberships.map(({ group }) => ({ id: group.id, name: group.name }));
-  const standing = viewer
-    ? navStanding(await fieldSnapshot(), worth?.netWorthMicro ?? viewer.account.balanceMicro)
-    : null;
+  const standing = viewer && worth ? navStanding(await fieldSnapshot(kind), worth.netWorthMicro) : null;
   const tracker = analytics();
   return (
     <html lang="en">
@@ -101,8 +103,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <NavWorth
                   groups={readingGroups}
                   handle={viewer.account.handle}
-                  worth={`${rep(worth?.netWorthMicro ?? viewer.account.balanceMicro)} ${REP}`}
-                  cash={`${rep(worth?.cashMicro ?? viewer.account.balanceMicro)} ${REP}`}
+                  venue={kind}
+                  worth={`${rep(worth?.netWorthMicro ?? startingBalanceMicro())} ${REP}`}
+                  cash={`${rep(worth?.cashMicro ?? startingBalanceMicro())} ${REP}`}
                   pnlMicro={((worth?.unrealizedPnlMicro ?? 0n) + (worth?.realizedPnlMicro ?? 0n)).toString()}
                   standing={standing}
                 />

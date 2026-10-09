@@ -281,6 +281,13 @@
       "when": 1791492085519,
       "tag": "0039_agent_codes_by_user",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791533833358,
+      "tag": "0040_venue_wallets",
+      "breakpoints": true
     }
   ]
 }

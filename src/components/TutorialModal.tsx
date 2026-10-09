@@ -133,7 +133,9 @@ export function tutorialSteps({
           <span className="font-mono whitespace-nowrap text-ink">
             {rep(startingBalanceMicro, 0)} {REP}
           </span>
-          {signedIn ? '. Choose a side and a stake, and you’re trading.' : ' then you’re ready to trade.'}
+          {signedIn
+            ? ' in each venue. Choose a side and a stake, and you’re trading.'
+            : ' in each venue, then you’re ready to trade.'}
         </>
       ),
       fine: <>{REP} is in app money, with no cash value. Trading needs an email at a research institution.</>,

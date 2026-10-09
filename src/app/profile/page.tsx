@@ -13,6 +13,7 @@ import { pct } from '@/lib/format';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { followedListings } from '@/server/follows';
+import { currentVenue } from '@/server/current-venue';
 import { leaderboardStandings, standingOf } from '@/server/views';
 import { presentAffiliation, presentToken } from '@/server/api/present';
 import { listAffiliations } from '@/server/affiliations';
@@ -29,7 +30,7 @@ export default async function ProfilePage() {
   if (!viewer) redirect('/signin?next=/profile');
   const a = viewer.account;
   const follows = await followedListings(a.id);
-  const field = await leaderboardStandings({ basis: 'net_worth' });
+  const field = await leaderboardStandings({ kind: await currentVenue(), basis: 'net_worth' });
   const standing = field.some((r) => r.accountId === a.id) ? standingOf(field, a.id, 'net_worth') : null;
   const affiliations = (await listAffiliations(a.id)).map(presentAffiliation);
   const apiKeys = a.userId ? (await listTokens(a.userId)).map(presentToken) : [];

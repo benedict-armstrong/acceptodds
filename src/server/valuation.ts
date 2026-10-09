@@ -3,15 +3,17 @@ import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { getDb } from '@/db';
 import type * as schema from '@/db/schema';
-import { accounts, markets, outcomes, positions, type Account } from '@/db/schema';
+import { accounts, markets, outcomes, positions, wallets, type Account } from '@/db/schema';
 import { accountHoldings } from './account-read';
+import { startingBalanceMicro, walletFor } from './wallets';
 import { costToTrade } from '@/lib/lmsr';
 import { costToMicro, microToFloat } from '@/lib/money';
 
 type Database = NodePgDatabase<typeof schema>;
 
 /**
- * Liquidation value, for many accounts at once. **Reads only.**
+ * Liquidation value, for many accounts at once, **in one venue**: a wallet's
+ * cash and the holdings on that venue's markets. **Reads only.**
  *
  * An account's net worth here is `cash + Σ quoted exit`: what it would hold if
  * it sold every open holding right now, each holding priced as its own
@@ -31,9 +33,11 @@ type Database = NodePgDatabase<typeof schema>;
 
 export interface Valuation {
   accountId: string;
-  /** `accounts.balance_micro`. */
+  /** The venue: every figure below is the account's wallet there and its markets alone. */
+  kind: string;
+  /** `wallets.balance_micro`, or the starting grant while the account has no wallet in the venue. */
   cashMicro: bigint;
-  /** Σ quoted exit over the account's open holdings. */
+  /** Σ quoted exit over the account's open holdings in the venue. */
   holdingsValueMicro: bigint;
   /** `cash + holdings value`: liquidation value, not a mark. */
   netWorthMicro: bigint;
@@ -60,24 +64,33 @@ export function quotedExitMicro(board: { q: number[]; b: number }, index: number
   return -costToMicro(costToTrade(board.q, index, microToFloat(-sharesMicro), board.b));
 }
 
+export interface TradeFlow {
+  openTradeMicro: bigint;
+  realizedMicro: bigint;
+  settledMarkets: number;
+}
+
 /**
- * Per account: Σ `trade` rows on markets not yet settled, and Σ `trade` +
- * `settlement` rows on settled markets with their count. `sum(bigint)` is
- * `numeric`: read as text, never as a JS number (§1.6).
+ * Per account and venue: Σ `trade` rows on markets not yet settled, and Σ
+ * `trade` + `settlement` rows on settled markets with their count. `kind`
+ * narrows it to one venue. `sum(bigint)` is `numeric`: read as text, never
+ * as a JS number (§1.6).
  */
 export async function tradeFlows(
   accountIds: string[],
+  kind: string | null = null,
   database: Database = getDb(),
-): Promise<Map<string, { openTradeMicro: bigint; realizedMicro: bigint; settledMarkets: number }>> {
-  const out = new Map<string, { openTradeMicro: bigint; realizedMicro: bigint; settledMarkets: number }>();
+): Promise<Map<string, Map<string, TradeFlow>>> {
+  const out = new Map<string, Map<string, TradeFlow>>();
   if (accountIds.length === 0) return out;
   const result = await database.execute<{
     account_id: string;
+    kind: string;
     open_trade: string;
     realized: string;
     settled: number;
   }>(sql`
-    select le.account_id,
+    select le.account_id, m.kind,
            coalesce(sum(le.delta_micro) filter (where m.status <> 'settled' and le.reason = 'trade'), 0)::text as open_trade,
            coalesce(sum(le.delta_micro) filter (where m.status = 'settled'), 0)::text as realized,
            (count(distinct le.market_id) filter (where m.status = 'settled'))::int as settled
@@ -88,36 +101,43 @@ export async function tradeFlows(
          accountIds.map((id) => sql`${id}::uuid`),
          sql`, `,
        )})
-     group by le.account_id
+       ${kind === null ? sql`` : sql`and m.kind = ${kind}`}
+     group by le.account_id, m.kind
   `);
   for (const r of result.rows) {
-    out.set(r.account_id, {
+    const byKind = out.get(r.account_id) ?? new Map<string, TradeFlow>();
+    byKind.set(r.kind, {
       openTradeMicro: BigInt(r.open_trade),
       realizedMicro: BigInt(r.realized),
       settledMarkets: r.settled,
     });
+    out.set(r.account_id, byKind);
   }
   return out;
 }
 
 /**
- * Valuations for the given accounts, or for every non-house account when
- * `accountIds` is omitted. Accounts that do not exist are left out.
+ * Valuations in one venue for the given accounts, or for every non-house
+ * account with a wallet there when `accountIds` is omitted. Accounts that do
+ * not exist, or have no wallet in the venue, are left out: the venue's field
+ * is the traders who have traded in it.
  */
 export async function valuations(
+  kind: string,
   accountIds?: string[],
   database: Database = getDb(),
 ): Promise<Map<string, Valuation & { account: Account }>> {
   if (accountIds && accountIds.length === 0) return new Map();
   const accountRows = await database
-    .select()
+    .select({ account: accounts, cashMicro: wallets.balanceMicro })
     .from(accounts)
+    .innerJoin(wallets, and(eq(wallets.accountId, accounts.id), eq(wallets.kind, kind)))
     .where(accountIds ? inArray(accounts.id, accountIds) : eq(accounts.isHouse, false));
-  const ids = accountRows.map((a) => a.id);
+  const ids = accountRows.map((a) => a.account.id);
   if (ids.length === 0) return new Map();
 
-  // Open holdings. Settlement zeroes every position, so these are all on
-  // markets that are open, closed or void.
+  // Open holdings in the venue. Settlement zeroes every position, so these
+  // are all on markets that are open, closed or void.
   const held = await database
     .select({
       accountId: positions.accountId,
@@ -128,7 +148,14 @@ export async function valuations(
     .from(positions)
     .innerJoin(outcomes, eq(outcomes.id, positions.outcomeId))
     .innerJoin(markets, eq(markets.id, outcomes.marketId))
-    .where(and(inArray(positions.accountId, ids), ne(positions.sharesMicro, 0n), ne(markets.status, 'settled')));
+    .where(
+      and(
+        inArray(positions.accountId, ids),
+        ne(positions.sharesMicro, 0n),
+        ne(markets.status, 'settled'),
+        eq(markets.kind, kind),
+      ),
+    );
 
   // The boards those holdings sit on, each read once.
   const marketIds = [...new Set(held.map((h) => h.marketId))];
@@ -165,17 +192,18 @@ export async function valuations(
     holdingsValue.set(h.accountId, (holdingsValue.get(h.accountId) ?? 0n) + exit);
   }
 
-  const flows = await tradeFlows(ids, database);
+  const flows = await tradeFlows(ids, kind, database);
   const out = new Map<string, Valuation & { account: Account }>();
-  for (const account of accountRows) {
+  for (const { account, cashMicro } of accountRows) {
     const value = holdingsValue.get(account.id) ?? 0n;
-    const f = flows.get(account.id);
+    const f = flows.get(account.id)?.get(kind);
     out.set(account.id, {
       account,
       accountId: account.id,
-      cashMicro: account.balanceMicro,
+      kind,
+      cashMicro,
       holdingsValueMicro: value,
-      netWorthMicro: account.balanceMicro + value,
+      netWorthMicro: cashMicro + value,
       unrealizedPnlMicro: value + (f?.openTradeMicro ?? 0n),
       openCostMicro: -(f?.openTradeMicro ?? 0n),
       realizedPnlMicro: f?.realizedMicro ?? 0n,
@@ -185,28 +213,39 @@ export async function valuations(
   return out;
 }
 
-/** One account's valuation, or `null` if it does not exist. */
-export function valuation(accountId: string, database: Database = getDb()): Promise<Valuation | null> {
-  return database === getDb() ? cachedValuation(accountId, database) : readValuation(accountId, database);
+/**
+ * One account's valuation in a venue, or `null` if the account does not
+ * exist. With no wallet there yet it is what a first trade would open: the
+ * starting grant, and nothing else.
+ */
+export function valuation(accountId: string, kind: string, database: Database = getDb()): Promise<Valuation | null> {
+  return database === getDb() ? cachedValuation(accountId, kind, database) : readValuation(accountId, kind, database);
 }
 
 const cachedValuation = cache(readValuation);
 
-async function readValuation(accountId: string, database: Database): Promise<Valuation | null> {
+async function readValuation(accountId: string, kind: string, database: Database): Promise<Valuation | null> {
   const snapshot = await accountHoldings(accountId, database);
   if (!snapshot) return null;
   let holdingsValueMicro = 0n;
   for (const row of snapshot.rows) {
+    if (row.market.kind !== kind) continue;
     const board = snapshot.boards.get(row.market.id)!;
     const index = board.rows.findIndex((o) => o.id === row.outcome.id);
     holdingsValueMicro += quotedExitMicro({ q: board.q, b: row.market.b }, index, row.position.sharesMicro);
   }
-  const flow = await accountTradeFlows(accountId, database);
+  const [wallet, flows] = await Promise.all([
+    walletFor(database, accountId, kind),
+    accountTradeFlows(accountId, database),
+  ]);
+  const cashMicro = wallet?.balanceMicro ?? startingBalanceMicro();
+  const flow = flows?.get(kind);
   return {
     accountId,
-    cashMicro: snapshot.account.balanceMicro,
+    kind,
+    cashMicro,
     holdingsValueMicro,
-    netWorthMicro: snapshot.account.balanceMicro + holdingsValueMicro,
+    netWorthMicro: cashMicro + holdingsValueMicro,
     unrealizedPnlMicro: holdingsValueMicro + (flow?.openTradeMicro ?? 0n),
     openCostMicro: -(flow?.openTradeMicro ?? 0n),
     realizedPnlMicro: flow?.realizedMicro ?? 0n,
@@ -214,12 +253,12 @@ async function readValuation(accountId: string, database: Database): Promise<Val
   };
 }
 
-/** Request-scoped ledger aggregation shared by the navbar and portfolio. */
+/** Request-scoped ledger aggregation shared by the navbar and portfolio: every venue, by kind. */
 const cachedAccountFlows = cache(async (accountId: string, database: Database) =>
-  (await tradeFlows([accountId], database)).get(accountId),
+  (await tradeFlows([accountId], null, database)).get(accountId),
 );
 export async function accountTradeFlows(accountId: string, database: Database = getDb()) {
   return database === getDb()
     ? cachedAccountFlows(accountId, database)
-    : (await tradeFlows([accountId], database)).get(accountId);
+    : (await tradeFlows([accountId], null, database)).get(accountId);
 }

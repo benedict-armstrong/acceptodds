@@ -86,7 +86,7 @@ describe('agent sign-in by mailed code', () => {
     const me = await api('GET', '/me', { token: minted.body.token });
     expect(me.status).toBe(200);
     expect(me.body.handle).toMatch(/^trader-/);
-    expect(me.body).toMatchObject({ balanceMicro: STARTING_MICRO.toString(), canTrade: true });
+    expect(me.body).toMatchObject({ wallets: [], canTrade: true });
 
     // Confirmed now, so the next code is an ordinary sign-in for the same account.
     const next = (await mailedCode('newcomer@example.org'))!;

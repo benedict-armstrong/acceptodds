@@ -20,11 +20,13 @@ import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
 import { startingBalanceMicro } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
+import { currentVenue } from '@/server/current-venue';
 import * as events from '@/server/events';
 import { fieldSnapshot, shapeOf, tradedWorths } from '@/server/field-snapshot';
 import { groupById, groupMembersOf, groupsOf, roleIn } from '@/server/groups';
 import {
   leaderboardStandings,
+  marketKinds,
   matchingTraders,
   standingOf,
   traderInstitutions,
@@ -45,6 +47,11 @@ function one(v: string | string[] | undefined): string | undefined {
 }
 
 /**
+ * One board per venue (`?kind=`, else this browser's venue): each venue is a
+ * wallet of its own, so a trader is ranked in a venue on what they did there
+ * alone, and is on its board once they have traded in it. Venue links sit
+ * under the title.
+ *
  * Two rankings. "Net worth" is **liquidation value** — cash plus what selling
  * every open holding now would pay — which a trader cannot inflate with their
  * own price impact. The mark-based net worth of §1.2 is never shown here.
@@ -76,6 +83,8 @@ export default async function LeaderboardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  const pickedKind = one(sp.kind)?.trim() || null;
+  const kind = pickedKind ?? (await currentVenue());
   const basis: LeaderboardBasis = one(sp.basis) === 'settled_pnl' ? 'settled_pnl' : 'net_worth';
   const institution = one(sp.institution)?.trim() || null;
   const groupId = one(sp.group)?.trim() || null;
@@ -86,24 +95,27 @@ export default async function LeaderboardPage({
   const viewer = await viewerFromHeaders(await headers());
   const group = groupId === null ? null : UUID.test(groupId) ? await groupById(groupId) : null;
   if (groupId !== null && group === null) notFound();
-  const [field, members, role, myGroups, allInstitutions] = await Promise.all([
-    leaderboardStandings({ basis, institution, group: group?.id }),
+  const [field, members, role, myGroups, allInstitutions, kinds] = await Promise.all([
+    leaderboardStandings({ kind, basis, institution, group: group?.id }),
     group ? groupMembersOf(group.id) : null,
     group ? roleIn(group, viewer?.account.id ?? null) : null,
     viewer ? groupsOf(viewer.account.id) : [],
     traderInstitutions(),
+    marketKinds(),
   ]);
   const groupReading = group ? await readingList(group.id, viewer?.account.id ?? null) : null;
   const board = group !== null || institution !== null;
   // A group's or an institution's members by net worth: its author line, and its figure.
-  const byWorth = board ? await leaderboardStandings({ basis: 'net_worth', institution, group: group?.id }) : null;
+  const byWorth = board
+    ? await leaderboardStandings({ kind, basis: 'net_worth', institution, group: group?.id })
+    : null;
   const boardName = group?.name ?? institution;
   // The whole field's shape, shared by every viewer, on the unfiltered net-worth board; a board's own, live.
   const snapshot =
     basis !== 'net_worth'
       ? null
       : byWorth === null
-        ? await fieldSnapshot()
+        ? await fieldSnapshot(kind)
         : shapeOf(await tradedWorths(byWorth), new Date());
   const search = q === null ? null : parseTraderSearch(q);
   const named = new Set(await matchingTraders(field, search?.name));
@@ -142,6 +154,7 @@ export default async function LeaderboardPage({
   const href = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams();
     const all = {
+      kind: pickedKind,
       basis: basis === 'net_worth' ? null : basis,
       institution,
       group: group?.id ?? null,
@@ -164,16 +177,29 @@ export default async function LeaderboardPage({
     <BoardPicker
       current={{
         label: boardName ?? 'Global',
-        href: group ? groupPath(group.id) : institution ? institutionPath(institution) : '/leaderboard',
+        href: group
+          ? groupPath(group.id, pickedKind)
+          : institution
+            ? institutionPath(institution, pickedKind)
+            : href({ institution: null, group: null, q: null, around: null }),
       }}
       mine={[
-        { section: null, options: [{ key: 'everyone', label: 'Global', href: '/leaderboard' }] },
+        {
+          section: null,
+          options: [
+            {
+              key: 'everyone',
+              label: 'Global',
+              href: href({ institution: null, group: null, q: null, around: null }),
+            },
+          ],
+        },
         {
           section: 'Your institutions',
           options: (viewer?.account.institutions ?? []).map((name) => ({
             key: `i:${name}`,
             label: name,
-            href: institutionPath(name),
+            href: institutionPath(name, pickedKind),
           })),
         },
         {
@@ -181,7 +207,7 @@ export default async function LeaderboardPage({
           options: myGroups.map((g) => ({
             key: `g:${g.group.id}`,
             label: g.group.name,
-            href: groupPath(g.group.id),
+            href: groupPath(g.group.id, pickedKind),
             note: String(g.memberCount),
           })),
         },
@@ -189,7 +215,7 @@ export default async function LeaderboardPage({
       institutions={allInstitutions.map((i) => ({
         key: `i:${i.name}`,
         label: i.name,
-        href: institutionPath(i.name),
+        href: institutionPath(i.name, pickedKind),
         note: String(i.traders),
       }))}
     />
@@ -229,7 +255,23 @@ export default async function LeaderboardPage({
       ) : (
         <TitleBlock title={<>{picker} leaderboard</>} />
       )}
+      {/* Each venue is its own wallet and its own board. */}
+      <nav aria-label="Venue" className="mb-3 flex flex-wrap gap-x-3 font-sans text-[13px] text-muted">
+        <span>Venue:</span>
+        {[...new Set([kind, ...kinds.map((k) => k.kind)])].map((k) =>
+          k === kind ? (
+            <b key={k} className="text-ink">
+              {k}
+            </b>
+          ) : (
+            <Link key={k} href={href({ kind: k, around: null, page: null })}>
+              {k}
+            </Link>
+          ),
+        )}
+      </nav>
       <form action="/leaderboard" method="get" role="search" className="flex gap-2">
+        {pickedKind && <input type="hidden" name="kind" value={pickedKind} />}
         {basis !== 'net_worth' && <input type="hidden" name="basis" value={basis} />}
         {institution && <input type="hidden" name="institution" value={institution} />}
         {group && <input type="hidden" name="group" value={group.id} />}
@@ -274,7 +316,7 @@ export default async function LeaderboardPage({
                   ? `You are not at ${institution}.`
                   : basis === 'settled_pnl'
                     ? 'You are not on this board yet: it counts settled markets only.'
-                    : 'You are not on this board.'}
+                    : `You are not on this board: you have not traded in ${kind} yet.`}
             </span>
           ) : null}
           {around !== null &&

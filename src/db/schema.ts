@@ -52,6 +52,9 @@ export const ledgerReason = pgEnum('ledger_reason', ['signup', 'trade', 'settlem
  *   - the house treasury, `is_house` and handle `house`;
  *   - one market maker per market, also `is_house`, holding that market's
  *     subsidy and its trade takings. See `markets.maker_account_id`.
+ *
+ * No money lives on the row: an account's reputation is in its `wallets`,
+ * one per venue.
  */
 export const accounts = pgTable(
   'accounts',
@@ -73,10 +76,6 @@ export const accounts = pgTable(
       .default(sql`'{}'::text[]`),
     /** When the account's first institutional address was confirmed; `null` once none is. Gates trading. */
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
-    /** Cache of `sum(ledger_entries.delta_micro)`. Written in the same transaction, always. */
-    balanceMicro: money('balance_micro')
-      .notNull()
-      .default(sql`0`),
     isBot: boolean('is_bot').notNull().default(false),
     isHouse: boolean('is_house').notNull().default(false),
     /** Whether the daily digest of followed papers may be mailed (`server/digest.ts`). On by default. */
@@ -93,6 +92,46 @@ export const accounts = pgTable(
     uniqueIndex('accounts_orcid_key')
       .on(t.orcid)
       .where(sql`orcid is not null`),
+  ],
+);
+
+/**
+ * Where an account's reputation lives: **one wallet per venue** (`kind`, the
+ * opaque string on `markets.kind`). A trade in a market moves money only in
+ * the trader's and the maker's wallets of that market's `kind`, so what a
+ * trader does in one venue never funds or ranks them in another.
+ *
+ * A trader's wallet in a venue is opened, with the starting grant, by their
+ * first trade there (`server/wallets.ts` `openWallet`, inside `trade()`).
+ * A maker has one wallet, its market's kind. The house treasury has one with
+ * `kind` null: it subsidises every venue's markets.
+ *
+ * `balance_micro` is a cache of `sum(ledger_entries.delta_micro)` over the
+ * wallet's rows, written in the same transaction, always.
+ */
+export const wallets = pgTable(
+  'wallets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    /** The venue. Null only for the house treasury's one wallet. */
+    kind: text('kind'),
+    /** Cache of `sum(ledger_entries.delta_micro)` over this wallet. Written in the same transaction, always. */
+    balanceMicro: money('balance_micro')
+      .notNull()
+      .default(sql`0`),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('wallets_account_kind_key')
+      .on(t.accountId, t.kind)
+      .where(sql`kind is not null`),
+    uniqueIndex('wallets_account_venueless_key')
+      .on(t.accountId)
+      .where(sql`kind is null`),
+    index('wallets_kind_idx').on(t.kind),
   ],
 );
 
@@ -519,8 +558,10 @@ export const positions = pgTable(
 );
 
 /**
- * The reputation ledger. This is a source of truth; `accounts.balance_micro`
- * is a cache of its sum, written in the same transaction.
+ * The reputation ledger. This is a source of truth; `wallets.balance_micro`
+ * is a cache of its sum per wallet, written in the same transaction.
+ * `account_id` is the wallet's account, carried so that per-account reads
+ * need no join.
  *
  * Every movement is written as a balanced pair of rows — the trader and the
  * market maker, or the house and the market maker — so the sum of all
@@ -534,6 +575,9 @@ export const ledgerEntries = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
     deltaMicro: money('delta_micro').notNull(),
     reason: ledgerReason('reason').notNull(),
     orderId: uuid('order_id').references(() => orders.id, { onDelete: 'set null' }),
@@ -542,6 +586,7 @@ export const ledgerEntries = pgTable(
   },
   (t) => [
     index('ledger_entries_account_id_idx').on(t.accountId),
+    index('ledger_entries_wallet_id_idx').on(t.walletId),
     index('ledger_entries_order_id_idx').on(t.orderId),
     // Without it, deleting a market scans the whole ledger for its `set null`.
     index('ledger_entries_market_id_idx').on(t.marketId),
@@ -1062,24 +1107,31 @@ export const pendingBets = pgTable(
  * "where you stand" curves (navbar, portfolio): the same for every viewer,
  * so computed once and shared, recomputed at most every few minutes by
  * `server/field-snapshot.ts`. Deliberately a little stale; the leaderboard
- * itself never reads it. One row per basis; only `net_worth` exists.
+ * itself never reads it. One row per basis and venue (`kind`, as on
+ * `wallets`); only `net_worth` exists.
  *
- * `worths_micro` is every non-house trader's net worth, sorted ascending:
+ * `worths_micro` is every trader's net worth in that venue, sorted ascending:
  * money, so `BIGINT`. `curve` is its kernel density at evenly spaced points
  * from `domain_lo` to `domain_hi` (units), scaled to peak at 1 — plotting
  * numbers, not money, hence `double precision`. No foreign keys: it is a
  * cache and never a source of truth, like `events`.
  */
-export const fieldSnapshots = pgTable('field_snapshots', {
-  basis: text('basis').primaryKey(),
-  computedAt: timestamp('computed_at', { withTimezone: true, mode: 'date' }).notNull(),
-  worthsMicro: money('worths_micro').array().notNull(),
-  curve: doublePrecision('curve').array().notNull(),
-  domainLo: doublePrecision('domain_lo').notNull(),
-  domainHi: doublePrecision('domain_hi').notNull(),
-});
+export const fieldSnapshots = pgTable(
+  'field_snapshots',
+  {
+    basis: text('basis').notNull(),
+    kind: text('kind').notNull(),
+    computedAt: timestamp('computed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    worthsMicro: money('worths_micro').array().notNull(),
+    curve: doublePrecision('curve').array().notNull(),
+    domainLo: doublePrecision('domain_lo').notNull(),
+    domainHi: doublePrecision('domain_hi').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.basis, t.kind] })],
+);
 
 export type Account = typeof accounts.$inferSelect;
+export type Wallet = typeof wallets.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
 export type ListingReference = typeof listingReferences.$inferSelect;
 export type Market = typeof markets.$inferSelect;

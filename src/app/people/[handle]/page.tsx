@@ -70,14 +70,22 @@ const POSITION_STATE = { held: 'held', sold: 'sold', won: 'won', lost: 'lost', v
  * a mark (§1.2). House accounts are not people and 404.
  */
 export default async function PersonPage({ params }: { params: Promise<{ handle: string }> }) {
-  const { account: a, settledPnlMicro, settledMarkets, field, row, standing } = await loadPerson((await params).handle);
+  const {
+    account: a,
+    kind,
+    settledPnlMicro,
+    settledMarkets,
+    field,
+    row,
+    standing,
+  } = await loadPerson((await params).handle);
   const viewer = await viewerFromHeaders(await headers());
-  const snapshot = await fieldSnapshot();
+  const snapshot = await fieldSnapshot(kind);
   const shared = await publicPositionsOf(a.id);
   events.log('account.read', { accountId: viewer?.account.id ?? null });
 
   const isViewer = viewer?.account.id === a.id;
-  const board = `/leaderboard?around=${encodeURIComponent(a.handle)}#focus`;
+  const board = `/leaderboard?kind=${encodeURIComponent(kind)}&around=${encodeURIComponent(a.handle)}#focus`;
   const ahead = (id: string) => standingOf(field, id, 'net_worth')?.percentAhead ?? null;
   const labelled = (who: string, id: string) => (ahead(id) === null ? who : `${who}, ${standingBand(ahead(id)!)}`);
   // As the leaderboard's `?around=`: this trader dashed, the viewer (if another trader) shaded.
@@ -118,7 +126,11 @@ export default async function PersonPage({ params }: { params: Promise<{ handle:
 
       <DetailsTable
         n={1}
-        caption={<>Standing of @{a.handle}.</>}
+        caption={
+          <>
+            Standing of @{a.handle} in {kind}.
+          </>
+        }
         rows={[
           [
             'Standing by net worth',

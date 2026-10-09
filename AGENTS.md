@@ -115,10 +115,36 @@ with `is_house`, pointed at by `markets.maker_account_id`:
   and its residual is swept back to the treasury.
 
 Every movement is therefore a **balanced pair** of ledger rows, and the only
-place reputation is ever created is `accounts.createAccount`. The sum of all
+place reputation is ever created is `wallets.openWallet` (§1.8). The sum of all
 balances never moves, and the maker can never go negative, which is
 `b · ln(n)` holding in the integers rather than merely in the reals.
 `tests/integration/engine.concurrency.test.ts` asserts all of it.
+
+### 8. Reputation lives in wallets, one per venue
+
+Money lives in `wallets` (`server/wallets.ts`), one per account per venue
+(`markets.kind`), never on `accounts`. A trade or settlement moves money
+only between the trader's and the maker's wallets **of that market's
+kind**, so winnings in one venue are never spent, valued or ranked in
+another. Every figure a trader sees — cash, net worth, P&L, rank, the
+field curve — is one venue's.
+
+- A trader's wallet in a venue opens on their **first trade there**, inside
+  `trade()` under the trader's account row lock, with
+  `startingBalanceMicro()` as a `signup` row. Signing up grants nothing.
+- A maker has one wallet, its market's kind. The treasury has one with
+  `kind` null and subsidises every venue.
+- `ledger_entries` carries both `wallet_id` (what the balance cache sums)
+  and `account_id` (for per-account reads); a venue's flows are found
+  through `market_id` → `markets.kind`.
+- A venue's leaderboard field is the non-house accounts with a wallet in
+  it: who has traded there. A page with no venue of its own (navbar,
+  profile, `/people`) uses `currentVenue()` (`server/current-venue.ts`:
+  the `venue` cookie, else `DEFAULT_MARKET_KIND`).
+- `drizzle/0040` split pre-existing balances by replaying the ledger: each
+  row went to its market's venue, rows with no market to the venue of the
+  account's first order, every further venue got its own grant, and a
+  venue that would start negative was topped up to zero (`adjustment`).
 
 ## Scope boundary — load-bearing
 
@@ -173,7 +199,7 @@ BEGIN
   if cost > maxCostMicro -> abort, slippage
   check balance >= cost
   UPDATE outcomes, INSERT orders, INSERT ledger_entries,
-  UPDATE accounts.balance_micro, UPSERT positions
+  UPDATE wallets.balance_micro, UPSERT positions
 COMMIT
 ```
 
@@ -189,8 +215,8 @@ COMMIT
 - Settlement pays 1 unit per share of the winning outcome and 0 otherwise, and
   must be idempotent — it will be run twice eventually.
 
-`balance_micro` on `accounts` is a **cache** of `sum(ledger_entries.delta_micro)`.
-Write both in the same transaction, always.
+`balance_micro` on `wallets` is a **cache** of `sum(ledger_entries.delta_micro)`
+over the wallet. Write both in the same transaction, always (`creditWallet`).
 
 ## Decisions the plan did not make
 
@@ -288,6 +314,9 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Client IP is read only by `clientIp()`** in `server/api/http.ts`, from
   `Cf-Connecting-Ip`. An ESLint rule rejects the header names anywhere else.
   Nothing is keyed on it yet.
+- **The leaderboard is one venue's** (`?kind=`, default `DEFAULT_MARKET_KIND`;
+  the page's default is `currentVenue()`, with venue links under its
+  title), ranked on that venue's wallets and markets alone (§1.8).
 - **The leaderboard has two bases, `?basis=settled_pnl|net_worth`.**
   `settled_pnl` (the API default, so existing bots see no change) is `trade` +
   `settlement` ledger rows on settled markets: exact, and immune to
@@ -391,13 +420,14 @@ Each of these came up while implementing §3–§9 and is load-bearing.
 - **Email changes are off** (`user.changeEmail.enabled: false`): a changed
   address would bypass the allowlist.
 - **No account, and no reputation, before the email is confirmed.**
-  `ensureAccountForUser()` creates the trader row, the `signup` grant and
-  the primary affiliation (below) together, from Better Auth's
+  `ensureAccountForUser()` creates the trader row and the primary
+  affiliation (below) together — no money: that comes with the first
+  trade in each venue (§1.8) — from Better Auth's
   `emailVerification.afterEmailVerification`, and again lazily on every
   session request (which `server/auth.ts` only accepts for a confirmed email),
   so a failed callback costs a retry and never leaves a signed-in user
   without a trader. The unique index on `accounts.user_id` decides a race, so
-  there is exactly one grant. A domain dropped from the list between sign-up
+  there is exactly one trader. A domain dropped from the list between sign-up
   and confirmation gets a funded account that is not verified and cannot trade
   — until it confirms another address.
 - **An account may have several affiliations, each confirmed by its own
@@ -648,7 +678,8 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   Both send through `useOrder` (`components/orders.ts`). A row's Sell
   shows only for a market in `sellable` (`views.tradingMarketIds`: open
   and before `closes_at`, the engine's own test).
-- **The navbar shows where the viewer stands** (#17, `components/NavWorth`):
+- **The navbar shows where the viewer stands** (#17, `components/NavWorth`),
+  in `currentVenue()` (§1.8), named in its panel:
   a tiny bell curve of the net-worth field with a line at the viewer
   (`MiniCurve`). Hovering it (tapping, on touch) opens a `Popover` below
   with net worth at liquidation value, cash and lifetime P&L (unrealized
@@ -1436,7 +1467,8 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   basis, frozen rows — never mutate them): the leaderboard and its API need
   exact live ranks, so it is invalidated, not aged. `server/standings-cache.ts`
   holds a generation that `engine.trade`, `createMarket`, `settle` and
-  `accounts.createAccount` bump **after their commit**; an entry computed
+  `accounts.createAccount` bump **after their commit**; the cache is keyed
+  by venue and basis; an entry computed
   under an older generation is never served, including one a commit landed
   in the middle of. A 30 s TTL covers writers outside the process (the
   seed). Correct for the single container of §11, like Better Auth's

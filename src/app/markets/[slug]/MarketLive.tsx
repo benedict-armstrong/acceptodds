@@ -239,7 +239,11 @@ export function MarketLive({
               cashMicro={
                 initial.viewer.signedIn
                   ? portfolio
-                    ? BigInt(portfolio.balanceMicro)
+                    ? // The wallet of this market's venue; none yet means a first trade there opens it.
+                      BigInt(
+                        portfolio.wallets.find((w) => w.kind === market.kind)?.cashMicro ??
+                          initial.startingBalanceMicro,
+                      )
                     : null
                   : BigInt(initial.startingBalanceMicro)
               }

@@ -66,7 +66,6 @@ import * as myPendingBetRoute from '@/app/api/v1/me/pending-bet/route';
 import * as onboardingRoute from '@/app/api/v1/onboarding/route';
 import * as openapiRoute from '@/app/api/v1/openapi.json/route';
 import * as fallbackRoute from '@/app/api/v1/[...rest]/route';
-import { STARTING_MICRO } from './helpers';
 
 /**
  * Calls the real route modules under `src/app/api/v1` with real `Request`
@@ -265,21 +264,23 @@ export async function signUp(email: string, name = 'Test Person', password = 'co
 }
 
 /**
- * A funded trader with a token. Humans get a Better Auth user (as sign-up
- * would give them) and, unless `verified: false`, a confirmed institution;
- * bots get their login-less user when the token is minted.
+ * A trader with a token. Humans get a Better Auth user (as sign-up would
+ * give them) and, unless `verified: false`, a confirmed institution; bots
+ * get their login-less user when the token is minted. `grantMicro` opens a
+ * wallet in `kind` (default `binary`, `createMarket`'s) with that grant now;
+ * without it, a first trade in a venue opens one with the starting balance.
  */
 export async function trader(
   handle: string,
   scopes: TokenScope[] = ['read', 'trade'],
-  opts: { isBot?: boolean; grantMicro?: bigint; verified?: boolean } = {},
+  opts: { isBot?: boolean; grantMicro?: bigint; kind?: string; verified?: boolean } = {},
 ): Promise<{ id: string; userId: string; token: string; tokenId: string }> {
   const db = getDb();
   let account = await createAccount({
     handle,
     displayName: handle,
     isBot: opts.isBot ?? false,
-    grantMicro: opts.grantMicro ?? STARTING_MICRO,
+    wallets: opts.grantMicro === undefined ? [] : [{ kind: opts.kind ?? 'binary', grantMicro: opts.grantMicro }],
   });
   if (!account.isBot) {
     const userId = randomUUID();

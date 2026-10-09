@@ -108,14 +108,14 @@ describe('onboarding', () => {
     expect(res.status).toBe(400);
   });
 
-  it('confirming signs in with the starting balance; then a first password, the bet as an order, and the row dropped', async () => {
+  it('confirming signs in; then a first password, the bet as an order, and the row dropped', async () => {
     await start('ada@example.org');
     const { cookie, location } = await clickLink('ada@example.org');
     expect(cookie).toContain('session_token');
     expect(location).toBe(VERIFY_EMAIL);
 
     const me = await api('GET', '/me', { cookie });
-    expect(me.body).toMatchObject({ canTrade: true, balanceMicro: STARTING_MICRO.toString() });
+    expect(me.body).toMatchObject({ canTrade: true, wallets: [] });
 
     expect((await api('POST', '/me/password', { cookie, body: { password: 'short' } })).status).toBe(400);
     expect((await api('POST', '/me/password', { cookie, body: { password: 'correct horse battery' } })).status).toBe(

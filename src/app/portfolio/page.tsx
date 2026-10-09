@@ -7,10 +7,10 @@ import { PositionsTable } from '@/components/PositionsTable';
 import { TableNotes } from '@/components/TableNotes';
 import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
-import { WorthTable } from '@/components/WorthTable';
+import { WORTH_NOTES } from '@/components/WorthTable';
 import { day, rep, REP, shares, signedRep } from '@/lib/format';
 import { presentPortfolio } from '@/server/api/present';
-import { closedPositions, getPortfolio } from '@/server/accounts';
+import { closedPositions, getPortfolio, startingBalanceMicro } from '@/server/accounts';
 import { viewerFromHeaders } from '@/server/auth';
 import * as events from '@/server/events';
 import { tradingMarketIds } from '@/server/views';
@@ -21,7 +21,7 @@ const CLOSED_PAGE = 50;
 const CLOSED_BY = { sold: 'sold', won: 'settled, won', lost: 'settled, lost' } as const;
 
 /**
- * Cash, net worth at liquidation value, and P&L, then the open positions in
+ * Per venue wallet: cash, net worth at liquidation value, and P&L; then the open positions in
  * the same `PositionsTable` as a market's page, with a market column and a
  * sell button on every open market (never a mark, §1.1). The mark-based net
  * worth (§1.2) is not shown. Then the closed positions (#22),
@@ -40,7 +40,6 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
     closed = await closedPositions(viewer.account.id, { limit: CLOSED_PAGE, offset: (page - 1) * CLOSED_PAGE });
   }
   events.log('portfolio.read', { accountId: viewer.account.id });
-  const s = p.summary;
   const canTrade = viewer.account.isBot || viewer.account.verifiedAt !== null;
   const sellable = canTrade ? await tradingMarketIds([...new Set(p.holdings.map((h) => h.marketId))]) : [];
 
@@ -49,9 +48,60 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       <TitleBlock title="Portfolio" byline={`${viewer.account.displayName}, @${viewer.account.handle}`} />
       <h2 className={ui.groupHeading}>Summary</h2>
       <p className="mt-1 mb-2 text-[15px] text-subtle">
-        Your cash, what your positions would sell for now, and what you have made or lost so far.
+        Each venue is a wallet of its own: your cash there, what your positions there would sell for now, and what you
+        have made or lost there so far. Your first trade in a venue opens its wallet with{' '}
+        {rep(startingBalanceMicro(), 0)} {REP}.
       </p>
-      <WorthTable n={1} caption="Your reputation now." worth={s} />
+      {p.wallets.length === 0 ? (
+        <div className={ui.empty}>No wallets yet: you have not traded.</div>
+      ) : (
+        <>
+          <div className={ui.tableScroll}>
+            <table className={ui.table}>
+              <caption className={ui.tableCaption}>
+                <b>Table 1.</b> Your reputation now, by venue.
+              </caption>
+              <thead>
+                <tr>
+                  <th className={ui.th()}>Venue</th>
+                  <th className={ui.th(true)}>Cash</th>
+                  <th className={ui.th(true)}>
+                    Net worth<sup className={ui.mark}>a</sup>
+                  </th>
+                  <th className={ui.th(true)}>
+                    Unrealized P&L<sup className={ui.mark}>b</sup>
+                  </th>
+                  <th className={ui.th(true)}>
+                    Realized P&L<sup className={ui.mark}>c</sup>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.wallets.map((w) => (
+                  <tr key={w.kind}>
+                    <td className={ui.td}>{w.kind}</td>
+                    <td className={`${ui.td} ${ui.num}`}>{rep(w.cashMicro)}</td>
+                    <td className={`${ui.td} ${ui.num}`}>{rep(w.netWorthMicro)}</td>
+                    <td className={`${ui.td} ${ui.num} ${ui.pnl(w.unrealizedPnlMicro)}`}>
+                      {signedRep(w.unrealizedPnlMicro)}
+                    </td>
+                    <td className={`${ui.td} ${ui.num} ${ui.pnl(w.realizedPnlMicro)}`}>
+                      {signedRep(w.realizedPnlMicro)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <TableNotes
+            notes={[
+              ['a', WORTH_NOTES.netWorth],
+              ['b', WORTH_NOTES.unrealized],
+              ['c', WORTH_NOTES.realized],
+            ]}
+          />
+        </>
+      )}
 
       <h2 className={ui.groupHeading}>Open positions</h2>
       <p className="mt-1 mb-2 text-[15px] text-subtle">

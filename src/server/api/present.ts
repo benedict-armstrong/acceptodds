@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { Account, Affiliation, Group } from '@/db/schema';
+import type { Account, Affiliation, Group, Wallet } from '@/db/schema';
 import type { Principal } from '../auth';
 import type { Portfolio as PortfolioModel } from '../accounts';
 import type { Fill as FillModel, Quote as QuoteModel } from '../engine';
@@ -167,7 +167,7 @@ export function presentFill(f: FillModel, firstTrade: boolean): z.input<typeof S
   };
 }
 
-export function presentMe(p: Principal): z.input<typeof S.Me> {
+export function presentMe(p: Principal, wallets: readonly Wallet[]): z.input<typeof S.Me> {
   const a: Account = p.account;
   return {
     id: a.id,
@@ -177,7 +177,9 @@ export function presentMe(p: Principal): z.input<typeof S.Me> {
     institutions: [...a.institutions],
     verifiedAt: toIsoOrNull(a.verifiedAt),
     canTrade: a.isBot || a.verifiedAt !== null,
-    balanceMicro: a.balanceMicro.toString(),
+    wallets: wallets.flatMap((w) =>
+      w.kind === null ? [] : [{ kind: w.kind, balanceMicro: w.balanceMicro.toString() }],
+    ),
     createdAt: toIso(a.createdAt),
     digestOptIn: a.digestOptIn,
     mentionMailOptIn: a.mentionMailOptIn,
@@ -189,18 +191,18 @@ export const NET_WORTH_CAVEAT =
   'Mid-market net worth marks open positions at the current price, which includes your own price impact: ' +
   'a trader can show a profit while holding only losing positions. It is correct at settlement and ' +
   'meaningless before it. It is not a score and nothing is ranked on it: the leaderboard ranks on settled P&L, ' +
-  'or on liquidation value (`summary.netWorthMicro`), which prices every holding at a real exit quote.';
+  'or on liquidation value (a wallet’s `netWorthMicro`), which prices every holding at a real exit quote.';
 
 export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio> {
   return {
     accountId: p.accountId,
-    balanceMicro: p.balanceMicro.toString(),
     holdings: p.holdings.map((h) => ({
       marketId: h.marketId,
       marketSlug: h.marketSlug,
       listingSlug: h.listingSlug,
       listingTitle: h.listingTitle,
       question: h.question,
+      kind: h.kind,
       marketStatus: h.marketStatus,
       outcomeId: h.outcomeId,
       outcomeLabel: h.outcomeLabel,
@@ -213,18 +215,16 @@ export function presentPortfolio(p: PortfolioModel): z.input<typeof S.Portfolio>
       costBasisMicro: h.costBasisMicro.toString(),
       publicPositionId: h.publicPositionId,
     })),
-    unsettledValuation: {
-      midMarketNetWorthMicro: p.markedNetWorthMicro.toString(),
-      liquidationValueMicro: p.liquidationValueMicro.toString(),
-      caveat: NET_WORTH_CAVEAT,
-    },
-    summary: {
-      cashMicro: p.summary.cashMicro.toString(),
-      holdingsValueMicro: p.summary.holdingsValueMicro.toString(),
-      netWorthMicro: p.summary.netWorthMicro.toString(),
-      unrealizedPnlMicro: p.summary.unrealizedPnlMicro.toString(),
-      realizedPnlMicro: p.summary.realizedPnlMicro.toString(),
-    },
+    wallets: p.wallets.map((w) => ({
+      kind: w.kind,
+      cashMicro: w.cashMicro.toString(),
+      holdingsValueMicro: w.holdingsValueMicro.toString(),
+      netWorthMicro: w.netWorthMicro.toString(),
+      unrealizedPnlMicro: w.unrealizedPnlMicro.toString(),
+      realizedPnlMicro: w.realizedPnlMicro.toString(),
+      midMarketNetWorthMicro: w.markedNetWorthMicro.toString(),
+    })),
+    midMarketCaveat: NET_WORTH_CAVEAT,
   };
 }
 

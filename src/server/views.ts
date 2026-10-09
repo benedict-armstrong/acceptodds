@@ -1037,28 +1037,6 @@ export function accountOrders(accountId: string, q: { cursor?: string; limit: nu
 // the leaderboard: settled P&L, or net worth at liquidation value
 // ---------------------------------------------------------------------------
 
-/**
- * Per-account P&L over **settled markets only**: the sum of the account's
- * `trade` and `settlement` ledger rows on markets whose status is `settled`.
- *
- * This is exact and it cannot be gamed by price impact, because at settlement
- * every position has been paid out at 1 or 0 and there is nothing left to
- * mark. Mid-market net worth is noise (invariant §1.2) and is never a basis
- * for ranking; an open market contributes nothing here.
- *
- * House accounts (the treasury and the per-market makers) are not traders and
- * are excluded.
- */
-const settledPnl = sql`
-  select le.account_id,
-         sum(le.delta_micro) as pnl,
-         count(distinct le.market_id)::int as markets
-    from ledger_entries le
-    join markets m on m.id = le.market_id and m.status = 'settled'
-   where le.reason in ('trade', 'settlement')
-   group by le.account_id
-`;
-
 export const LEADERBOARD_BASES = ['settled_pnl', 'net_worth'] as const;
 export type LeaderboardBasis = (typeof LEADERBOARD_BASES)[number];
 
@@ -1125,13 +1103,15 @@ export interface LeaderboardRow {
 }
 
 /**
- * The leaderboard, on one of two bases:
+ * The leaderboard of one venue (`kind`): every figure is the trader's wallet
+ * there and that venue's markets alone, so no venue's reputation ranks
+ * anyone in another. On one of two bases:
  *
  * - `settled_pnl`: P&L over settled markets only (above). Exact; an account
  *   with no settled market is not on it.
  * - `net_worth`: **liquidation value** — cash plus what selling every open
- *   holding now would actually pay (`valuation.ts`). Every non-house trader is
- *   on it. This is not the mark-based net worth of invariant §1.2, which a
+ *   holding now would actually pay (`valuation.ts`). Every non-house trader
+ *   with a wallet in the venue (who has traded there) is on it. This is not the mark-based net worth of invariant §1.2, which a
  *   trader can inflate with their own price impact and which is still never
  *   ranked: a quoted exit walks the price back down the curve the trader
  *   pushed it up, so impact cannot be marked as profit.
@@ -1147,6 +1127,7 @@ export interface LeaderboardRow {
  */
 export async function leaderboard(
   q: {
+    kind: string;
     basis?: LeaderboardBasis;
     institution?: string | null;
     group?: string | null;
@@ -1158,7 +1139,10 @@ export async function leaderboard(
 ): Promise<{ rows: LeaderboardRow[]; nextCursor: string | null; fieldSize: number }> {
   const basis = q.basis ?? 'settled_pnl';
   const after = decodePnlCursor(q.cursor, basis);
-  const field = await leaderboardStandings({ basis, institution: q.institution, group: q.group }, database);
+  const field = await leaderboardStandings(
+    { kind: q.kind, basis, institution: q.institution, group: q.group },
+    database,
+  );
   const shown = await matchingTraders(field, q.q, database);
 
   const start = after
@@ -1224,21 +1208,22 @@ export async function matchingTraders(
 }
 
 /**
- * The whole ranked field, best first, ties by account id. Valued and sorted
+ * A venue's whole ranked field, best first, ties by account id. Valued and sorted
  * in JS — one query per table (`valuations()`), not per holding — which makes
  * ranks exact however the list is sliced (pages, the UI's window around the
  * viewer, a search). `institution` filters the field and ranks it again among
  * itself, as does `group`, a group's id (`server/groups.ts`).
  *
- * Cached per basis (`rankedField`), since the leaderboard, the portfolio and
- * the navbar all read it: the rows are frozen and shared, never mutate them.
+ * Cached per venue and basis (`rankedField`), since the leaderboard, the
+ * portfolio and the navbar all read it: the rows are frozen and shared, never
+ * mutate them.
  */
 export async function leaderboardStandings(
-  q: { basis?: LeaderboardBasis; institution?: string | null; group?: string | null },
+  q: { kind: string; basis?: LeaderboardBasis; institution?: string | null; group?: string | null },
   database: Database = getDb(),
 ): Promise<readonly LeaderboardRow[]> {
   const basis = q.basis ?? 'settled_pnl';
-  const field = await rankedField(basis, database);
+  const field = await rankedField(q.kind, basis, database);
   const { institution, group } = q;
   if (institution == null && group == null) return field;
   const members =
@@ -1264,56 +1249,57 @@ export async function leaderboardStandings(
 /** How long a cached field may be served at most, for writers outside this process (`standings-cache.ts`). */
 const STANDINGS_TTL_MS = 30_000;
 
-const standingsCache = new Map<
-  LeaderboardBasis,
-  { generation: number; at: number; rows: Promise<readonly LeaderboardRow[]> }
->();
+const standingsCache = new Map<string, { generation: number; at: number; rows: Promise<readonly LeaderboardRow[]> }>();
 
 /**
- * The whole field for `basis`, from the cache when no write has committed
+ * A venue's whole field for `basis`, from the cache when no write has committed
  * since it was computed (`standings-cache.ts`) and it is younger than the
  * TTL. Concurrent readers share one computation. Only reads on the shared
  * database are cached: a caller passing a transaction sees its own writes.
  */
-function rankedField(basis: LeaderboardBasis, database: Database): Promise<readonly LeaderboardRow[]> {
-  if (database !== getDb()) return computeField(basis, database);
+function rankedField(kind: string, basis: LeaderboardBasis, database: Database): Promise<readonly LeaderboardRow[]> {
+  if (database !== getDb()) return computeField(kind, basis, database);
+  const key = `${basis}\u0000${kind}`;
   const generation = standingsGeneration();
-  const hit = standingsCache.get(basis);
+  const hit = standingsCache.get(key);
   if (hit && hit.generation === generation && Date.now() - hit.at < STANDINGS_TTL_MS) return hit.rows;
-  const rows = computeField(basis, database);
+  const rows = computeField(kind, basis, database);
   // Incremental fills must not extend the full valuation's expiry: otherwise
   // an external writer can remain invisible while local trades keep arriving.
-  const entry = { generation, at: valuationCache?.fullAt ?? Date.now(), rows };
-  standingsCache.set(basis, entry);
+  const entry = { generation, at: valuationCache.get(kind)?.fullAt ?? Date.now(), rows };
+  standingsCache.set(key, entry);
   // A failure is not cached: the next reader tries again.
   entry.rows.catch(() => {
-    if (standingsCache.get(basis) === entry) standingsCache.delete(basis);
+    if (standingsCache.get(key) === entry) standingsCache.delete(key);
   });
   return entry.rows;
 }
 
 type FieldValues = Awaited<ReturnType<typeof valuations>>;
-let valuationCache: { generation: number; fullAt: number; values: Promise<FieldValues> } | undefined;
+const valuationCache = new Map<string, { generation: number; fullAt: number; values: Promise<FieldValues> }>();
 
-/** Both ranking bases share the same valuations. Trades refresh holders of the changed markets only. */
-function fieldValues(database: Database): Promise<FieldValues> {
-  if (database !== getDb()) return valuations(undefined, database);
+/** Both ranking bases share a venue's valuations. Trades refresh holders of the changed markets only. */
+function fieldValues(kind: string, database: Database): Promise<FieldValues> {
+  if (database !== getDb()) return valuations(kind, undefined, database);
   const generation = standingsGeneration();
-  const previous = valuationCache;
+  const previous = valuationCache.get(kind);
   const fresh = previous && Date.now() - previous.fullAt < STANDINGS_TTL_MS;
   if (fresh && previous.generation === generation) return previous.values;
   const changes = fresh ? standingsChangesSince(previous.generation) : null;
   const values =
-    changes && previous ? updateFieldValues(previous.values, changes, database) : valuations(undefined, database);
+    changes && previous
+      ? updateFieldValues(kind, previous.values, changes, database)
+      : valuations(kind, undefined, database);
   const entry = { generation, fullAt: changes && previous ? previous.fullAt : Date.now(), values };
-  valuationCache = entry;
+  valuationCache.set(kind, entry);
   values.catch(() => {
-    if (valuationCache === entry) valuationCache = undefined;
+    if (valuationCache.get(kind) === entry) valuationCache.delete(kind);
   });
   return values;
 }
 
 async function updateFieldValues(
+  kind: string,
   previous: Promise<FieldValues>,
   changes: { marketId: string; accountId?: string }[],
   database: Database,
@@ -1340,14 +1326,19 @@ async function updateFieldValues(
       .where(inArray(orders.marketId, settled));
     for (const p of participants) affected.add(p.accountId);
   }
-  for (const [id, value] of await valuations([...affected], database)) {
+  // A trader's first trade in the venue opens their wallet: they join here.
+  for (const [id, value] of await valuations(kind, [...affected], database)) {
     if (!value.account.isHouse) values.set(id, value);
   }
   return values;
 }
 
-async function computeField(basis: LeaderboardBasis, database: Database): Promise<readonly LeaderboardRow[]> {
-  const values = await fieldValues(database);
+async function computeField(
+  kind: string,
+  basis: LeaderboardBasis,
+  database: Database,
+): Promise<readonly LeaderboardRow[]> {
+  const values = await fieldValues(kind, database);
   const rows = [...values.values()]
     .filter((v) => basis === 'net_worth' || v.settledMarkets > 0)
     .map((v) => ({
@@ -1381,6 +1372,7 @@ function ranked(rows: readonly Omit<LeaderboardRow, 'rank'>[], basis: Leaderboar
   return Object.freeze(out);
 }
 
+/** A trader's public record: their settled P&L in each venue they have a wallet in, venues by name. */
 export async function publicAccount(handle: string, database: Database = getDb()) {
   const [account] = await database
     .select()
@@ -1388,13 +1380,23 @@ export async function publicAccount(handle: string, database: Database = getDb()
     .where(and(eq(accounts.handle, handle), eq(accounts.isHouse, false)));
   if (!account) throw new ApiError(404, 'not_found', `no account ${handle}`);
 
-  const result = await database.execute<{ pnl: string; markets: number }>(sql`
-    select coalesce(sum(s.pnl), 0)::text as pnl, coalesce(sum(s.markets), 0)::int as markets
-      from (${settledPnl}) s
-     where s.account_id = ${account.id}
+  const result = await database.execute<{ kind: string; pnl: string; markets: number }>(sql`
+    select w.kind,
+           coalesce(sum(le.delta_micro) filter (where m.id is not null), 0)::text as pnl,
+           (count(distinct m.id))::int as markets
+      from wallets w
+      left join ledger_entries le on le.wallet_id = w.id and le.reason in ('trade', 'settlement')
+      left join markets m on m.id = le.market_id and m.status = 'settled'
+     where w.account_id = ${account.id} and w.kind is not null
+     group by w.kind
+     order by w.kind
   `);
-  const record = result.rows[0] ?? { pnl: '0', markets: 0 };
-  return { account, settledPnlMicro: BigInt(record.pnl), settledMarkets: record.markets };
+  const settledRecords = result.rows.map((r) => ({
+    kind: r.kind,
+    settledPnlMicro: BigInt(r.pnl),
+    settledMarkets: r.markets,
+  }));
+  return { account, settledRecords };
 }
 
 // ---------------------------------------------------------------------------

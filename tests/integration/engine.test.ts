@@ -1,10 +1,20 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { accounts, ledgerEntries, markets, orders, outcomes, positions } from '@/db/schema';
-import { getPortfolio, reconcileBalances } from '@/server/accounts';
+import { ledgerEntries, markets, orders, outcomes, positions, wallets } from '@/db/schema';
+import { getPortfolio } from '@/server/accounts';
+import { reconcileBalances, walletFor } from '@/server/wallets';
 import { closeMarket, createMarket, quote, settle, trade } from '@/server/engine';
-import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
+import {
+  balanceOf,
+  closePool,
+  resetDatabase,
+  seedMarket,
+  STARTING_MICRO,
+  TEST_KIND,
+  totalBalance,
+  type Fixture,
+} from './helpers';
 
 const db = getDb();
 
@@ -18,13 +28,6 @@ beforeEach(async () => {
 afterAll(async () => {
   await closePool();
 });
-
-async function totalBalance(): Promise<bigint> {
-  const [{ total }] = await db
-    .select({ total: sql<string>`coalesce(sum(${accounts.balanceMicro}), 0)` })
-    .from(accounts);
-  return BigInt(total);
-}
 
 describe('quote', () => {
   it('never writes', async () => {
@@ -145,11 +148,10 @@ describe('selling', () => {
   });
 
   it('leaves the round trip costing the trader something, never paying them (§1.1)', async () => {
-    const [before] = await db.select().from(accounts).where(eq(accounts.id, fx.traderIds[0]));
+    const before = await balanceOf(fx.traderIds[0]);
     await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], 25_000_000n, 10n ** 12n, null, db);
     await trade(fx.traderIds[0], fx.marketId, fx.outcomeIds[0], -25_000_000n, 0n, null, db);
-    const [after] = await db.select().from(accounts).where(eq(accounts.id, fx.traderIds[0]));
-    expect(after.balanceMicro).toBeLessThanOrEqual(before.balanceMicro);
+    expect(await balanceOf(fx.traderIds[0])).toBeLessThanOrEqual(before);
   });
 });
 
@@ -163,7 +165,9 @@ describe('portfolio (§1.1)', () => {
     // The mark is what the position is valued at; the exit is what closing it
     // pays. The second is strictly smaller, and that is the whole point.
     expect(holding.quotedExitMicro).toBeLessThan(holding.markMicro);
-    expect(portfolio.liquidationValueMicro).toBeLessThan(portfolio.markedNetWorthMicro);
+    const [wallet] = portfolio.wallets;
+    expect(wallet.kind).toBe(TEST_KIND);
+    expect(wallet.netWorthMicro).toBeLessThan(wallet.markedNetWorthMicro);
   });
 });
 
@@ -182,12 +186,11 @@ describe('settlement', () => {
     await trade(fx.traderIds[1], fx.marketId, fx.outcomeIds[1], 30_000_000n, 10n ** 12n, null, db);
     await trade(fx.traderIds[2], fx.marketId, fx.outcomeIds[0], 10_000_000n, 10n ** 12n, null, db);
 
-    const [winnerBefore] = await db.select().from(accounts).where(eq(accounts.id, fx.traderIds[0]));
+    const winnerBefore = await balanceOf(fx.traderIds[0]);
     await closeMarket(fx.marketId, db);
     await settle(fx.marketId, fx.outcomeIds[0], { evidenceUrl: 'https://example.invalid/x' }, db);
 
-    const [winnerAfter] = await db.select().from(accounts).where(eq(accounts.id, fx.traderIds[0]));
-    expect(winnerAfter.balanceMicro - winnerBefore.balanceMicro).toBe(40_000_000n);
+    expect((await balanceOf(fx.traderIds[0])) - winnerBefore).toBe(40_000_000n);
 
     const held = await db.select().from(positions).where(inArray(positions.outcomeId, fx.outcomeIds));
     expect(held.every((p) => p.sharesMicro === 0n)).toBe(true);
@@ -202,13 +205,12 @@ describe('settlement', () => {
     expect(await reconcileBalances(db)).toEqual([]);
 
     // The maker closed at zero: its residual went back to the treasury.
-    const [maker] = await db.select().from(accounts).where(eq(accounts.id, market.makerAccountId));
-    expect(maker.balanceMicro).toBe(0n);
+    expect(await balanceOf(market.makerAccountId)).toBe(0n);
 
     const negative = await db
       .select()
-      .from(accounts)
-      .where(sql`${accounts.balanceMicro} < 0`);
+      .from(wallets)
+      .where(sql`${wallets.balanceMicro} < 0`);
     expect(negative).toEqual([]);
   });
 
@@ -224,6 +226,79 @@ describe('settlement', () => {
 
     expect(await totalBalance()).toBe(snapshot);
     expect(await db.select().from(ledgerEntries)).toHaveLength(entries.length);
+  });
+});
+
+describe('wallets, one per venue', () => {
+  async function otherVenueMarket() {
+    return createMarket(
+      {
+        slug: 'elsewhere',
+        kind: 'Elsewhere',
+        question: 'Will it, elsewhere?',
+        outcomes: ['YES', 'NO'],
+        closesAt: new Date(Date.now() + 86_400_000),
+        startingBalanceMicro: STARTING_MICRO,
+        expectedTraders: 3,
+      },
+      db,
+    );
+  }
+
+  it('a first trade in a venue opens its wallet with the grant, and touches no other venue', async () => {
+    const other = await otherVenueMarket();
+    const [t] = fx.traderIds;
+    await trade(t, fx.marketId, fx.outcomeIds[0], 10_000_000n, 10n ** 12n, null, db);
+    const home = await balanceOf(t);
+    expect(await walletFor(db, t, 'Elsewhere')).toBeNull();
+
+    const fill = await trade(t, other.marketId, other.outcomeIds[1], 20_000_000n, 10n ** 12n, null, db);
+    expect(fill.balanceAfterMicro).toBe(STARTING_MICRO - fill.costMicro);
+    expect(await balanceOf(t, 'Elsewhere')).toBe(fill.balanceAfterMicro);
+    expect(await balanceOf(t)).toBe(home);
+
+    // Settlement pays into the venue's wallet, and only there.
+    await settle(other.marketId, other.outcomeIds[1], {}, db);
+    expect(await balanceOf(t, 'Elsewhere')).toBe(fill.balanceAfterMicro + 20_000_000n);
+    expect(await balanceOf(t)).toBe(home);
+
+    // §1.7 still holds, counting the new wallet's grant.
+    expect(await totalBalance()).toBe(fx.grantedMicro + STARTING_MICRO);
+    expect(await reconcileBalances(db)).toEqual([]);
+  });
+
+  it('never spends one venue’s reputation in another', async () => {
+    const other = await otherVenueMarket();
+    const [t] = fx.traderIds;
+    // Spend most of the grant in the other venue …
+    const q = await quote(other.marketId, other.outcomeIds[0], 900_000_000n, db);
+    expect(q.costMicro).toBeLessThan(STARTING_MICRO);
+    await trade(t, other.marketId, other.outcomeIds[0], 900_000_000n, q.costMicro, null, db);
+    const left = await balanceOf(t, 'Elsewhere');
+    // … and what is left there is all it has there, whatever it holds here.
+    const big = await quote(other.marketId, other.outcomeIds[0], 900_000_000n, db);
+    expect(big.costMicro).toBeGreaterThan(left);
+    await expect(
+      trade(t, other.marketId, other.outcomeIds[0], 900_000_000n, big.costMicro, null, db),
+    ).rejects.toMatchObject({ code: 'insufficient_balance' });
+    expect(await balanceOf(t)).toBe(STARTING_MICRO);
+  });
+
+  it('opens exactly one wallet however many first trades race', async () => {
+    const other = await otherVenueMarket();
+    const [t] = fx.traderIds;
+    await Promise.all(
+      Array.from({ length: 6 }, () => trade(t, other.marketId, other.outcomeIds[0], 1_000_000n, 10n ** 12n, null, db)),
+    );
+    const opened = await db.select().from(wallets).where(eq(wallets.kind, 'Elsewhere'));
+    // The trader's, and the market's maker's.
+    expect(opened).toHaveLength(2);
+    const grants = await db
+      .select()
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.accountId, t), eq(ledgerEntries.reason, 'signup')));
+    expect(grants).toHaveLength(2);
+    expect(await reconcileBalances(db)).toEqual([]);
   });
 });
 

@@ -4,6 +4,7 @@ import { getDb } from '@/db';
 import { groupMembers, groups } from '@/db/schema';
 import { MAX_GROUPS_PER_ADMIN } from '@/server/groups';
 import { leaderboardStandings, traderInstitutions } from '@/server/views';
+import { defaultMarketKind } from '@/lib/venue';
 import { api, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO } from './helpers';
 
@@ -62,8 +63,9 @@ describe('groups', () => {
   });
 
   it('joins by invite code, idempotently, and ranks the group among itself', async () => {
-    const a = await trader('alice', ['read']);
-    const b = await trader('bob', ['read'], { grantMicro: 2n * STARTING_MICRO });
+    // Wallets in the default venue, the board `GET /leaderboard` ranks without a `kind`.
+    const a = await trader('alice', ['read'], { grantMicro: STARTING_MICRO, kind: defaultMarketKind() });
+    const b = await trader('bob', ['read'], { grantMicro: 2n * STARTING_MICRO, kind: defaultMarketKind() });
     await trader('carol', ['read']);
     const g = await made(a.token);
 
@@ -86,7 +88,12 @@ describe('groups', () => {
       [2, 'alice'],
     ]);
     // Combined with an institution, both filters hold.
-    const both = await leaderboardStandings({ basis: 'net_worth', group: g.id, institution: 'Nowhere' });
+    const both = await leaderboardStandings({
+      kind: defaultMarketKind(),
+      basis: 'net_worth',
+      group: g.id,
+      institution: 'Nowhere',
+    });
     expect(both).toEqual([]);
   });
 

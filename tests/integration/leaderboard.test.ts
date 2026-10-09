@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- response bodies are checked field by field */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { accounts, fieldSnapshots, ledgerEntries } from '@/db/schema';
+import { accounts, fieldSnapshots, ledgerEntries, markets, wallets } from '@/db/schema';
 import { createAccount, createHouse } from '@/server/accounts';
 import { createMarket, trade } from '@/server/engine';
 import { fieldSnapshot, refreshFieldSnapshot } from '@/server/field-snapshot';
 import { invalidateStandings } from '@/server/standings-cache';
 import { leaderboardStandings, searchPeople, standingOf } from '@/server/views';
+import { defaultMarketKind } from '@/lib/venue';
+import { startingBalanceMicro, walletFor } from '@/server/wallets';
 import { api } from './api-client';
 import { closePool, HOUSE_MICRO, resetDatabase } from './helpers';
 
@@ -20,6 +22,8 @@ import { closePool, HOUSE_MICRO, resetDatabase } from './helpers';
 
 const UNIT = 1_000_000n;
 const db = getDb();
+/** The venue every fixture wallet is in: the default, so the API needs no `kind`. */
+const K = defaultMarketKind();
 
 beforeAll(async () => {
   await resetDatabase();
@@ -38,7 +42,7 @@ beforeAll(async () => {
       handle,
       displayName,
       institutions: institution ? [institution] : [],
-      grantMicro: grant * UNIT,
+      wallets: [{ kind: K, grantMicro: grant * UNIT }],
       isBot,
     });
   }
@@ -75,7 +79,7 @@ describe('searchPeople', () => {
 
 describe('leaderboard standings', () => {
   it('ranks the whole field with shared ranks for ties, and no house', async () => {
-    const field = await leaderboardStandings({ basis: 'net_worth' });
+    const field = await leaderboardStandings({ kind: K, basis: 'net_worth' });
     expect(field.map((r) => [r.handle, r.rank])).toEqual([
       ['ada', 1],
       ['geoff', 2],
@@ -86,7 +90,7 @@ describe('leaderboard standings', () => {
   });
 
   it('gives a trader’s standing: rank, field size, and the share of the others strictly below', async () => {
-    const field = await leaderboardStandings({ basis: 'net_worth' });
+    const field = await leaderboardStandings({ kind: K, basis: 'net_worth' });
     const id = (handle: string) => field.find((r) => r.handle === handle)!.accountId;
     expect(standingOf(field, id('ada'), 'net_worth')).toEqual({ rank: 1, fieldSize: 5, percentAhead: 100 });
     expect(standingOf(field, id('ylecun'), 'net_worth')).toEqual({ rank: 3, fieldSize: 5, percentAhead: 50 });
@@ -96,49 +100,95 @@ describe('leaderboard standings', () => {
   });
 
   it('ranks one institution among itself', async () => {
-    const field = await leaderboardStandings({ basis: 'net_worth', institution: 'ETH Zurich' });
+    const field = await leaderboardStandings({ kind: K, basis: 'net_worth', institution: 'ETH Zurich' });
     expect(field.map((r) => [r.handle, r.rank])).toEqual([
       ['ada', 1],
       ['ylecun', 2],
     ]);
-    expect(await leaderboardStandings({ basis: 'net_worth', institution: 'Nowhere' })).toEqual([]);
+    expect(await leaderboardStandings({ kind: K, basis: 'net_worth', institution: 'Nowhere' })).toEqual([]);
+  });
+});
+
+describe('one board per venue', () => {
+  it('ranks a venue on its own wallets, and a trade there opens a wallet in it alone', async () => {
+    const other = await createMarket({
+      slug: 'other-venue',
+      kind: 'Other Venue',
+      question: 'Will it, elsewhere?',
+      outcomes: ['YES', 'NO'],
+      closesAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      startingBalanceMicro: 1000n * UNIT,
+      expectedTraders: 10,
+    });
+    expect(await leaderboardStandings({ kind: 'Other Venue', basis: 'net_worth' })).toEqual([]);
+    const home = await leaderboardStandings({ kind: K, basis: 'net_worth' });
+    const geoff = home.find((r) => r.handle === 'geoff')!;
+
+    // Geoff's first trade there opens a wallet with the starting grant; his
+    // wallet here is untouched, and he joins that board alone.
+    const fill = await trade(geoff.accountId, other.marketId, other.outcomeIds[0], UNIT, 10n * UNIT);
+    expect(fill.balanceAfterMicro).toBe(startingBalanceMicro() - fill.costMicro);
+    const there = await leaderboardStandings({ kind: 'Other Venue', basis: 'net_worth' });
+    expect(there.map((r) => r.handle)).toEqual(['geoff']);
+    expect((await leaderboardStandings({ kind: K, basis: 'net_worth' })).find((r) => r.handle === 'geoff')).toEqual(
+      geoff,
+    );
+    expect(await walletFor(db, geoff.accountId, K)).toMatchObject({ balanceMicro: 500n * UNIT });
+
+    // Leave the shared fixture as the other tests expect it.
+    const [{ makerAccountId }] = await db.select().from(markets).where(eq(markets.id, other.marketId));
+    await db.delete(markets).where(eq(markets.id, other.marketId));
+    const otherWallets = await db.select({ id: wallets.id }).from(wallets).where(eq(wallets.kind, 'Other Venue'));
+    await db.delete(ledgerEntries).where(
+      inArray(
+        ledgerEntries.walletId,
+        otherWallets.map((w) => w.id),
+      ),
+    );
+    await db.delete(accounts).where(eq(accounts.id, makerAccountId));
+    await db.delete(wallets).where(eq(wallets.kind, 'Other Venue'));
+    invalidateStandings();
   });
 });
 
 describe('the cached field', () => {
   it('is served from the cache until a write commits', async () => {
-    const a = await leaderboardStandings({ basis: 'net_worth' });
-    expect(await leaderboardStandings({ basis: 'net_worth' })).toBe(a);
+    const a = await leaderboardStandings({ kind: K, basis: 'net_worth' });
+    expect(await leaderboardStandings({ kind: K, basis: 'net_worth' })).toBe(a);
     expect(Object.isFrozen(a) && Object.isFrozen(a[0])).toBe(true);
     // Concurrent readers share one computation.
     const [x, y] = await Promise.all([
-      leaderboardStandings({ basis: 'settled_pnl' }),
-      leaderboardStandings({ basis: 'settled_pnl' }),
+      leaderboardStandings({ kind: K, basis: 'settled_pnl' }),
+      leaderboardStandings({ kind: K, basis: 'settled_pnl' }),
     ]);
     expect(x).toBe(y);
 
-    const late = await createAccount({ handle: 'late', displayName: 'Late Comer', grantMicro: 700n * UNIT });
-    const b = await leaderboardStandings({ basis: 'net_worth' });
+    const late = await createAccount({
+      handle: 'late',
+      displayName: 'Late Comer',
+      wallets: [{ kind: K, grantMicro: 700n * UNIT }],
+    });
+    const b = await leaderboardStandings({ kind: K, basis: 'net_worth' });
     expect(b).not.toBe(a);
     expect(b[0].handle).toBe('late');
     // Leave the shared fixture as the other tests expect it.
     await db.delete(ledgerEntries).where(eq(ledgerEntries.accountId, late.id));
     await db.delete(accounts).where(eq(accounts.id, late.id));
     invalidateStandings();
-    expect((await leaderboardStandings({ basis: 'net_worth' })).map((r) => r.handle)).not.toContain('late');
+    expect((await leaderboardStandings({ kind: K, basis: 'net_worth' })).map((r) => r.handle)).not.toContain('late');
   });
 
   it('never serves a field computed while a write committed', async () => {
-    const pending = leaderboardStandings({ basis: 'net_worth' });
+    const pending = leaderboardStandings({ kind: K, basis: 'net_worth' });
     invalidateStandings(); // a write commits mid-computation
     const during = await pending;
-    expect(await leaderboardStandings({ basis: 'net_worth' })).not.toBe(during);
+    expect(await leaderboardStandings({ kind: K, basis: 'net_worth' })).not.toBe(during);
   });
 
   it('bypasses the cache inside a transaction', async () => {
-    const cached = await leaderboardStandings({ basis: 'net_worth' });
+    const cached = await leaderboardStandings({ kind: K, basis: 'net_worth' });
     await db.transaction(async (tx) => {
-      expect(await leaderboardStandings({ basis: 'net_worth' }, tx as any)).not.toBe(cached);
+      expect(await leaderboardStandings({ kind: K, basis: 'net_worth' }, tx as any)).not.toBe(cached);
     });
   });
 });
@@ -146,50 +196,51 @@ describe('the cached field', () => {
 describe('the shared field snapshot', () => {
   it('draws only accounts that have placed an order', async () => {
     await db.delete(fieldSnapshots);
-    const untraded = await refreshFieldSnapshot();
+    const untraded = await refreshFieldSnapshot(K);
     expect(untraded.worthsMicro).toEqual([]);
     expect(untraded.curve).toEqual([]);
 
     // Two fixture traders buy; the other three still have never traded.
     const market = await createMarket({
       slug: 'field-snapshot',
+      kind: K,
       question: 'Will it?',
       outcomes: ['YES', 'NO'],
       closesAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       startingBalanceMicro: 1000n * UNIT,
       expectedTraders: 10,
     });
-    const field = await leaderboardStandings({ basis: 'net_worth' });
+    const field = await leaderboardStandings({ kind: K, basis: 'net_worth' });
     const idOf = (handle: string) => field.find((r) => r.handle === handle)!.accountId;
     for (const handle of ['ada', 'bengio']) {
       await trade(idOf(handle), market.marketId, market.outcomeIds[0], UNIT, 10n * UNIT);
     }
-    const traded = await leaderboardStandings({ basis: 'net_worth' });
+    const traded = await leaderboardStandings({ kind: K, basis: 'net_worth' });
     const worthOf = (handle: string) => traded.find((r) => r.handle === handle)!.netWorthMicro;
     await db.delete(fieldSnapshots);
-    expect((await refreshFieldSnapshot()).worthsMicro).toEqual([worthOf('bengio'), worthOf('ada')]);
+    expect((await refreshFieldSnapshot(K)).worthsMicro).toEqual([worthOf('bengio'), worthOf('ada')]);
   });
 
   it('is computed once, stored, and shared until it is old', async () => {
     await db.delete(fieldSnapshots);
-    const first = await fieldSnapshot();
+    const first = await fieldSnapshot(K);
     expect(first.worthsMicro).toHaveLength(2);
     expect(first.curve).toHaveLength(120);
     expect(Math.max(...first.curve)).toBeCloseTo(1);
     expect(first.domain[0]).toBeLessThan(300);
     expect(first.domain[1]).toBeGreaterThan(600);
     // Within the max age, the stored row is served as it is.
-    expect((await fieldSnapshot()).computedAt).toEqual(first.computedAt);
+    expect((await fieldSnapshot(K)).computedAt).toEqual(first.computedAt);
   });
 
   it('serves a stale snapshot at once and refreshes it in the background', async () => {
-    const before = await fieldSnapshot();
+    const before = await fieldSnapshot(K);
     process.env.FIELD_SNAPSHOT_MAX_AGE_SECONDS = '0';
     try {
-      const served = await fieldSnapshot();
+      const served = await fieldSnapshot(K);
       expect(served.computedAt).toEqual(before.computedAt);
       // The refresh it started is shared: await it.
-      const fresh = await refreshFieldSnapshot();
+      const fresh = await refreshFieldSnapshot(K);
       expect(fresh.computedAt.getTime()).toBeGreaterThan(before.computedAt.getTime());
     } finally {
       delete process.env.FIELD_SNAPSHOT_MAX_AGE_SECONDS;
@@ -201,7 +252,7 @@ describe('the shared field snapshot', () => {
   it('never lets an older computation overwrite a newer snapshot', async () => {
     const future = new Date(Date.now() + 3_600_000);
     await db.update(fieldSnapshots).set({ computedAt: future });
-    await refreshFieldSnapshot();
+    await refreshFieldSnapshot(K);
     const [row] = await db.select().from(fieldSnapshots);
     expect(row.computedAt).toEqual(future);
     await db.delete(fieldSnapshots);

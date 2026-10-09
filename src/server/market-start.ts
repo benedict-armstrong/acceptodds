@@ -3,7 +3,7 @@ import { getDb, type Database } from '@/db';
 import { isUniqueViolation } from '@/db/errors';
 import { accounts, markets, outcomes, type Account, type Listing, type Market } from '@/db/schema';
 import { sharesForCost } from '@/lib/lmsr';
-import { startingBalanceMicro } from './accounts';
+import { cashIn, startingBalanceMicro } from './wallets';
 import { ApiError } from './api/errors';
 import * as engine from './engine';
 import { EngineError } from './errors';
@@ -57,9 +57,12 @@ export async function buyOnListing(
     const [account] = await database.select().from(accounts).where(eq(accounts.id, accountId));
     if (!account) throw new EngineError('not_found', `no account ${accountId}`);
     refuseBot(account);
-    if (account.balanceMicro < stakeMicro) {
+    // What the account has in the venue the market will open in: its wallet
+    // there, or the grant its first trade there opens one with.
+    const cashMicro = listing.kind ? await cashIn(accountId, listing.kind, database) : startingBalanceMicro();
+    if (cashMicro < stakeMicro) {
       throw new EngineError('insufficient_balance', 'not enough reputation for this order', {
-        balanceMicro: account.balanceMicro.toString(),
+        balanceMicro: cashMicro.toString(),
       });
     }
     await spendOpenBudget(accountId);

@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { accounts, ledgerEntries, markets, orders, outcomes, positions } from '@/db/schema';
+import { ledgerEntries, markets, orders, outcomes, positions, wallets } from '@/db/schema';
 import { costToTrade, prices } from '@/lib/lmsr';
 import { costToMicro } from '@/lib/money';
-import { reconcileBalances } from '@/server/accounts';
+import { reconcileBalances } from '@/server/wallets';
 import { makerValueMicro, trade } from '@/server/engine';
 import { EngineError } from '@/server/errors';
-import { closePool, resetDatabase, seedMarket, type Fixture } from './helpers';
+import { balanceOf, closePool, resetDatabase, seedMarket, totalBalance, type Fixture } from './helpers';
 
 const db = getDb();
 
@@ -105,10 +105,7 @@ describe('50 concurrent trades against one market', () => {
   });
 
   it('conserves reputation (§1.7)', async () => {
-    const [{ total }] = await db
-      .select({ total: sql<string>`coalesce(sum(${accounts.balanceMicro}), 0)` })
-      .from(accounts);
-    expect(BigInt(total)).toBe(fx.grantedMicro);
+    expect(await totalBalance()).toBe(fx.grantedMicro);
 
     // Trades move reputation; they never create it. Every non-issuance reason
     // nets to exactly zero.
@@ -121,9 +118,9 @@ describe('50 concurrent trades against one market', () => {
 
   it('leaves no negative balances', async () => {
     const negative = await db
-      .select({ id: accounts.id, handle: accounts.handle, balanceMicro: accounts.balanceMicro })
-      .from(accounts)
-      .where(sql`${accounts.balanceMicro} < 0`);
+      .select({ id: wallets.id, kind: wallets.kind, balanceMicro: wallets.balanceMicro })
+      .from(wallets)
+      .where(sql`${wallets.balanceMicro} < 0`);
     expect(negative).toEqual([]);
   });
 
@@ -155,14 +152,14 @@ describe('50 concurrent trades against one market', () => {
 
   it("keeps the maker's balance equal to C(q), so the subsidy bound holds in integers", async () => {
     const [market] = await db.select().from(markets).where(eq(markets.id, fx.marketId));
-    const [maker] = await db.select().from(accounts).where(eq(accounts.id, market.makerAccountId));
+    const maker = await balanceOf(market.makerAccountId);
     const cq = await makerValueMicro(fx.marketId, db);
 
     // Every cost is rounded in the house's favour, so the maker holds at least
     // C(q) and at most a micro-unit per fill more.
-    expect(maker.balanceMicro).toBeGreaterThanOrEqual(cq);
-    expect(maker.balanceMicro - cq).toBeLessThanOrEqual(BigInt(TRADES));
-    expect(maker.balanceMicro).toBeGreaterThan(0n);
+    expect(maker).toBeGreaterThanOrEqual(cq);
+    expect(maker - cq).toBeLessThanOrEqual(BigInt(TRADES));
+    expect(maker).toBeGreaterThan(0n);
   });
 
   it('never changed b (§1.3)', async () => {
@@ -174,7 +171,7 @@ describe('50 concurrent trades against one market', () => {
 describe('a concurrent trade that cannot be afforded', () => {
   it('is refused rather than overdrawing', async () => {
     const trader = fx.traderIds[0];
-    const [before] = await db.select().from(accounts).where(eq(accounts.id, trader));
+    const before = await balanceOf(trader);
 
     await expect(
       trade(
@@ -188,7 +185,6 @@ describe('a concurrent trade that cannot be afforded', () => {
       ),
     ).rejects.toThrow(EngineError);
 
-    const [after] = await db.select().from(accounts).where(eq(accounts.id, trader));
-    expect(after.balanceMicro).toBe(before.balanceMicro);
+    expect(await balanceOf(trader)).toBe(before);
   });
 });

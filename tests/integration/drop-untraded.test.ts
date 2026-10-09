@@ -7,6 +7,7 @@ import { accounts, comments, markets } from '@/db/schema';
 import { postComment } from '@/server/comments';
 import { createMarket, HOUSE_HANDLE, trade } from '@/server/engine';
 import { upsertListing } from '@/server/listings';
+import { walletFor } from '@/server/wallets';
 import { api, trader } from './api-client';
 import { closePool, resetDatabase, seedMarket, STARTING_MICRO, type Fixture } from './helpers';
 
@@ -52,11 +53,14 @@ async function seeded(slug: string, extra: { secondary?: boolean } = {}) {
 }
 
 const totalBalance = async () =>
-  (await db.execute<{ s: string }>(sql`select sum(balance_micro)::text as s from accounts`)).rows[0].s;
+  (await db.execute<{ s: string }>(sql`select sum(balance_micro)::text as s from wallets`)).rows[0].s;
 const ledgerTotal = async () =>
   (await db.execute<{ s: string }>(sql`select coalesce(sum(delta_micro), 0)::text as s from ledger_entries`)).rows[0].s;
 const slugs = async () => (await db.select({ slug: markets.slug }).from(markets)).map((m) => m.slug).sort();
-const treasury = async () => (await db.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE)))[0];
+const treasury = async () => {
+  const [house] = await db.select().from(accounts).where(eq(accounts.handle, HOUSE_HANDLE));
+  return (await walletFor(db, house.id, null))!;
+};
 
 describe('dropUntradedMarkets', () => {
   it('deletes only untraded sole main markets, gives the subsidy back, and leaves the totals unchanged', async () => {

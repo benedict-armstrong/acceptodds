@@ -611,8 +611,11 @@ const Institutions = z.array(z.string()).meta({
     'Every institution the trader has a confirmed email address at, the one they signed up with first. Empty for a bot or an unverified account.',
 });
 
+const Kind = z.string().min(1).max(200);
+
 export const SettledRecord = z
   .object({
+    kind: Kind.meta({ description: 'The venue: a wallet of its own, with its own record.' }),
     settledPnlMicro: Micro.meta({
       description: 'Net reputation from trading and settlement, over settled markets only.',
     }),
@@ -653,6 +656,11 @@ export const LeaderboardBasis = z
   .meta({ description: LEADERBOARD_BASIS_DESCRIPTION });
 
 export const LeaderboardQuery = PaginationQuery.extend({
+  kind: Kind.optional().meta({
+    description:
+      'The venue (a market `kind`) to rank. Each venue is a wallet of its own, and its board ranks the traders who have traded in it on what they did there. Defaults to the site’s default venue.',
+    example: 'ICLR 2027',
+  }),
   basis: LeaderboardBasis.default('settled_pnl'),
   institution: z.string().max(200).optional().meta({
     description:
@@ -672,6 +680,7 @@ export const LeaderboardQuery = PaginationQuery.extend({
 
 export const Leaderboard = z
   .object({
+    kind: Kind,
     basis: LeaderboardBasis,
     fieldSize: z.number().int().min(0).meta({
       description: 'Traders on this board, after `institution` and `group`, before `q`: what a rank is out of.',
@@ -762,9 +771,18 @@ export const PublicAccount = z
     rorId: z.string().nullable(),
     verifiedAt: Timestamp.nullable(),
     createdAt: Timestamp,
-    settledRecord: SettledRecord,
+    settledRecords: z.array(SettledRecord).meta({
+      description: 'One per venue the trader has traded in, venues by name.',
+    }),
   })
   .meta({ id: 'PublicAccount' });
+
+export const WalletBalance = z
+  .object({
+    kind: Kind.meta({ description: 'The venue. Its markets trade only against this wallet.' }),
+    balanceMicro: Micro,
+  })
+  .meta({ id: 'WalletBalance' });
 
 export const Me = z
   .object({
@@ -780,7 +798,10 @@ export const Me = z
       description:
         'True for a verified account or a bot. Unverified accounts may browse and quote but not place orders.',
     }),
-    balanceMicro: Micro,
+    wallets: z.array(WalletBalance).meta({
+      description:
+        'Your reputation, one wallet per venue, venues by name. Your first trade in a venue opens its wallet with the starting balance; a venue not listed has none yet.',
+    }),
     createdAt: Timestamp,
     digestOptIn: z.boolean().meta({
       description: 'Whether the daily email about followed papers whose price moved may be sent to you. On by default.',
@@ -802,6 +823,7 @@ export const Holding = z
     listingSlug: z.string().nullable().meta({ description: 'The slug of the market’s listing, if it has one.' }),
     listingTitle: z.string().nullable().meta({ description: 'The title of the market’s listing, if it has one.' }),
     question: z.string(),
+    kind: Kind.meta({ description: 'The market’s venue: the wallet the holding was bought from.' }),
     marketStatus: MarketStatus,
     outcomeId: Id,
     outcomeLabel: z.string(),
@@ -882,45 +904,40 @@ export const PublicPositionState = z
   })
   .meta({ id: 'PublicPositionState' });
 
-/** Filtering holdings never changes the account-wide financial totals. */
+/** Filtering holdings never changes the wallets' totals. */
 export const PortfolioQuery = z.object({ marketId: Id.optional() });
+
+export const WalletSummary = z
+  .object({
+    kind: Kind.meta({ description: 'The venue. Every figure here is this wallet and the venue’s markets alone.' }),
+    cashMicro: Micro.meta({ description: 'The wallet’s balance.' }),
+    holdingsValueMicro: Micro.meta({ description: 'Σ quotedExitMicro over your holdings in the venue.' }),
+    netWorthMicro: Micro.meta({
+      description:
+        'cash + holdings value: liquidation value, what you would hold in the venue if you sold everything there now. The venue leaderboard’s `net_worth` basis.',
+    }),
+    unrealizedPnlMicro: Micro.meta({
+      description:
+        'holdings value + the net of your trades on the venue’s markets not yet settled: what liquidating now would make or lose.',
+    }),
+    realizedPnlMicro: Micro.meta({
+      description: 'Net of your trades and settlement payouts on the venue’s settled markets.',
+    }),
+    midMarketNetWorthMicro: Micro.meta({
+      description: 'cash + Σ markMicro in the venue. Noise before settlement: see `midMarketCaveat`. Never a score.',
+    }),
+  })
+  .meta({ id: 'WalletSummary' });
 
 export const Portfolio = z
   .object({
     accountId: Id,
-    balanceMicro: Micro,
     holdings: z.array(Holding),
-    unsettledValuation: z
-      .object({
-        midMarketNetWorthMicro: Micro.meta({
-          description: 'balance + Σ markMicro. Noise before settlement: see `caveat`.',
-        }),
-        liquidationValueMicro: Micro.meta({
-          description: 'balance + Σ quotedExitMicro. What you would hold if you sold everything now.',
-        }),
-        caveat: z.string(),
-      })
-      .meta({
-        description:
-          'Valuations of open positions. The mid-market one is not a score; the liquidation value is `summary.netWorthMicro`.',
-      }),
-    summary: z
-      .object({
-        cashMicro: Micro.meta({ description: 'Your balance.' }),
-        holdingsValueMicro: Micro.meta({ description: 'Σ quotedExitMicro over your holdings.' }),
-        netWorthMicro: Micro.meta({
-          description:
-            'cash + holdings value: liquidation value, what you would hold if you sold everything now. The leaderboard’s `net_worth` basis.',
-        }),
-        unrealizedPnlMicro: Micro.meta({
-          description:
-            'holdings value + the net of your trades on markets not yet settled: what liquidating now would make or lose.',
-        }),
-        realizedPnlMicro: Micro.meta({
-          description: 'Net of your trades and settlement payouts on settled markets.',
-        }),
-      })
-      .meta({ id: 'PortfolioSummary' }),
+    wallets: z.array(WalletSummary).meta({
+      description:
+        'One per venue you have traded in, venues by name. Each venue is a wallet of its own: nothing is summed across them.',
+    }),
+    midMarketCaveat: z.string(),
   })
   .meta({ id: 'Portfolio' });
 
