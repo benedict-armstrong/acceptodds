@@ -90,7 +90,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <span className="flex min-w-0 items-baseline gap-x-2">
             <HomeLink className="text-[22px]">
               <LogoMark />
-              <span className={`ml-2 ${viewer ? 'narrow:hidden' : ''}`}>
+              <span className="ml-2 narrow:hidden">
                 <Wordmark />
               </span>
             </HomeLink>
