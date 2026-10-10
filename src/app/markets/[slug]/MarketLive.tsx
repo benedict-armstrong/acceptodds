@@ -20,7 +20,7 @@ import { likelihoodClass, marketLikelihood } from '@/lib/likelihood';
 import { welcomeBetHref } from '@/lib/onboarding';
 import type { VenueField } from '@/server/venue-field';
 import type * as S from '@/server/api/schemas';
-import { Comments } from './Comments';
+import { Comments, TradeComment, type ExplainedTrade } from './Comments';
 import { showsVenueStanding } from './figures';
 import { TAPE_LIMIT } from './tape';
 import { TapeTable } from './TapeTable';
@@ -147,6 +147,8 @@ export function MarketLive({
     void refreshPortfolio();
     setCommentsVersion((v) => v + 1);
   };
+  // The last fill, offered a comment box in a modal (`TradeComment`).
+  const [explain, setExplain] = useState<ExplainedTrade | null>(null);
 
   return (
     <>
@@ -217,7 +219,10 @@ export function MarketLive({
               </>
             }
             sellable={tradable && initial.viewer.canTrade ? [market.id] : []}
-            onFilled={onFilled}
+            onFilled={(sold) => {
+              onFilled();
+              setExplain({ side: 'sell', label: sold.outcomeLabel });
+            }}
           />
         </div>
       )}
@@ -248,7 +253,10 @@ export function MarketLive({
                   : BigInt(initial.startingBalanceMicro)
               }
               viewer={initial.viewer}
-              onFilled={onFilled}
+              onFilled={(c) => {
+                onFilled();
+                setExplain({ side: 'buy', label: label(c.outcomeId) });
+              }}
               // A visitor's bet opens onboarding past the paper and bet steps.
               onChoose={
                 initial.viewer.signedIn ? undefined : (c) => router.push(welcomeBetHref({ marketId: id, ...c }))
@@ -288,6 +296,18 @@ export function MarketLive({
           </div>
         </div>
       </div>
+      {explain && (
+        <TradeComment
+          marketId={id}
+          initial={initial.comments}
+          trade={explain}
+          onPosted={() => {
+            setExplain(null);
+            setCommentsVersion((v) => v + 1);
+          }}
+          onSkip={() => setExplain(null)}
+        />
+      )}
 
       {/* Only once it has traded: before that, its price is the opening one, not a belief. */}
       {initial.venue && headline !== null && showsVenueStanding(market, true) && (

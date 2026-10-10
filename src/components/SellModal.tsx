@@ -4,7 +4,8 @@ import { useState } from 'react';
 import type { z } from 'zod';
 import { Modal, ModalContent, ModalTrigger } from '@/components/Modal';
 import { ui } from '@/components/ui';
-import { pct, rep, REP, shares } from '@/lib/format';
+import { soldBasis } from '@/lib/cost-basis';
+import { multiple, pct, rep, REP, shares, signedRep } from '@/lib/format';
 import { parseUnits } from '@/lib/money';
 import type * as S from '@/server/api/schemas';
 import { useQuote } from '@/components/quote';
@@ -49,6 +50,12 @@ export function SellModal({
   const size = amount !== null && amount > 0n && !tooMany ? amount : null;
   const quote = useQuote(marketId, holding.outcomeId, open && size !== null ? -size : null, board);
   const proceeds = quote ? -BigInt(quote.costMicro) : null;
+  // Against what the sold shares cost (their share of the basis), never a mark (§1.1).
+  const cost = size !== null ? soldBasis(BigInt(holding.costBasisMicro), held, size) : null;
+  const gain =
+    proceeds !== null && cost !== null && cost > 0n
+      ? { profit: proceeds - cost, ratio: multiple(proceeds, cost) }
+      : null;
 
   async function sell() {
     if (!quote || size === null) return;
@@ -105,6 +112,14 @@ export function SellModal({
               <span>You receive</span>
               <b>{proceeds !== null ? `${rep(proceeds)} ${REP}` : '…'}</b>
             </div>
+            {gain && (
+              <div className={ui.kv}>
+                <span>Profit</span>
+                <span className={`font-mono ${ui.pnl(gain.profit)}`}>
+                  {signedRep(gain.profit)} {REP} ({gain.ratio})
+                </span>
+              </div>
+            )}
             {quote && (
               <div className={ui.kv}>
                 <span>Price</span>

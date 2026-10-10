@@ -766,7 +766,7 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   own `?fpage=`, collapsible, the open state in the `home_following_open`
   cookie so the server renders it as left. Then **My positions**, the
   papers the viewer holds shares in (any market of the row), followed or
-  not — a position wins over a follow — 10 a page on `?hpage=`, cookie `home_positions_open`. Hidden while
+  not — a position wins over a follow — 10 a page on `?hpage=`, cookie `home_positions_open`. With either shown, a sort's link first scrolls slowly to All papers, a quarter down the window (`ScrollingLink`), and the re-sorted page keeps that place. Hidden while
   searching or with `?following=1`. "All papers" below is the rest: nothing
   pinned above is repeated, and the exclusion is in SQL so its pages count
   right.
@@ -806,6 +806,13 @@ value`, the exit quote against the basis as % or `REP` (toggled in the
   in the API too: the tape has every fill's exact size and the leaderboard
   every trader's exact net worth, live, and an exact stake matched against
   both ties the alias to a handle. Never send it exact.
+- **A fill on a market's page offers a comment box** (`TradeComment`),
+  in a `Modal` over the redrawn page, never in its flow: "Why Accept?"
+  after a buy, "Why sell …?" after a sell, optional; "Skip" or closing
+  it skips. Never after an
+  account's first trade, which goes to `/first-trade`. The empty top-level
+  box names the outcomes the viewer holds. Agents are asked the same in
+  `/agent/start` ("Explain your trades").
 - **Replies nest** (#31): `comments.parent_id` names the comment answered,
   on the same market, at any depth; the UI indents each level. A
   discussion is never read whole: `GET /markets/{id}/comments` pages

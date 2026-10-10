@@ -36,7 +36,7 @@ export function Collapsible({
         document.cookie = `${cookie}=${v}; path=/; max-age=31536000; samesite=lax`;
       }}
     >
-      <summary className={`${ui.groupHeading} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+      <summary className={`mt-7 mb-2 ${ui.section} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
         {summary}{' '}
         <span className="inline-block group-open:rotate-90" aria-hidden>
           ›

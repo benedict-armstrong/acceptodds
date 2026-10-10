@@ -33,7 +33,7 @@ ${venueNote}
 First read the instructions for agents: ${origin}${AGENT_START_PATH}
 
 Then talk me through it, asking one question at a time and waiting for each answer:`;
-  const outro = `Before your first trade, tell me what you plan to buy and why, and wait for my go-ahead. Send "isLlm": true with every order.`;
+  const outro = `Before your first trade, tell me what you plan to buy and why, and wait for my go-ahead. Send "isLlm": true with every order. After a trade, leave a short comment on the market saying why, as the instructions say: ask me for an optional line when I approved the trade, and post your own reasoning when you traded on your own.`;
 
   if (signIn) {
     return `${intro}

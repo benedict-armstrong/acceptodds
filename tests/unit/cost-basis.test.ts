@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { costBasis, type Fill } from '@/lib/cost-basis';
+import { costBasis, soldBasis, type Fill } from '@/lib/cost-basis';
 
 /** A history a trader could have made: only ever selling what they hold. */
 const history = fc
@@ -70,5 +70,13 @@ describe('costBasis', () => {
       }),
       { numRuns: 1000 },
     );
+  });
+});
+
+describe('soldBasis', () => {
+  it('is all of the basis for the whole holding, else its fraction, rounded down', () => {
+    expect(soldBasis(30_000_000n, 3_000_000n, 3_000_000n)).toBe(30_000_000n);
+    expect(soldBasis(10n, 3n, 1n)).toBe(3n);
+    expect(soldBasis(10n, 0n, 1n)).toBe(0n);
   });
 });

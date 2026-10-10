@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ComponentProps } from 'react';
 import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { Collapsible } from '@/components/Collapsible';
@@ -7,6 +8,7 @@ import { Pager } from '@/components/Pager';
 import { SearchSyntax } from '@/components/SearchSyntax';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/Popover';
 import { PaperRow } from '@/components/PaperRow';
+import { ScrollingLink } from '@/components/ScrollLink';
 import { RememberVenue, VenueInUrl } from '@/components/RememberVenue';
 import { RememberHomeSearch } from '@/components/HomeLink';
 import { TitleBlock } from '@/components/TitleBlock';
@@ -371,9 +373,9 @@ export default async function Home({
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {sorts.map((s) => (
                   <PopoverClose key={s} asChild>
-                    <Link href={href({ sort: s })} className={s === sort ? ON : ''}>
+                    <SortLink pinned={pinnedCount > 0} href={href({ sort: s })} className={s === sort ? ON : ''}>
                       {sortLabel(s)}
-                    </Link>
+                    </SortLink>
                   </PopoverClose>
                 ))}
               </div>
@@ -457,9 +459,9 @@ export default async function Home({
           {sorts
             .filter((s) => !MENU_SORTS.includes(s))
             .map((s) => (
-              <Link key={s} href={href({ sort: s })} className={s === sort ? ON : ''}>
+              <SortLink key={s} pinned={pinnedCount > 0} href={href({ sort: s })} className={s === sort ? ON : ''}>
                 {sortLabel(s)}
-              </Link>
+              </SortLink>
             ))}
         </span>
         {/* The rarer sorts, status and following, out of the way. */}
@@ -476,9 +478,9 @@ export default async function Home({
           <PopoverContent menu align="end" className="text-[13px]">
             {MENU_SORTS.map((s) => (
               <PopoverClose key={s} asChild>
-                <Link href={href({ sort: s })} className={s === sort ? ON : ''}>
+                <SortLink pinned={pinnedCount > 0} href={href({ sort: s })} className={s === sort ? ON : ''}>
                   sort: {sortLabel(s)}
-                </Link>
+                </SortLink>
               </PopoverClose>
             ))}
             {STATUSES.map((s, i) => (
@@ -531,7 +533,7 @@ export default async function Home({
           id="following"
           cookie={FOLLOWING_COOKIE}
           open={followingOpen}
-          className="group mt-3.5"
+          className="group"
           summary={
             <>
               Following <span className="font-normal">({followed.total})</span>
@@ -550,7 +552,7 @@ export default async function Home({
           id="positions"
           cookie={POSITIONS_COOKIE}
           open={positionsOpen}
-          className="group mt-3.5"
+          className="group"
           summary={
             <>
               My positions <span className="font-normal">({held.total})</span>
@@ -567,7 +569,7 @@ export default async function Home({
       {all.total > 0 && (
         <section id="all">
           {pinnedCount > 0 ? (
-            <h2 className={ui.groupHeading}>
+            <h2 className={`mt-7 mb-2 ${ui.section}`}>
               All papers <span className="font-normal">({all.total.toLocaleString('en')})</span>
             </h2>
           ) : (
@@ -639,4 +641,13 @@ function Row({ r, spark, tldr }: { r: BrowseRow; spark: number[]; tldr: boolean 
 /** A row's key: its listing, or its standalone market. */
 function rowKey(r: BrowseRow): string {
   return r.listing?.id ?? r.main?.market.id ?? '';
+}
+
+/**
+ * A sort's link. A sort reorders the list, not the sections pinned above it,
+ * so with any shown it scrolls slowly to "All papers", a quarter down the
+ * window, and the re-sorted page keeps that place.
+ */
+function SortLink({ pinned, ...props }: ComponentProps<typeof Link> & { pinned: boolean }) {
+  return pinned ? <ScrollingLink to="all" at={0.25} {...props} /> : <Link {...props} />;
 }

@@ -75,6 +75,12 @@ export function payoutReturn(payoutMicro: bigint, costMicro: bigint): string | n
   return `${gain < 0 ? '−' : '+'}${Math.abs(gain)}%`;
 }
 
+/** What a sale returns on what the shares cost, as a multiple: "×1.24", "×0.87". Display only; `null` for a zero cost. */
+export function multiple(proceedsMicro: bigint, costMicro: bigint): string | null {
+  if (costMicro <= 0n) return null;
+  return `×${(Number(proceedsMicro) / Number(costMicro)).toFixed(2)}`;
+}
+
 // Dates are spelled out by hand, in UTC, never through `toLocaleString`: the
 // server's ICU and the browser's disagree ("13 Sept" vs "13 Sep" in en-GB),
 // and a client component rendered on both then fails to hydrate.

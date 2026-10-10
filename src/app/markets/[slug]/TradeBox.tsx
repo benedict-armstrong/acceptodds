@@ -5,7 +5,7 @@ import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { ui } from '@/components/ui';
 import { MAX_BAR_OUTCOMES, paletteSlot, TIER_FILL, TIER_STRONG_BG } from '@/lib/headline';
-import { parseUnits } from '@/lib/money';
+import { formatMicro, MICRO_PER_UNIT, parseUnits } from '@/lib/money';
 import { payoutReturn, pct, rep, REP } from '@/lib/format';
 import type * as S from '@/server/api/schemas';
 import { MESSAGES, useOrder } from '@/components/orders';
@@ -32,6 +32,19 @@ export function slotOf(i: number, n: number): number | null {
 export function segment(on: boolean, slot: number | null): string {
   const look = !on ? 'border-rule bg-white' : slot === null ? 'border-ink bg-ink text-white' : TIER_FILL[slot];
   return `flex-1 cursor-pointer border px-1 py-[5px] font-sans text-sm leading-[normal] ${look}`;
+}
+
+/** The stake the box opens with, unless the balance is smaller (`defaultStake`). */
+const DEFAULT_STAKE_MICRO = 100n * MICRO_PER_UNIT;
+
+/**
+ * The stake the box opens with: 100, or the whole balance when that is less,
+ * cut (never rounded up) to cents and written without a needless ".00".
+ */
+export function defaultStake(cashMicro: bigint | null): string {
+  const micro =
+    cashMicro !== null && cashMicro < DEFAULT_STAKE_MICRO ? (cashMicro > 0n ? cashMicro : 0n) : DEFAULT_STAKE_MICRO;
+  return formatMicro(micro).replace(/\.00$/, '');
 }
 
 /**
@@ -70,7 +83,10 @@ export function TradeBox({
   initialIndex?: number;
 }) {
   const [idx, setIdx] = useState(initialIndex);
-  const [stake, setStake] = useState('100');
+  // Until the viewer types, the stake follows the polled balance, which may
+  // arrive after the first render and drops with every fill.
+  const [typed, setStake] = useState<string | null>(null);
+  const stake = typed ?? defaultStake(cashMicro);
   const outcome = market.outcomes[idx];
   const slot = slotOf(idx, market.outcomes.length);
   const buy = ui.btn({ fill: slot === null ? '' : TIER_STRONG_BG[slot] });

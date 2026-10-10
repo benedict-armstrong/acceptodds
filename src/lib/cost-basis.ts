@@ -17,6 +17,12 @@ export interface Fill {
   costMicro: bigint;
 }
 
+/** The part of `basisMicro` that selling `soldMicro` of `heldMicro` shares removes: all of it for the whole holding. */
+export function soldBasis(basisMicro: bigint, heldMicro: bigint, soldMicro: bigint): bigint {
+  if (heldMicro <= 0n) return 0n;
+  return soldMicro >= heldMicro ? basisMicro : (basisMicro * soldMicro) / heldMicro;
+}
+
 export function costBasis(fills: readonly Fill[]): { sharesMicro: bigint; basisMicro: bigint } {
   let shares = 0n;
   let basis = 0n;
@@ -26,7 +32,7 @@ export function costBasis(fills: readonly Fill[]): { sharesMicro: bigint; basisM
       basis += f.costMicro;
     } else if (f.sharesMicro < 0n && shares > 0n) {
       const sold = -f.sharesMicro > shares ? shares : -f.sharesMicro;
-      basis -= (basis * sold) / shares;
+      basis -= soldBasis(basis, shares, sold);
       shares -= sold;
     }
   }

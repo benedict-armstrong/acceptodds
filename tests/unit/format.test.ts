@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clip, clock, day, dayMonth, payoutReturn, shares, signedPctOf } from '@/lib/format';
+import { clip, clock, day, dayMonth, multiple, payoutReturn, shares, signedPctOf } from '@/lib/format';
 
 describe('payoutReturn', () => {
   it('is a multiple once the payout at least doubles the cost', () => {
@@ -73,5 +73,13 @@ describe('clip', () => {
 
   it('never splits a surrogate pair', () => {
     expect(clip('😀😀😀😀', 3)).toBe('😀😀…');
+  });
+});
+
+describe('multiple', () => {
+  it('is proceeds over cost, to two places', () => {
+    expect(multiple(124_000_000n, 100_000_000n)).toBe('×1.24');
+    expect(multiple(87_000_000n, 100_000_000n)).toBe('×0.87');
+    expect(multiple(1n, 0n)).toBeNull();
   });
 });

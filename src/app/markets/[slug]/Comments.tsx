@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import type { z } from 'zod';
 import { SignInLink } from '@/components/AuthLinks';
 import { Markdown } from '@/components/Markdown';
+import { Modal, ModalContent } from '@/components/Modal';
 import { MARKDOWN_HINT, MarkdownEditor } from '@/components/MarkdownEditor';
 import { OutcomeSwatch } from '@/components/OutcomeBar';
 import { ui } from '@/components/ui';
@@ -155,7 +157,7 @@ export function Comments({
       {viewer.canTrade ? (
         <CommentForm
           marketId={marketId}
-          placeholder="Why is this price justified? Why not?"
+          placeholder={commentPlaceholder((first?.viewer?.available ?? []).map((a) => a.outcomeLabel))}
           you={you}
           aliases={aliases}
           onPosted={() => void mutate()}
@@ -311,6 +313,65 @@ function Thread({ c, tree }: { c: Comment; tree: Tree }) {
   );
 }
 
+/**
+ * The comment box's prompt: the outcomes the viewer holds here, when they
+ * hold any, so the question is why they took that side. Read from the
+ * polled comment list, which refreshes after a fill.
+ */
+function commentPlaceholder(held: string[]): string {
+  if (held.length === 0) return 'Why is this price justified? Why not?';
+  return `You hold ${new Intl.ListFormat('en', { type: 'conjunction' }).format(held)}. Why? What is the price missing?`;
+}
+
+/** A fill the viewer may explain: the outcome bought or sold. */
+export type ExplainedTrade = { side: 'buy' | 'sell'; label: string };
+
+/**
+ * The comment box offered in a modal once a trade fills, over the page it
+ * redrew: why that side, or why sell. Closing it is skipping it. Never after
+ * an account's first trade, which goes to `/first-trade` instead
+ * (`useOrder`). The viewer's alias and the names a mention can preview
+ * against are read from the discussion's first page, fetched again on mount
+ * since the page's copy may predate a comment.
+ */
+export function TradeComment({
+  marketId,
+  initial,
+  trade,
+  onPosted,
+  onSkip,
+}: {
+  marketId: string;
+  initial: CommentList;
+  trade: ExplainedTrade;
+  onPosted: () => void;
+  onSkip: () => void;
+}) {
+  const { data = initial } = useSWR<CommentList>(
+    `/api/v1/markets/${marketId}/comments?limit=${COMMENT_PAGE}&sort=newest`,
+    fetchJson,
+    { fallbackData: initial },
+  );
+  const aliases = new Set([...data.comments, ...data.replies].map((c) => c.author.bot?.handle ?? c.author.alias));
+  return (
+    <Modal open onOpenChange={(open) => !open && onSkip()}>
+      <ModalContent title={trade.side === 'buy' ? `Why ${trade.label}?` : `Why sell ${trade.label}?`} wide>
+        <p className="mb-2 text-muted">Tell the other traders why, in a comment. Optional.</p>
+        <CommentForm
+          marketId={marketId}
+          placeholder={trade.side === 'buy' ? 'What is the price missing?' : 'What changed your mind?'}
+          you={data.viewer?.alias ?? null}
+          aliases={aliases}
+          autoFocus
+          onPosted={onPosted}
+          onCancel={onSkip}
+          cancelLabel="Skip"
+        />
+      </ModalContent>
+    </Modal>
+  );
+}
+
 /** The editor for a new comment, or with `parentId` a reply. */
 function CommentForm({
   marketId,
@@ -321,6 +382,7 @@ function CommentForm({
   autoFocus,
   onPosted,
   onCancel,
+  cancelLabel = 'Cancel',
 }: {
   marketId: string;
   parentId?: string;
@@ -330,6 +392,7 @@ function CommentForm({
   autoFocus?: boolean;
   onPosted: (c: Comment) => void;
   onCancel?: () => void;
+  cancelLabel?: string;
 }) {
   const [body, setBody] = useState('');
   const [preview, setPreview] = useState(false);
@@ -373,7 +436,7 @@ function CommentForm({
         <span className="flex gap-2">
           {onCancel && (
             <button className={ui.btn({ inline: true, ghost: true })} disabled={busy} onClick={onCancel}>
-              Cancel
+              {cancelLabel}
             </button>
           )}
           <button

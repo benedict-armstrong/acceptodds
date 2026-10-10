@@ -62,8 +62,8 @@ export function PositionsTable({
   sellable: string[];
   /** The navbar's venue: rows from any other are faded (`ui.otherVenue`). Unset, none are. */
   venue?: string;
-  /** After a fill; `useOrder` already refreshes the server-rendered page. */
-  onFilled?: () => void;
+  /** After a sell fills, with the holding sold from; `useOrder` already refreshes the server-rendered page. */
+  onFilled?: (sold: Holding) => void;
 }) {
   const [absolute, setAbsolute] = useState(false);
   const [note, setNote] = useState<OrderResult | null>(null);
@@ -137,10 +137,10 @@ function Row({
   sellable: boolean;
   faded: boolean;
   absolute: boolean;
-  onFilled: () => void;
+  onFilled: (sold: Holding) => void;
   onResult: (r: OrderResult) => void;
 }) {
-  const { send, busy } = useOrder(h.marketId, onFilled);
+  const { send, busy } = useOrder(h.marketId, () => onFilled(h));
   return (
     <tr className={faded ? ui.otherVenue : undefined}>
       {/* With the paper shown, its title has a line of its own and the outcome sits under it; `w-full max-w-0`
