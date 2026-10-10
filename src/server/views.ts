@@ -182,11 +182,13 @@ function rankOf(vector: SQL, tq: SQL): SQL {
  * its main market, either of which may be null (`ROWS`).
  */
 function rowMatches(tq: SQL): SQL {
-  return sql`(coalesce(${listingVector('l')} @@ ${tq}, false)
-    or coalesce(${marketVector('m')} @@ ${tq}, false)
-    or exists (select 1 from markets s2
-                where s2.listing_id = l.id and not s2.is_main and s2.status <> 'draft'
-                  and ${marketVector('s2')} @@ ${tq}))`;
+  // Each side is an id set found once through the GIN index (a hashed
+  // subplan), never `vector @@ tq` per row: that de-TOASTed every row's
+  // vector once per term, and an anonymous OR of a few words took seconds.
+  return sql`(coalesce(l.id in (select ls.id from listings ls where ${listingVector('ls')} @@ ${tq}), false)
+    or coalesce(m.id in (select ms.id from markets ms where ${marketVector('ms')} @@ ${tq}), false)
+    or coalesce(l.id in (select s2.listing_id from markets s2
+                          where not s2.is_main and s2.status <> 'draft' and ${marketVector('s2')} @@ ${tq}), false))`;
 }
 
 const COMPARE_SQL = { '=': '=', '!=': '<>', '>': '>', '<': '<', '>=': '>=', '<=': '<=' } as const;
