@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { bandwidth, countBelow, density, niceTicks, quantile } from '@/lib/distribution';
+import { bandwidth, countBelow, density, niceTicks, quantile, rootScaled } from '@/lib/distribution';
 
 const sorted = (xs: number[]) => [...xs].sort((a, b) => a - b);
 
@@ -78,5 +78,19 @@ describe('helpers', () => {
         },
       ),
     );
+  });
+});
+
+describe('bandwidth floor', () => {
+  it('a crowd at one value does not shrink the kernel to a spike', () => {
+    const values = sorted([...Array.from({ length: 100 }, (_, i) => 995 + (i % 10)), 250, 1500, 2050]);
+    expect(bandwidth(values)).toBeGreaterThanOrEqual((2050 - 250) / 20);
+  });
+});
+
+describe('rootScaled', () => {
+  it('peaks at 1, keeps the order, and lifts small bumps', () => {
+    expect(rootScaled([0, 1, 4, 100])).toEqual([0, 0.1, 0.2, 1]);
+    expect(rootScaled([0, 0])).toEqual([0, 0]);
   });
 });

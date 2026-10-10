@@ -37,7 +37,7 @@ export function StandingChart({
   other = null,
   marks = [],
 }: {
-  /** The density at evenly spaced points across `domain`, peaking at 1. */
+  /** The density at evenly spaced points across `domain`, root-scaled to peak at 1. */
   curve: number[];
   /** In units. */
   domain: [number, number];

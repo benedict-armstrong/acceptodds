@@ -5,9 +5,18 @@
  */
 
 /**
+ * The narrowest a kernel may be, as a share of the field's range. Most
+ * traders sit near the starting balance, so the IQR (and with it Silverman's
+ * bandwidth) is tiny, and the curve was one spike with flat tails. Drawn at
+ * this width, the crowd is a bump and the rest of the field reads beside it.
+ */
+const MIN_BANDWIDTH_OF_RANGE = 1 / 20;
+
+/**
  * Silverman's rule-of-thumb bandwidth, `0.9 · min(σ, IQR/1.34) · n^(−1/5)`,
- * floored so a field of identical values (σ = 0) still draws a bump rather
- * than dividing by zero. `values` sorted ascending.
+ * floored at `MIN_BANDWIDTH_OF_RANGE` of the range, and so that a field of
+ * identical values (σ = 0) still draws a bump rather than dividing by zero.
+ * `values` sorted ascending.
  */
 export function bandwidth(values: number[]): number {
   const n = values.length;
@@ -17,8 +26,9 @@ export function bandwidth(values: number[]): number {
   const iqr = quantile(values, 0.75) - quantile(values, 0.25);
   const spread = iqr > 0 ? Math.min(sd, iqr / 1.34) : sd;
   const h = 0.9 * spread * n ** -0.2;
+  const range = values[n - 1] - values[0];
   // A floor relative to the values' size, so a flat field is a visible bump.
-  return Math.max(h, Math.abs(mean) * 0.01, 1e-6);
+  return Math.max(h, range * MIN_BANDWIDTH_OF_RANGE, Math.abs(mean) * 0.01, 1e-6);
 }
 
 /** The `p` quantile of sorted `values`, linearly interpolated. */
@@ -60,6 +70,17 @@ export function density(values: number[], points = 120, include?: number): Densi
     ys.push(sum * norm);
   }
   return { xs, ys, domain: [lo, hi], bandwidth: h };
+}
+
+/**
+ * Densities for drawing: scaled so the highest of `ys` is 1, then square-
+ * rooted (a rootogram's scale). On a linear scale the crowd near the
+ * starting balance stood a hundred times taller than a lone trader further
+ * out, who was then a flat line; rooted, they are a tenth of it. Still
+ * monotonic, so a taller curve is still more traders.
+ */
+export function rootScaled(ys: readonly number[], peak = Math.max(...ys)): number[] {
+  return ys.map((y) => (peak > 0 ? Math.sqrt(y / peak) : 0));
 }
 
 /** How many of sorted `values` are strictly below `x`, by binary search. */

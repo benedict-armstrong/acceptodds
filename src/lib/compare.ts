@@ -4,7 +4,7 @@
  * are floats for plotting, and the averages are rounded integers of figures
  * the board already shows; nothing here is money that moves.
  */
-import { bandwidth } from './distribution';
+import { bandwidth, rootScaled } from './distribution';
 
 /**
  * Each side's look, in order: the accent, then the blue tier. Here, not in
@@ -60,8 +60,8 @@ export interface SharedDensities {
   domain: [number, number];
   /**
    * Each field's kernel density at `POINTS` evenly spaced x's across `domain`,
-   * all scaled by one factor so the highest peak is 1: each curve keeps its
-   * own area, so a narrow field stands taller than a wide one, as it should.
+   * all scaled by one factor so the highest peak is 1, then root-scaled
+   * (`rootScaled`): a narrow field still stands taller than a wide one.
    * Empty for an empty field.
    */
   curves: number[][];
@@ -93,5 +93,5 @@ export function sharedDensities(fields: readonly (readonly number[])[]): SharedD
     return ys;
   });
   const peak = Math.max(...raw.flat());
-  return { domain: [lo, hi], curves: raw.map((ys) => ys.map((y) => (peak > 0 ? y / peak : 0))) };
+  return { domain: [lo, hi], curves: raw.map((ys) => rootScaled(ys, peak)) };
 }

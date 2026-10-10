@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/db';
 import { fieldSnapshots } from '@/db/schema';
-import { density } from '@/lib/distribution';
+import { density, rootScaled } from '@/lib/distribution';
 import { microToFloat } from '@/lib/money';
 import { ReadCache } from './read-cache';
 import { leaderboardStandings, tradedAccountIds, type LeaderboardRow } from './views';
@@ -28,7 +28,7 @@ export interface FieldSnapshot {
   computedAt: Date;
   /** Every non-house trader's net worth in the venue at liquidation value, ascending — only those who have placed an order. */
   worthsMicro: bigint[];
-  /** Kernel density at evenly spaced points across `domain`, peaking at 1. Empty for an empty field. */
+  /** Kernel density at evenly spaced points across `domain`, root-scaled to peak at 1 (`rootScaled`). Empty for an empty field. */
   curve: number[];
   /** In units, for plotting only. */
   domain: [number, number];
@@ -84,8 +84,7 @@ export function shapeOf(worths: readonly bigint[], computedAt: Date): FieldSnaps
   let domain: [number, number] = [0, 0];
   if (worthsMicro.length > 0) {
     const d = density(worthsMicro.map(toUnits), CURVE_POINTS);
-    const peak = Math.max(...d.ys);
-    curve = d.ys.map((y) => (peak > 0 ? y / peak : 0));
+    curve = rootScaled(d.ys);
     domain = d.domain;
   }
   return { computedAt, worthsMicro, curve, domain };

@@ -157,8 +157,7 @@ export default async function ComparePage({
                     {s.name}
                   </span>
                 ))}
-                . Dashed lines are each institution&rsquo;s mean. Each curve keeps its own area, so a narrower field
-                stands taller.
+                . Dashed lines are each institution&rsquo;s mean. Square-root scale.
               </p>
             </section>
           )}

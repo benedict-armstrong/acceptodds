@@ -51,7 +51,7 @@ export function FieldCurve({
       />
       <p className={ui.caption}>
         <b>Figure 1.</b> Net worth of {of ?? 'every trader who has placed an order'}, if each sold everything now
-        {of ? '.' : `, as of ${ago(field.computedAt)} ago.`}
+        {of ? '.' : `, as of ${ago(field.computedAt)} ago.`} Square-root scale.
         {you !== null && ' The shaded part is everyone below you.'}
         {other && ` The dashed line is @${other.handle}.`}
         {marks.length > 0 && ` Open circles are bots; hover one to name it.`}
