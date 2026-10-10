@@ -281,9 +281,46 @@ function or(items: SearchNode[]): SearchNode | null {
 }
 
 /**
+ * Most terms a query keeps. Each one past the text every match needs is a
+ * predicate checked on every row of the venue (`views.searchPredicate`), so
+ * an anonymous 200-character chain of ~40 `OR`ed words cost 6–11 s of
+ * database time per request, and ten at once held the whole pool. Words in
+ * one AND merge into a single term first, so a long plain query is one.
+ */
+export const MAX_SEARCH_TERMS = 8;
+
+/** `node` with only its first `max` terms (leaves), in reading order. */
+function capTerms(node: SearchNode | null, max: number): { node: SearchNode | null; dropped: number } {
+  let kept = 0;
+  let dropped = 0;
+  const walk = (n: SearchNode): SearchNode | null => {
+    switch (n.kind) {
+      case 'and':
+      case 'or': {
+        const items = n.items.map(walk).filter((i): i is SearchNode => i !== null);
+        return n.kind === 'and' ? and(items) : or(items);
+      }
+      case 'not': {
+        const item = walk(n.item);
+        return item === null ? null : { kind: 'not', item };
+      }
+      default:
+        if (kept >= max) {
+          dropped += 1;
+          return null;
+        }
+        kept += 1;
+        return n;
+    }
+  };
+  return { node: node === null ? null : walk(node), dropped };
+}
+
+/**
  * The query as a tree. Forgiving: an unmatched `)` is ignored, a missing one
- * is implied at the end, a dangling `OR` is dropped, and a bad filter is
- * dropped with an error. Never throws.
+ * is implied at the end, a dangling `OR` is dropped, a bad filter is
+ * dropped with an error, and so is every term past {@link MAX_SEARCH_TERMS}.
+ * Never throws.
  */
 export function parseSearch(input: string): ParsedSearch {
   const tokens = tokenize(input);
@@ -329,7 +366,20 @@ export function parseSearch(input: string): ParsedSearch {
     return or(branches);
   };
 
-  return { node: parseOr(0), errors, fields };
+  const capped = capTerms(parseOr(0), MAX_SEARCH_TERMS);
+  if (capped.dropped > 0) {
+    errors.push(`${capped.dropped} more term${capped.dropped === 1 ? '' : 's'}: at most ${MAX_SEARCH_TERMS} are used`);
+    // A dropped `venue:` or `status:` no longer moves the page's own filter aside.
+    fields.clear();
+    const collect = (n: SearchNode) => {
+      if (n.kind === 'and' || n.kind === 'or') n.items.forEach(collect);
+      else if (n.kind === 'not') collect(n.item);
+      else if (n.kind === 'status') fields.add('status');
+      else if (n.kind === 'match' || n.kind === 'compare') fields.add(n.field);
+    };
+    if (capped.node) collect(capped.node);
+  }
+  return { node: capped.node, errors, fields };
 }
 
 // ---------------------------------------------------------------------------

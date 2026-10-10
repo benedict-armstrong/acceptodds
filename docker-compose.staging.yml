@@ -6,8 +6,8 @@
 # own project, images, database and router, so nothing here touches prod.
 #
 # .env.staging is .env.production with: APP_URL and BETTER_AUTH_URL on the
-# staging host; its own POSTGRES_PASSWORD and DATABASE_URL (host
-# acceptodds-staging-db); and no RESEND_API_KEY, UMAMI_*, SENTRY_* or
+# staging host; its own BETTER_AUTH_SECRET, POSTGRES_PASSWORD and DATABASE_URL
+# (host acceptodds-staging-db); STAGING_BASIC_AUTH; and no RESEND_API_KEY, UMAMI_*, SENTRY_* or
 # NANOGPT_API_KEY. The data is a copy of production's, real addresses
 # included: without a Resend key the app refuses to send any mail.
 # No cron runs against it.
@@ -18,7 +18,12 @@
 #   # copy production's data (read-only on prod):
 #   docker exec acceptodds-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
 #     | docker exec -i acceptodds-staging-postgres-1 sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --clean --if-exists'
+#   scripts/staging-scrub.sh   # ALWAYS, right after the restore: drops prod's sessions, API keys and codes
 #   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d app
+#
+# Staging has its own BETTER_AUTH_SECRET, never production's: with the same
+# secret and copied session rows, a production login worked here, and staging
+# held working production credentials. It is behind basic auth (labels below).
 #
 # Migrations, as on prod, are a separate step (tools image of this build).
 
@@ -85,8 +90,16 @@ services:
       - traefik.http.routers.acceptodds-staging.rule=Host(`staging.acceptodds.com`)
       - traefik.http.routers.acceptodds-staging.entrypoints=websecure
       - traefik.http.routers.acceptodds-staging.tls=true
-      - traefik.http.routers.acceptodds-staging.middlewares=acceptodds-staging-headers
+      - traefik.http.routers.acceptodds-staging.middlewares=acceptodds-staging-auth,acceptodds-staging-headers
       - traefik.http.services.acceptodds-staging.loadbalancer.server.port=3000
+      # Staging holds a copy of production's data, so it is not public: HTTP
+      # basic auth, `user:bcrypt-hash` from .env.staging (gitignored). The
+      # header is stripped before the app sees it, or the app would read
+      # `Authorization: Basic …` as a malformed API token and 401 every call.
+      # (So a bearer API token cannot be used on staging; use a session.)
+      - traefik.http.middlewares.acceptodds-staging-auth.basicauth.users=${STAGING_BASIC_AUTH:?set STAGING_BASIC_AUTH in .env.staging}
+      - traefik.http.middlewares.acceptodds-staging-auth.basicauth.removeheader=true
+      - traefik.http.middlewares.acceptodds-staging-auth.basicauth.realm=acceptodds staging
       - traefik.http.middlewares.acceptodds-staging-headers.headers.contenttypenosniff=true
       - traefik.http.middlewares.acceptodds-staging-headers.headers.framedeny=true
       - traefik.http.middlewares.acceptodds-staging-headers.headers.referrerpolicy=strict-origin-when-cross-origin

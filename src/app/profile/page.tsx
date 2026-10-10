@@ -127,9 +127,9 @@ export default async function ProfilePage() {
         <p className="mt-1 mb-2 text-[15px] text-subtle">
           For a script or a bot that trades as you. Send the key as{' '}
           <code className={ui.mono}>Authorization: Bearer</code>; the endpoints are in the{' '}
-          <a className="underline" href="/docs">
+          <Link className="underline" href="/docs">
             API reference
-          </a>
+          </Link>
           .
         </p>
         <ApiKeys initial={apiKeys} n={keysTable} canTrade={a.isBot || a.verifiedAt !== null} />

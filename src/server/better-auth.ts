@@ -285,8 +285,11 @@ export function createAuth(database: Database) {
     },
 
     // Sign-up is ours (`server/onboarding.ts`): it takes no password, so
-    // Better Auth's, which does, is off. So are the API-key routes (above).
-    disabledPaths: ['/sign-up/email', ...DISABLED_OTP_PATHS, ...DISABLED_API_KEY_PATHS],
+    // Better Auth's, which does, is off. So are the API-key routes (above),
+    // and `/update-user`: a name is set by `PATCH /me` (`accounts.setDisplayName`),
+    // which writes the trader's display name with it; Better Auth's wrote
+    // only `user.name` (and an arbitrary `image`), so the two drifted apart.
+    disabledPaths: ['/sign-up/email', '/update-user', ...DISABLED_OTP_PATHS, ...DISABLED_API_KEY_PATHS],
 
     advanced: {
       // Better Auth skips its origin/CSRF check when NODE_ENV=test. Pin it on,

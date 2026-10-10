@@ -5,7 +5,7 @@ import { getDb } from '@/db';
 import { listingTexts, markets, usdCosts } from '@/db/schema';
 import { followedListingIds, followOpenedListings, unfollow } from '@/server/follows';
 import { setRelated, setText, upsertListing } from '@/server/listings';
-import { ranked } from '@/server/jev';
+import { jevTargetMean, ranked } from '@/server/jev';
 import { ANONYMOUS_OPEN_BUDGET, OPEN_BUDGET } from '@/server/market-start';
 import { marketTemplate } from '@/server/market-templates';
 import { consume } from '@/server/ratelimit';
@@ -62,10 +62,10 @@ function stubJev(answer: { probabilities?: Record<string, number>; cost?: number
   return calls;
 }
 
-/** Where a paper with no full text opens on JEV's answer `a` for Accept, as the venue ranks it. */
+/** Where a paper with no full text opens on JEV's answer `a` for Accept, as the venue ranks it (centred on JEV_TARGET_MEAN, as `jev.ts` does). */
 const opensAt = (a: number) => {
   const t = marketTemplate('ICLR 2027')!;
-  return ranked([a, 1 - a], t.jev!.reference.abstract, t.fallbackPrices, t.jev!.spread)!;
+  return ranked([a, 1 - a], t.jev!.reference.abstract, t.fallbackPrices, t.jev!.spread, jevTargetMean())!;
 };
 
 const mainMarketOf = async (listingId: string) => db.select().from(markets).where(eq(markets.listingId, listingId));

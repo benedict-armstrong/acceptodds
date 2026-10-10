@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   containsPattern,
+  MAX_SEARCH_TERMS,
   parseSearch,
   peopleText,
   prefixOf,
@@ -132,6 +133,45 @@ describe('parseSearch', () => {
           } else if (n.kind === 'compare') expect(n.value).toMatch(/^\d+(\.\d+)?$/);
         };
         if (node) walk(node);
+      }),
+    );
+  });
+});
+
+describe('the term cap', () => {
+  const leaves = (n: SearchNode | null): number =>
+    n === null
+      ? 0
+      : n.kind === 'and' || n.kind === 'or'
+        ? n.items.reduce((s, i) => s + leaves(i), 0)
+        : n.kind === 'not'
+          ? leaves(n.item)
+          : 1;
+
+  it('keeps the first terms of a long OR chain and says so', () => {
+    const words = Array.from({ length: 38 }, (_, i) => `x${i}`);
+    const { node, errors } = parseSearch(words.join(' OR '));
+    expect(leaves(node)).toBe(MAX_SEARCH_TERMS);
+    expect(node).toEqual({ kind: 'or', items: words.slice(0, MAX_SEARCH_TERMS).map((w) => text([w])) });
+    expect(errors).toEqual([`${38 - MAX_SEARCH_TERMS} more terms: at most ${MAX_SEARCH_TERMS} are used`]);
+  });
+  it('counts a long plain query as one term', () => {
+    const words = Array.from({ length: 30 }, (_, i) => `w${i}`);
+    const { node, errors } = parseSearch(words.join(' '));
+    expect(errors).toEqual([]);
+    expect(node).toEqual(text(words));
+  });
+  it('forgets a dropped filter, so the page keeps its own', () => {
+    const { fields } = parseSearch(
+      `${Array.from({ length: MAX_SEARCH_TERMS }, (_, i) => `t:a${i}`).join(' ')} venue:iclr`,
+    );
+    expect(fields.has('venue')).toBe(false);
+    expect(fields.has('title')).toBe(true);
+  });
+  it('never leaves more than the cap', () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 200 }), (s) => {
+        expect(leaves(parseSearch(s).node)).toBeLessThanOrEqual(MAX_SEARCH_TERMS);
       }),
     );
   });

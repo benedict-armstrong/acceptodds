@@ -2,6 +2,8 @@ import type { NextConfig } from 'next';
 import { PRIVATE_PAGES } from './src/lib/private-paths';
 
 const nextConfig: NextConfig = {
+  // No `X-Powered-By: Next.js`: it tells a scanner which advisories to try.
+  poweredByHeader: false,
   async redirects() {
     return [
       // A mail link wrapped at its hyphen and cut there (before mails had an HTML part, `lib/mail-html.ts`)
