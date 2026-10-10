@@ -73,6 +73,15 @@ describe('parseSearch', () => {
     expect(parseSearch('accept>50%').node).toEqual({ kind: 'compare', field: 'accept', op: '>', value: '50' });
   });
 
+  it('reads key:>n as key>n, on number fields only', () => {
+    expect(parseSearch('volume:>0').node).toEqual({ kind: 'compare', field: 'volume', op: '>', value: '0' });
+    expect(parseSearch('accept:>=50%').node).toEqual({ kind: 'compare', field: 'accept', op: '>=', value: '50' });
+    expect(parseSearch('fills:!=0').node).toEqual({ kind: 'compare', field: 'trades', op: '!=', value: '0' });
+    expect(parseSearch('accept:=40').node).toEqual({ kind: 'compare', field: 'accept', op: '=', value: '40' });
+    expect(parseSearch('title:<x').node).toEqual({ kind: 'match', field: 'title', op: '=', value: '<x' });
+    expect(parseSearch('volume:>').errors).toHaveLength(1);
+  });
+
   it('groups with OR and parentheses', () => {
     expect(parseSearch('(venue:iclr OR venue:neurips) diffusion').node).toEqual({
       kind: 'and',

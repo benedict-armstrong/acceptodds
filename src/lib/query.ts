@@ -197,8 +197,15 @@ function isTextField(f: SearchField): f is (typeof TEXT_FIELDS)[number] {
 
 function fieldNode(tok: Extract<Token, { t: 'field' }>, errors: string[]): SearchNode | null {
   const field = ALIASES[tok.key];
-  const op = (tok.op === ':' ? '=' : tok.op) as CompareOp;
-  const value = tok.value.trim();
+  let op = (tok.op === ':' ? '=' : tok.op) as CompareOp;
+  let value = tok.value.trim();
+  // `volume:>0`, as GitHub writes it, means `volume>0`. Number fields only:
+  // a text field's value may start with `<`.
+  const colonOp = /^(!=|>=|<=|=|>|<)/.exec(value);
+  if (tok.op === ':' && colonOp && (NUMBER_FIELDS as readonly string[]).includes(field)) {
+    op = colonOp[1] as CompareOp;
+    value = value.slice(colonOp[1].length).trim();
+  }
   if (value === '') {
     errors.push(`“${tok.raw}”: no value`);
     return null;
