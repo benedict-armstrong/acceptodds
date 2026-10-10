@@ -50,3 +50,6 @@ next-env.d.ts
 
 # local copy of the research database (seed input)
 /data/
+
+# Local working notes, never committed
+.notes/
