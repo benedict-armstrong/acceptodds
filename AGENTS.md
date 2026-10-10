@@ -1575,6 +1575,15 @@ volume trades`, with aliases), `!= > < >= <=` on numbers, `"quotes"`,
   (global, the viewer's institutions and groups, and once typed any
   institution with traders, `views.traderInstitutions`; never a group the
   viewer is not in). "+ Create reading group" sits under the search.
+- **Two institutions can be compared** (`/leaderboard/compare?a=&b=`,
+  one venue), linked as "Compare institutions" under the leaderboard's
+  search. Each name in its title is a `BoardPicker`, as the board's is,
+  over every institution with traders. Each side
+  is its board's traders who have placed an order, as an institution's
+  Figure 1 draws them: Figure 1 overlays both densities on one axis and
+  scale (`lib/compare.ts`, accent and `tier-4`) with each mean dashed,
+  Table 1 their means and median. Liquidation value, never a mark. Signed
+  out, the figures are held back, as on the board.
 - **Institutions are derived groups**: never a row, always
   `accounts.institutions`, so they cannot drift from the affiliations and
   nobody joins or leaves one by hand. Lab groups were deferred on the

@@ -77,6 +77,16 @@ export function institutionPath(name: string, kind?: string | null): string {
   return `/leaderboard?institution=${encodeURIComponent(name)}${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`;
 }
 
+/** Two institutions compared (`/leaderboard/compare`); a side left null is still to be picked. */
+export function comparePath(a: string | null, b: string | null, kind?: string | null): string {
+  const params = new URLSearchParams();
+  if (kind) params.set('kind', kind);
+  if (a) params.set('a', a);
+  if (b) params.set('b', b);
+  const s = params.toString();
+  return s ? `/leaderboard/compare?${s}` : '/leaderboard/compare';
+}
+
 /**
  * A group's invite link. The code rides in the query, which page analytics
  * never records (`lib/analytics.ts`), so it stays with whoever it was sent to.

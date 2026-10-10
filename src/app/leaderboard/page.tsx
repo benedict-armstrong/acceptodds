@@ -15,7 +15,7 @@ import { TitleBlock } from '@/components/TitleBlock';
 import { ui } from '@/components/ui';
 import { REP, rep } from '@/lib/format';
 import { leaderboardSegments, standingBand } from '@/lib/leaderboard';
-import { groupPath, institutionPath } from '@/lib/links';
+import { comparePath, groupPath, institutionPath } from '@/lib/links';
 import { authHref } from '@/lib/return-to';
 import { normalizeSearch, SEARCH_MAX_LENGTH } from '@/lib/search';
 import { institutionsMatch, parseTraderSearch } from '@/lib/trader-query';
@@ -288,9 +288,17 @@ export default async function LeaderboardPage({
         <div className="mt-2 font-sans text-[13px] text-down">Ignored: {search.errors.join('; ')}</div>
       )}
 
-      {/* Where the viewer stands, and "+ New group" at the right of its first line. */}
+      {/* "Compare institutions" on the first line, level with "+ New group" at its right; then where the viewer stands. */}
       <div className="mt-2 flex items-start justify-between gap-4 font-sans text-[13px]">
         <div className="flex min-w-0 flex-col gap-0.5 text-muted">
+          <span>
+            <Link
+              href={comparePath(institution ?? viewer?.account.institutions[0] ?? null, null, pickedKind)}
+              className="text-accent"
+            >
+              Compare institutions
+            </Link>
+          </span>
           {mine >= 0 ? (
             <span>
               {mine !== focus && (

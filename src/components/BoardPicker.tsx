@@ -23,11 +23,14 @@ export interface BoardOption {
  * the viewer's institutions and groups, and, once something is typed, every
  * institution with traders.
  * Arrow keys move, Enter opens. Groups the viewer is not in are never listed.
+ * The institution comparison sets one per side in its title.
  */
 export function BoardPicker({
   current,
   mine,
   institutions,
+  placeholder = 'Find an institution or group',
+  tone = 'text-accent',
 }: {
   /** The board on screen. */
   current: { label: string; href: string };
@@ -35,6 +38,10 @@ export function BoardPicker({
   mine: { section: string | null; options: BoardOption[] }[];
   /** Every institution, listed only when it matches what is typed. */
   institutions: BoardOption[];
+  /** The find box's placeholder. */
+  placeholder?: string;
+  /** The name's colour class: the comparison sets its second side in its own series' colour. */
+  tone?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -83,7 +90,7 @@ export function BoardPicker({
       {/* In the title's own type, marked as a field the way the trade box's stake is: a dashed rule, solid on hover or focus. */}
       <PopoverTrigger
         title={current.label.length > TITLE_MAX ? current.label : undefined}
-        className={`${ui.picker} text-accent`}
+        className={`${ui.picker} ${tone}`}
       >
         {clip(current.label, TITLE_MAX)}
       </PopoverTrigger>
@@ -96,7 +103,7 @@ export function BoardPicker({
           aria-controls="board-options"
           aria-activedescendant={flat[active] ? `board-option-${active}` : undefined}
           aria-label="Find a board"
-          placeholder="Find an institution or group"
+          placeholder={placeholder}
           className={ui.input}
           value={text}
           onChange={(e) => {
