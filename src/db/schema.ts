@@ -208,6 +208,12 @@ export const listings = pgTable(
     // matching all of 30k papers, against 0.1 s stored.
     index('listings_search_idx').using('gin', sql`search_vector`),
     index('listings_created_idx').on(t.createdAt, t.id),
+    // The home list's full join (`views.browseQuery`) reads only these two
+    // columns of every listing: an index-only scan of this instead of the
+    // wide heap, 5x faster at 43k listings. It needs the visibility map kept
+    // fresh, which view counting dirties, so drizzle/0042 also vacuums the
+    // table far more often than autovacuum's default.
+    index('listings_kind_id_idx').on(t.kind, t.id),
   ],
 );
 

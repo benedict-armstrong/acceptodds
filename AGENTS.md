@@ -1190,11 +1190,20 @@ A venue is ~30k papers (ICLR's last round). Measured on 30k papers with
 and a query matching every paper ~130 ms. It was 0.4 s a list query
 unpaginated, and 5 s for that search.
 
-- **The home list is paged by offset, 50 a page (`?page=`)**, with a total
-  (`count(*) over ()`), and so are Following and My positions. Offset, not
+- **The home list is paged by offset, 50 a page (`?page=`)**, with a total,
+  and so are Following and My positions. Offset, not
   keyset, because every sort but `newest` moves with each fill and a page
   number is what the list shows; the API stays keyset. A page past the end
   serves the last page. The pager is plain links.
+- **The total is its own `count(*)`, never `count(*) over ()`**: a window
+  pushes every row of the venue, not the page's 50, through the select list
+  and into a tuplestore, which made the page query 4x slower. A shared
+  (non-personal) list caches one count per filter for all its sorts and
+  pages. The full join reads listings through `listings_kind_id_idx`
+  (`kind, id`), an index-only scan instead of the 76 MB heap, so
+  `drizzle/0042` keeps `listings` vacuumed often: view counting dirties its
+  visibility map. Row sums are `bigint`, since sorting on `numeric` doubled
+  a deep page's sort.
 - **Sorts never read `orders`.** The engine keeps caches on `markets`,
   written in `trade()` under the market row lock it already holds (so no
   new lock and no drift), like `balance_micro`: `volume_micro` (Σ |cost|),
@@ -1733,6 +1742,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   for at most one second in bounded in-process caches. Authentication,
   rate limiting, response validation and event logging still run on every
   API request; HTTP responses retain `no-store`. Creation, fills, close
-  and settlement invalidate after commit. Failed reads are not cached,
+  and settlement invalidate after commit. The shared home-list pages
+  (`browseReads`) are the exception: a market write leaves them at most
+  `BROWSE_STALE_AFTER_WRITE_MS` (5 s) to live rather than dropping them,
+  since at a fill or an opening every few seconds dropping them made
+  nearly every home page a miss; a listing upsert still drops them. The
+  tests set it to 0. `traderInstitutions` is shared for a minute. Failed reads are not cached,
   in-flight invalidated reads cannot repopulate entries, and transactions
   always bypass the cache. These caches assume one app process.

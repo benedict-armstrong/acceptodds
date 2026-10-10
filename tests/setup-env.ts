@@ -14,3 +14,5 @@ process.env.BETTER_AUTH_URL = 'http://test.local';
 process.env.BETTER_AUTH_SECRET ??= 'test-secret-test-secret-test-secret-0000';
 // Sign-up is limited to these domains in tests (example.org, ethz.ch).
 process.env.INSTITUTION_DOMAINS_PATH = 'tests/fixtures/institution-domains.json';
+// Integration tests read the home list right after the write that changed it.
+process.env.BROWSE_STALE_AFTER_WRITE_MS = '0';

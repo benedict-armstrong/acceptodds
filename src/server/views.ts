@@ -32,7 +32,15 @@ import { cosineDistance } from '@/lib/vectors';
 import { ApiError } from './api/errors';
 import { standingsGeneration, standingsChangesSince } from './standings-cache';
 import { valuations } from './valuation';
-import { browseReads, BROWSE_READ_TTL_MS, marketReads, sparklineReads, MARKET_READ_TTL_MS } from './market-cache';
+import {
+  browseReads,
+  BROWSE_READ_TTL_MS,
+  institutionReads,
+  INSTITUTION_READ_TTL_MS,
+  marketReads,
+  sparklineReads,
+  MARKET_READ_TTL_MS,
+} from './market-cache';
 import { mapCached } from './map-cache';
 import { pricedBeforeTradeKinds } from '@/venues';
 import { recommendationScores, scoresTable } from './recommendations';
@@ -1548,45 +1556,51 @@ export async function browseListings(
     q.followedBy || q.heldBy || q.exceptFollowedBy || q.exceptHeldBy || (q.sort === 'recommended' && q.recommendFor);
   if (personal || database !== getDb()) return readBrowsePage(q, database);
   const key = JSON.stringify([q.kind ?? null, q.status ?? null, q.sort, q.q ?? null, q.offset, q.limit, !!q.traded]);
-  return browseReads.get(`page:${key}`, BROWSE_READ_TTL_MS, () => readBrowsePage(q, database));
+  // The total depends on the filters alone: one count for every sort and page of them.
+  const countKey = JSON.stringify([q.kind ?? null, q.status ?? null, q.q ?? null, !!q.traded]);
+  const shareCount = (count: () => Promise<number>) => browseReads.get(`count:${countKey}`, BROWSE_READ_TTL_MS, count);
+  return browseReads.get(`page:${key}`, BROWSE_READ_TTL_MS, () => readBrowsePage(q, database, shareCount));
 }
 
-async function readBrowsePage(q: Parameters<typeof browseListings>[0], database: Database): Promise<BrowsePage> {
+async function readBrowsePage(
+  q: Parameters<typeof browseListings>[0],
+  database: Database,
+  shareCount: (count: () => Promise<number>) => Promise<number> = (count) => count(),
+): Promise<BrowsePage> {
   const limit = q.limit ?? 50;
   const offset = q.offset ?? 0;
   const recommendScores =
     q.sort === 'recommended' && q.recommendFor ? await recommendationScores(q.recommendFor, database) : null;
   const { from, order } = browseQuery({ ...q, recommendScores });
-  const result = await database.execute<{
-    listing_id: string | null;
-    market_id: string | null;
-    volume: string;
-    order_count: number;
-    last_trade_at: string | null;
-    markets: number;
-    total: number;
-  }>(sql`
-    select l.id as listing_id, m.id as market_id,
-           ${ROW_VOLUME}::text as volume,
-           ${ROW_ORDERS}::int as order_count,
-           greatest(m.last_trade_at, sec.last_trade_at)::text as last_trade_at,
-           ((m.id is not null)::int + coalesce(sec.markets, 0))::int as markets,
-           (count(*) over ())::int as total
-    ${from}
-     order by ${sql.join([...order, sql`coalesce(m.id, l.id) desc`], sql`, `)}
-     limit ${limit} offset ${offset}
-  `);
+  // The total is its own query, not `count(*) over ()`: a window makes every
+  // row of the venue, not just the page's, go through the select list (its
+  // casts to text) and into a tuplestore — 4x the page query's time (#12).
+  const [result, total] = await Promise.all([
+    database.execute<{
+      listing_id: string | null;
+      market_id: string | null;
+      volume: string;
+      order_count: number;
+      last_trade_at: string | null;
+      markets: number;
+    }>(sql`
+      select l.id as listing_id, m.id as market_id,
+             ${ROW_VOLUME}::text as volume,
+             ${ROW_ORDERS}::int as order_count,
+             greatest(m.last_trade_at, sec.last_trade_at)::text as last_trade_at,
+             ((m.id is not null)::int + coalesce(sec.markets, 0))::int as markets
+      ${from}
+       order by ${sql.join([...order, sql`coalesce(m.id, l.id) desc`], sql`, `)}
+       limit ${limit} offset ${offset}
+    `),
+    shareCount(
+      async () => (await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0,
+    ),
+  ]);
 
   const found = result.rows;
-  if (found.length === 0) {
-    // Past the end, or nothing at all: the page is empty, the total is not.
-    const total =
-      offset === 0
-        ? 0
-        : ((await database.execute<{ n: number }>(sql`select count(*)::int as n ${from}`)).rows[0]?.n ?? 0);
-    return { rows: [], total };
-  }
-  const total = found[0].total;
+  // Past the end, or nothing at all: the page is empty, the total is not.
+  if (found.length === 0) return { rows: [], total };
 
   const marketIds = found.flatMap((r) => (r.market_id ? [r.market_id] : []));
   const listingIds = found.flatMap((r) => (r.listing_id ? [r.listing_id] : []));
@@ -1737,8 +1751,10 @@ function browseQuery(q: BrowseFilter): { from: SQL; order: SQL[] } {
       ${recommending ? sql`left join ${scoresTable(recommending)} rec on rec.listing_id = l.id` : sql``}
       -- Visible markets of a listing other than its main one, summed into the
       -- row. Few listings have any, and markets_secondary_idx holds just those.
+      -- The sums are bigint, not sum()'s numeric: \`volume\` sorts on ROW_VOLUME,
+      -- and comparing numerics made a deep page's sort twice as slow.
       left join (
-        select s.listing_id, sum(s.volume_micro) as volume_micro, sum(s.order_count) as order_count,
+        select s.listing_id, sum(s.volume_micro)::bigint as volume_micro, sum(s.order_count)::bigint as order_count,
                max(s.last_trade_at) as last_trade_at, count(*) as markets
           from markets s
          where not s.is_main and s.status <> 'draft'
@@ -1998,14 +2014,22 @@ export async function traderCount(marketId: string, database: Database = getDb()
   return row?.n ?? 0;
 }
 
-/** Every institution some trader is confirmed at, with how many: what the leaderboard's board picker finds. */
+/**
+ * Every institution some trader is confirmed at, with how many: what the
+ * leaderboard's board picker finds, and the signed-out home page's strip. A
+ * scan of every account, read on every such page, so shared for a minute:
+ * a new affiliation showing up a minute late is fine.
+ */
 export async function traderInstitutions(database: Database = getDb()): Promise<{ name: string; traders: number }[]> {
-  const result = await database.execute<{ name: string; traders: number }>(sql`
-    select i.name, count(*)::int as traders
-      from accounts a, unnest(a.institutions) as i(name)
-     where not a.is_house
-     group by i.name
-     order by lower(i.name), i.name
-  `);
-  return result.rows;
+  const compute = async () => {
+    const result = await database.execute<{ name: string; traders: number }>(sql`
+      select i.name, count(*)::int as traders
+        from accounts a, unnest(a.institutions) as i(name)
+       where not a.is_house
+       group by i.name
+       order by lower(i.name), i.name
+    `);
+    return result.rows;
+  };
+  return database === getDb() ? institutionReads.get('all', INSTITUTION_READ_TTL_MS, compute) : compute();
 }

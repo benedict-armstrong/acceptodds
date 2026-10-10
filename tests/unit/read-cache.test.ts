@@ -44,6 +44,28 @@ describe('public read cache', () => {
     expect(cache.get('b', 1000, async () => 4, ['b'])).toBe(other);
   });
 
+  it('serves entries for at most the grace after a write, never extending one', async () => {
+    vi.useFakeTimers();
+    const cache = new ReadCache();
+    const compute = vi.fn().mockResolvedValue(1);
+    await cache.get('page', 30_000, compute);
+    cache.expireWithin(5_000);
+    vi.advanceTimersByTime(3_000);
+    cache.expireWithin(5_000); // a second write does not push the first one's deadline out
+    await cache.get('page', 30_000, compute);
+    expect(compute).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(2_000);
+    await cache.get('page', 30_000, compute);
+    expect(compute).toHaveBeenCalledTimes(2);
+    // The recomputed entry is fresh: the full TTL again.
+    vi.advanceTimersByTime(20_000);
+    await cache.get('page', 30_000, compute);
+    expect(compute).toHaveBeenCalledTimes(2);
+    cache.expireWithin(0);
+    await cache.get('page', 30_000, compute);
+    expect(compute).toHaveBeenCalledTimes(3);
+  });
+
   it('bounds memory and clears all entries', async () => {
     const cache = new ReadCache(2);
     const first = await cache.get('a', 1000, async () => 1);
