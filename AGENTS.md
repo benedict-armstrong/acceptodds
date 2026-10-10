@@ -4,6 +4,18 @@ TypeScript, Next.js 16 (App Router, `src/`), Drizzle + Postgres 16, Vitest +
 fast-check, on Node 26 (`.node-version`, the Dockerfile). The package was a
 Python/FastAPI scaffold until 2026-09-23; ignore anything that says otherwise.
 
+**It is in production**, at https://acceptodds.com, with real users,
+real reputation and real mail, served from this host (compose project
+`acceptodds`, `.env.production`, the repo dir) alongside staging
+(`acceptodds-staging`) and the dev database. **Do not disturb production
+unless explicitly told to**: no deploy, restart, rebuild, `docker compose`
+command against the `acceptodds` project, migration, seed, script or write
+against its database, mail to its users, or change to its env, cron,
+Cloudflare or DNS without the owner's explicit go-ahead for that action.
+Read-only queries are fine. Try risky changes on staging first. Mind the
+compose project and env file in every command: `npm run db:seed` and the
+integration tests wipe whatever database they are pointed at.
+
 - **Two TypeScripts.** `tsc` is TypeScript 7 (`@typescript/native`), which
   has no compiler API; `typescript` is an alias for `@typescript/typescript6`,
   for what imports the API (typescript-eslint, `next build`'s check). Move
@@ -24,10 +36,9 @@ Python/FastAPI scaffold until 2026-09-23; ignore anything that says otherwise.
 - **Migrations:** edit `src/db/schema.ts`, then `npm run db:generate`, then
   `npm run db:migrate`. The generated SQL in `drizzle/` is checked in and is
   the thing that actually runs. Never hand-edit an applied migration.
-  **Until the first production deploy** there is nothing to migrate, so
-  schema changes may instead be squashed: delete `drizzle/`, run
-  `npm run db:generate -- --name init`, and recreate the dev and test
-  databases. Once production exists, only new migrations.
+  Production exists, so **only new migrations**: never squash, delete or
+  rewrite anything in `drizzle/`. A migration must run safely against
+  production's live data, and is applied there only on the owner's say.
 
 ## Invariants
 
@@ -591,7 +602,7 @@ Each of these came up while implementing §3–§9 and is load-bearing.
   without time zone because that is what the CLI emits.
 - **`drizzle-kit generate` prompts "create or rename?"** whenever a migration
   drops one table and creates another, and refuses without a TTY. Run it under
-  a pseudo-terminal (`script -qfc`) and answer "create", or squash (above).
+  a pseudo-terminal (`script -qfc`) and answer "create".
 - **Mail without `RESEND_API_KEY` goes to an in-process outbox** and the
   server log, outside production; in production a missing key throws.
 - **Every mail is written once, as blocks, and rendered twice**

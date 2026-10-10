@@ -8,7 +8,10 @@ import { join, relative, sep } from 'node:path';
  *
  * - **swot** (JetBrains, MIT): academic email domains, each added by a
  *   reviewed pull request, since they grant free licences. The backbone.
- *   Domains swot itself lists as abused or stopped are left out.
+ *   Domains swot itself lists as abused or stopped are left out, unless
+ *   ROR or Hipo also lists them: those lists are about licence fraud, not
+ *   whether a domain is an institution's, and they hold hundreds of real
+ *   universities (`zju.edu.cn`, `utexas.edu`, `snu.ac.kr`, `hku.hk`, …).
  * - **ROR** (Research Organization Registry, CC0): every active
  *   organisation with a curated `domains` entry, of any type but `company`.
  *   Universities, research institutes, labs, hospitals, agencies: the
@@ -37,7 +40,8 @@ const CURATED = 'config/institution-domains.curated.json';
 const SWOT_REPO = 'https://github.com/JetBrains/swot.git';
 const HIPO_URL =
   'https://raw.githubusercontent.com/Hipo/university-domains-list/master/world_universities_and_domains.json';
-const ROR_RECORDS = 'https://zenodo.org/api/records?communities=ror-data&sort=mostrecent&size=1';
+// ROR's data dump, newest version (the concept record's; the community search times out).
+const ROR_LATEST = 'https://zenodo.org/api/records/6347574/versions/latest';
 const PSL_URL = 'https://publicsuffix.org/list/public_suffix_list.dat';
 const FREEMAIL_URL = 'https://raw.githubusercontent.com/Kikobeats/free-email-domains/master/domains.json';
 
@@ -68,6 +72,9 @@ const ACADEMIC_LABELS = new Set(['edu', 'ac']);
 
 const offline = process.argv.includes('--offline');
 
+/** Zenodo refuses Node's default user agent with a 403 page. */
+const HEADERS = { 'user-agent': 'acceptodds-institutions-build (+https://acceptodds.com)' };
+
 type Source = 'curated' | 'ror' | 'swot' | 'hipo';
 const PRIORITY: Record<Source, number> = { curated: 0, ror: 1, swot: 2, hipo: 3 };
 
@@ -78,7 +85,7 @@ function normalise(domain: string): string {
 async function download(url: string, file: string): Promise<string> {
   const path = join(CACHE, file);
   if (offline && existsSync(path)) return path;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) throw new Error(`${url}: ${res.status}`);
   writeFileSync(path, Buffer.from(await res.arrayBuffer()));
   return path;
@@ -122,10 +129,10 @@ interface RorOrg {
 async function ror(): Promise<{ domains: Map<string, string>; version: string }> {
   let file = readdirSync(CACHE).find((f) => f.endsWith('-ror-data.json'));
   if (!offline || !file) {
-    const record = (await (await fetch(ROR_RECORDS)).json()) as {
-      hits: { hits: { files: { key: string; links: { self: string } }[] }[] };
+    const record = (await (await fetch(ROR_LATEST, { headers: HEADERS })).json()) as {
+      files: { key: string; links: { self: string } }[];
     };
-    const zip = record.hits.hits[0].files.find((f) => f.key.endsWith('.zip'));
+    const zip = record.files.find((f) => f.key.endsWith('.zip'));
     if (!zip) throw new Error('no ROR data zip on Zenodo');
     file = zip.key.replace(/\.zip$/, '.json');
     if (!existsSync(join(CACHE, file))) {
@@ -196,6 +203,8 @@ async function main() {
   const [sw, rr, hp, psl, free] = [swot(), await ror(), await hipo(), await publicSuffixes(), await freemail()];
 
   const exclude = new Set(curated.exclude.map(normalise));
+  // swot's abused and stoplisted domains, less those another source vouches for.
+  const blocked = new Set([...sw.bad].filter((d) => !rr.domains.has(d) && !hp.has(d)));
   const under = (domain: string, set: Set<string>) => {
     const labels = domain.split('.');
     return labels.some((_, i) => set.has(labels.slice(i).join('.')));
@@ -218,7 +227,7 @@ async function main() {
       if (psl.has(domain) || psl.has(`*.${labels.slice(1).join('.')}`)) return void dropped.publicSuffix++;
       if (labels.length === 2 && labels[1].length === 2 && REGISTRY_LABELS.has(labels[0]))
         return void dropped.registry++;
-      if (under(domain, sw.bad)) return void dropped.swotAbused++;
+      if (under(domain, blocked)) return void dropped.swotAbused++;
       if (source !== 'swot' && free.has(domain) && !sw.domains.has(domain)) return void dropped.freemail++;
     }
     const held = picked.get(domain);
