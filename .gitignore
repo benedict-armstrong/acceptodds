@@ -53,3 +53,4 @@ next-env.d.ts
 
 # Local working notes, never committed
 .notes/
+.scratch/
